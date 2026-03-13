@@ -30,6 +30,11 @@ jobs:
       SHORT_SHA: ${GITHUB_SHA::7}
 
     steps:
+      - name: Disable Windows Defender
+        if: matrix.os == 'windows-latest'
+        run: Set-MpPreference -DisableRealtimeMonitoring $true
+        shell: pwsh
+
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -73,14 +78,14 @@ jobs:
               $ARTIFACT="Rover-$VERSION-windows-${{ matrix.arch }}.exe"
               # 关键：这里强制指定 --win nsis，覆盖 package.json 里的 "dir"
               npx electron-builder `
-                --win nsis zip `
+                --win nsis `
                 --${{ matrix.arch }} `
                 --publish never `
                 --config.nsis.artifactName=$ARTIFACT
           } else {
               $ARTIFACT="Rover-$VERSION-macos-${{ matrix.arch }}.dmg"
               npx electron-builder `
-                --mac dmg zip `
+                --mac dmg `
                 --${{ matrix.arch }} `
                 --publish never `
                 --config.dmg.artifactName=$ARTIFACT
@@ -91,18 +96,22 @@ jobs:
 
       # 调试输出：确认 release 文件夹内容（因为 package.json 里的 output 是 release）
       - name: Show build files
+        shell: bash
         run: ls -R release
 
       # Show resources directory to verify build.json was included
       - name: Show resources files
+        shell: bash
         run: ls -la resources/
 
-      # 上传 Artifacts：路径改为 release
+      # 上传 Artifacts：只上传 exe 和 dmg 文件
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: build-${{ matrix.platform }}-${{ matrix.arch }}
-          path: release
+          path: |
+            release/Rover-*.exe
+            release/Rover-*.dmg
           retention-days: 1
 
   publish-release:
