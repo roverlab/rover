@@ -1,0 +1,89 @@
+{
+  "dns": {
+    "servers": [
+      {
+        "tag": "google",
+        "type": "tls",
+        "server": "8.8.8.8"
+      },
+      {
+        "tag": "aliyun",
+        "type": "udp",
+        "server": "223.5.5.5"
+      },
+      {
+        "tag": "fakeip",
+        "type": "fakeip",
+        "inet4_range": "198.18.0.0/15",
+        "inet6_range": "fc00::/18"
+      }
+    ],
+    "rules": [
+      {
+        "rule_set": "geosite:geolocation-cn",
+        "server": "aliyun"
+      },
+      {
+        "query_type": [
+          "A",
+          "AAAA"
+        ],
+        "server": "fakeip"
+      }
+    ],
+    "independent_cache": true
+  },
+  "rules": [
+    {
+      "name": "🔍 流量嗅探",
+      "raw_data": {
+        "action": "sniff"
+      }
+    },
+    {
+      "name": "🛡️ DNS 劫持",
+      "raw_data": {
+        "protocol": "dns",
+        "action": "hijack-dns"
+      }
+    },
+    {
+      "name": "🏠 私有网络",
+      "outbound": "direct",
+      "raw_data": {
+        "ip_is_private": true,
+        "outbound": "direct"
+      }
+    },
+    {
+      "name": "🎯 国内域名直连",
+      "rule_set_build_in": [
+        "geosite:geolocation-cn"
+      ],
+      "outbound": "direct"
+    },
+    {
+      "name": "🌏 国外流量代理",
+      "rule_set_build_in": [
+        "geosite:geolocation-!cn"
+      ],
+      "outbound": "currentSelected"
+    },
+    {
+      "name": "🔍 未匹配域名DNS解析",
+      "raw_data": {
+        "action": "resolve",
+        "server": "google"
+      }
+    },
+    {
+      "name": "🎯国内 IP 直连",
+      "rule_set_build_in": [
+        "geoip:cn"
+      ],
+      "outbound": "direct"
+    }
+  ],
+  "rule_unmatched_outbound": "currentSelected",
+  "tun": true
+}

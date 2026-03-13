@@ -1,0 +1,101 @@
+[
+  {
+    "id": "clash:applications",
+    "name": "直连应用",
+    "url": "https://raw.githubusercontent.com/Loyalsoldier/clash-rules/release/applications.txt",
+    "type": "clash",
+    "enabled": true,
+    "path": "clash/applications.srs",
+    "last_update": "2026/3/10 12:48:34"
+  },
+  {
+    "id": "clash:private",
+    "name": "私有网络",
+    "url": "https://raw.githubusercontent.com/Loyalsoldier/clash-rules/release/private.txt",
+    "type": "clash",
+    "enabled": true,
+    "path": "clash/private.srs",
+    "last_update": "2026/3/10 12:48:34"
+  },
+  {
+    "id": "clash:reject",
+    "name": "广告拦截",
+    "url": "https://raw.githubusercontent.com/Loyalsoldier/clash-rules/release/reject.txt",
+    "type": "clash",
+    "enabled": true,
+    "path": "clash/reject.srs",
+    "last_update": "2026/3/10 12:48:18"
+  },
+  {
+    "id": "clash:apple",
+    "name": "Apple 中国直连",
+    "url": "https://raw.githubusercontent.com/Loyalsoldier/clash-rules/release/apple.txt",
+    "type": "clash",
+    "enabled": true,
+    "path": "clash/apple.srs",
+    "last_update": "2026/3/10 12:48:36"
+  },
+  {
+    "id": "clash:icloud",
+    "name": "iCloud 域名",
+    "url": "https://raw.githubusercontent.com/Loyalsoldier/clash-rules/release/icloud.txt",
+    "type": "clash",
+    "enabled": true,
+    "path": "clash/icloud.srs",
+    "last_update": "2026/3/10 12:48:37"
+  },
+  {
+    "id": "clash:google",
+    "name": "Google 中国直连",
+    "url": "https://raw.githubusercontent.com/Loyalsoldier/clash-rules/release/google.txt",
+    "type": "clash",
+    "enabled": true,
+    "path": "clash/google.srs",
+    "last_update": "2026/3/10 12:48:36"
+  },
+  {
+    "id": "clash:proxy",
+    "name": "代理域名",
+    "url": "https://raw.githubusercontent.com/Loyalsoldier/clash-rules/release/proxy.txt",
+    "type": "clash",
+    "enabled": true,
+    "path": "clash/proxy.srs",
+    "last_update": "2026/3/10 12:47:54"
+  },
+  {
+    "id": "clash:telegramcidr",
+    "name": "Telegram IP",
+    "url": "https://raw.githubusercontent.com/Loyalsoldier/clash-rules/release/telegramcidr.txt",
+    "type": "clash",
+    "enabled": true,
+    "path": "clash/telegramcidr.srs",
+    "last_update": "2026/3/10 12:48:37"
+  },
+  {
+    "id": "clash:direct",
+    "name": "直连域名",
+    "url": "https://raw.githubusercontent.com/Loyalsoldier/clash-rules/release/direct.txt",
+    "type": "clash",
+    "enabled": true,
+    "path": "clash/direct.srs",
+    "last_update": "2026/3/10 12:48:35"
+  },
+  {
+    "id": "clash:lancidr",
+    "name": "局域网 IP",
+    "url": "https://raw.githubusercontent.com/Loyalsoldier/clash-rules/release/lancidr.txt",
+    "type": "clash",
+    "enabled": true,
+    "path": "clash/lancidr.srs",
+    "last_update": "2026/3/10 12:48:33"
+  },
+  {
+    "id": "clash:cncidr",
+    "name": "中国 IP",
+    "url": "https://raw.githubusercontent.com/Loyalsoldier/clash-rules/release/cncidr.txt",
+    "type": "clash",
+    "enabled": true,
+    "path": "clash/cncidr.srs",
+    "last_update": "2026/3/10 12:48:35"
+  }
+]

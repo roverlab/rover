@@ -1,0 +1,17 @@
+[
+  {
+    "name": "Clash模板测试",
+    "description": "Clash 内置规则模板（包含直连应用、私有网络、广告拦截、苹果服务、Google、常用国外域名、Telegram、直连域名、局域网IP、中国大陆IP等规则）",
+    "path": "templates/1.json"
+  },
+  {
+    "name": "国内网站白名单+国外代理",
+    "description": "ACL4SSR + Geosite 规则模板（包含苹果服务、Google Play、哔哩哔哩、国内直连、国外穿墙等规则）",
+    "path": "templates/2.json"
+  },
+  {
+    "name": "🚀 全能分流平衡方案",
+    "description": "- DNS 策略： 国内使用阿里云 UDP 快速解析；国外使用 Google DoT 加密并开启 FakeIP 模式，有效解决 DNS 污染。\n- 流量分配： 自动识别内网、国内域名及 IP，确保低延迟直连；国外目标自动调度至代理服务器。\n- 特性： 集成 DNS 劫持、流量嗅探与独立缓存，兼顾隐私安全与访问速度）",
+    "path": "templates/3.json"
+  }
+]

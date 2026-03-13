@@ -1,0 +1,26 @@
+node_modules/
+build/
+dist/
+dist-electron/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+/release/
+
+/public/icon.ico
+
+# 忽略 resources 文件夹下的所有内容
+/resources/*
+
+# 排除（保留）presets 目录
+!/resources/presets/
+
+# 确保 presets 目录下的内容也能被追踪
+!/resources/presets/**
+
+
+.codebuddy/
+.cursor/
+dist-electron/

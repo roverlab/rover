@@ -1,0 +1,57 @@
+{
+  "rules": [
+    {
+      "rule_set_build_in": [
+        "geosite:apple",
+        "geosite:apple@ads",
+        "geosite:apple-dev",
+        "geosite:apple-pki",
+        "geosite:apple-update"
+      ],
+      "outbound": "direct",
+      "name": "🍎 苹果服务"
+    },
+    {
+      "rule_set_build_in": ["geosite:google-play"],
+      "outbound": "currentSelected",
+      "name": "🌏 Google Play",
+      "package": ["com.android.vending"]
+    },
+    {
+      "rule_set_build_in": ["acl:BilibiliHMT", "acl:Bilibili"],
+      "outbound": "direct",
+      "name": "📺 哔哩哔哩"
+    },
+    {
+      "name": "🔍 未匹配域名DNS解析",
+      "raw_data": {
+        "action": "resolve",
+        "server": "dns_direct_out"
+      }
+    },
+    {
+      "rule_set_build_in": [
+        "acl:ChinaIp",
+        "acl:ChinaDomain",
+        "acl:ChinaCompanyIp",
+        "acl:UnBan",
+        "acl:SteamCN",
+        "acl:Download",
+        "acl:ChinaMedia"
+      ],
+      "outbound": "direct",
+      "name": "🎯 国内直连"
+    },
+    {
+      "rule_set_build_in": [
+        "geosite:geolocation-!cn",
+        "geosite:google",
+        "geoip:google",
+        "acl:ProxyGFWlist",
+        "acl:ProxyMedia"
+      ],
+      "outbound": "currentSelected",
+      "name": "🌏 国外穿墙"
+    }
+  ]
+}

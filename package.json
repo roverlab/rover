@@ -1,0 +1,111 @@
+{
+  "name": "roverlab.rover",
+  "private": true,
+  "version": "0.1.0",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist-electron/main.cjs",
+  "scripts": {
+    "dev": "node scripts/electron-dev.mjs",
+    "build": "rspack build",
+    "preview": "rspack preview",
+    "clean": "node scripts/clean-build.cjs",
+    "lint": "tsc --noEmit",
+    "gen:icon": "node --input-type=module -e \"import pngToIco from 'png-to-ico'; import { writeFileSync } from 'node:fs'; const buf = await pngToIco('public/icon.png'); writeFileSync('public/icon.ico', buf);\"",
+    "pack:win": "npm run clean && npm run gen:icon && npm run build && node scripts/pack-win.cjs",
+    "release": "node scripts/release-tag.cjs",
+    "download:rulesets": "npx tsx scripts/download-rulesets.js"
+  },
+  "dependencies": {
+    "@google/genai": "^1.29.0",
+    "axios": "^1.13.6",
+    "clsx": "^2.1.1",
+    "country-flag-icons": "^1.6.15",
+    "date-fns": "^4.1.0",
+    "dotenv": "^17.2.3",
+    "express": "^4.21.2",
+    "framer-motion": "^12.35.1",
+    "iconv-lite": "^0.7.2",
+    "js-yaml": "^4.1.1",
+    "jschardet": "^3.1.4",
+    "lucide-react": "^0.546.0",
+    "motion": "^12.23.24",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tailwind-merge": "^3.5.0"
+  },
+  "devDependencies": {
+    "@rspack/cli": "^1.7.8",
+    "@rspack/core": "^1.7.8",
+    "@rspack/dev-server": "^1.2.1",
+    "@rspack/plugin-react-refresh": "^1.6.1",
+    "@tailwindcss/postcss": "^4.2.1",
+    "@types/express": "^4.17.21",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^22.14.0",
+    "autoprefixer": "^10.4.21",
+    "electron": "^40.8.0",
+    "electron-builder": "^26.0.12",
+    "png-to-ico": "^3.0.1",
+    "postcss-loader": "^8.2.1",
+    "react-refresh": "^0.18.0",
+    "tailwindcss": "^4.1.14",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.21.0",
+    "typescript": "~5.8.2",
+    "vitest": "^4.1.0"
+  },
+  "build": {
+    "appId": "roverlab.rover",
+    "productName": "Rover",
+    "directories": {
+      "output": "release"
+    },
+    "asar": true,
+    "files": [
+      "dist/",
+      "dist-electron/",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "resources",
+        "to": "resources",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "public",
+        "to": "public",
+        "filter": [
+          "icon*.png",
+          "icon*.ico"
+        ]
+      }
+    ],
+    "mac": {
+      "icon": "public/icon.png",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.utilities"
+    },
+    "win": {
+      "icon": "public/icon.ico",
+      "forceCodeSigning": false,
+      "signAndEditExecutable": true,
+      "target": [
+        "dir"
+      ]
+    },
+    "nsis": {
+      "installerIcon": "public/icon.ico",
+      "uninstallerIcon": "public/icon.ico",
+      "installerHeaderIcon": "public/icon.ico",
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}
