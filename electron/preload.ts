@@ -56,6 +56,25 @@ contextBridge.exposeInMainWorld('ipcRenderer', {
         getProfilePolicyByPolicyId: (profileId: string, policyId: string) => ipcRenderer.invoke('db:getProfilePolicyByPolicyId', profileId, policyId),
         setProfilePolicy: (profileId: string, policyId: string, preferredOutbounds: string[]) => ipcRenderer.invoke('db:setProfilePolicy', profileId, policyId, preferredOutbounds),
         deleteProfilePolicy: (profileId: string) => ipcRenderer.invoke('db:deleteProfilePolicy', profileId),
+        // DNS Policies
+        getDnsPolicies: () => ipcRenderer.invoke('db:getDnsPolicies'),
+        getDnsPolicyById: (id: string) => ipcRenderer.invoke('db:getDnsPolicyById', id),
+        addDnsPolicy: (policy: any) => ipcRenderer.invoke('db:addDnsPolicy', policy),
+        updateDnsPolicy: (id: string, updates: any) => ipcRenderer.invoke('db:updateDnsPolicy', id, updates),
+        deleteDnsPolicy: (id: string) => ipcRenderer.invoke('db:deleteDnsPolicy', id),
+        updateDnsPoliciesOrder: (orders: Array<{ id: string; order: number }>) => ipcRenderer.invoke('db:updateDnsPoliciesOrder', orders),
+        clearDnsPolicies: () => ipcRenderer.invoke('db:clearDnsPolicies'),
+        getDnsServers: () => ipcRenderer.invoke('db:getDnsServers'),
+        getDnsServerRefs: (tag: string) => ipcRenderer.invoke('db:getDnsServerRefs', tag),
+        addDnsServer: (server: any) => ipcRenderer.invoke('db:addDnsServer', server),
+        updateDnsServer: (id: string, updates: any) => ipcRenderer.invoke('db:updateDnsServer', id, updates),
+        deleteDnsServer: (id: string) => ipcRenderer.invoke('db:deleteDnsServer', id),
+        // Profile DNS Policies
+        getProfileDnsPolicies: () => ipcRenderer.invoke('db:getProfileDnsPolicies'),
+        getProfileDnsPolicy: (profileId: string) => ipcRenderer.invoke('db:getProfileDnsPolicy', profileId),
+        getProfileDnsPolicyByPolicyId: (profileId: string, dnsPolicyId: string) => ipcRenderer.invoke('db:getProfileDnsPolicyByPolicyId', profileId, dnsPolicyId),
+        setProfileDnsPolicy: (profileId: string, dnsPolicyId: string, dnsServerId: string | null) => ipcRenderer.invoke('db:setProfileDnsPolicy', profileId, dnsPolicyId, dnsServerId),
+        deleteProfileDnsPolicy: (profileId: string) => ipcRenderer.invoke('db:deleteProfileDnsPolicy', profileId),
     },
 
     // Sing-box APIs
@@ -73,6 +92,7 @@ contextBridge.exposeInMainWorld('ipcRenderer', {
         addSubscriptionProfile: (url: string) => ipcRenderer.invoke('core:addSubscriptionProfile', url),
         importLocalProfile: () => ipcRenderer.invoke('core:importLocalProfile'),
         openUserDataPath: () => ipcRenderer.invoke('core:openUserDataPath'),
+        openExternalUrl: (url: string) => ipcRenderer.invoke('core:openExternalUrl', url),
         getActiveConfig: () => ipcRenderer.invoke('core:getActiveConfig'),
         generateConfig: () => ipcRenderer.invoke('core:generateConfig'),
         getSelectedProfile: () => ipcRenderer.invoke('core:getSelectedProfile'),
@@ -87,15 +107,33 @@ contextBridge.exposeInMainWorld('ipcRenderer', {
         downloadAllRuleProviders: () => ipcRenderer.invoke('core:downloadAllRuleProviders'),
         getRuleProviderViewContent: (providerId: string) => ipcRenderer.invoke('core:getRuleProviderViewContent', providerId),
         convertClashRuleSetToSingbox: (providerId: string) => ipcRenderer.invoke('core:convertClashRuleSetToSingbox', providerId),
+        // Local Rule Provider
+        addLocalRuleProvider: (provider: { name: string; enabled?: boolean }) => ipcRenderer.invoke('core:addLocalRuleProvider', provider),
+        saveLocalRuleProvider: (providerId: string, rawData: any) => ipcRenderer.invoke('core:saveLocalRuleProvider', providerId, rawData),
         // Templates & Policies
         getTemplates: () => ipcRenderer.invoke('core:getTemplates'),
         getTemplatePolicies: (templatePath: string) => ipcRenderer.invoke('core:getTemplatePolicies', templatePath),
         importTemplateComplete: (templatePath: string) => ipcRenderer.invoke('core:importTemplateComplete', templatePath),
         getPresetRulesets: () => ipcRenderer.invoke('core:getPresetRulesets'),
         getBuiltinRulesets: () => ipcRenderer.invoke('core:getBuiltinRulesets'),
+        getAllRuleSetsGrouped: () => ipcRenderer.invoke('core:getAllRuleSetsGrouped'),
         addRuleProvidersFromPreset: (aclIds: string[]) => ipcRenderer.invoke('core:addRuleProvidersFromPreset', aclIds),
         importPresetWithOverwrite: (arg: { policies: any[]; presetRulesetIds: string[] }) => ipcRenderer.invoke('core:importPresetWithOverwrite', arg),
         getAvailableOutbounds: () => ipcRenderer.invoke('core:getAvailableOutbounds'),
+        fetchIpThroughProxy: () => ipcRenderer.invoke('core:fetchIpThroughProxy'),
+        fetchIpDirect: () => ipcRenderer.invoke('core:fetchIpDirect'),
+    },
+
+    // 配置导出/导入
+    config: {
+        export: () => ipcRenderer.invoke('config:export'),
+        import: () => ipcRenderer.invoke('config:import'),
+    },
+
+    // Sing-box 内核日志（本地文件）
+    singbox: {
+        readLog: (options?: { fromLine?: number }) => ipcRenderer.invoke('singbox:readLog', options),
+        clearLog: () => ipcRenderer.invoke('singbox:clearLog'),
     },
 
     // Event listeners for main -> renderer communication
@@ -106,6 +144,11 @@ contextBridge.exposeInMainWorld('ipcRenderer', {
     onConfigGenerateEnd: (callback: () => void) => {
         ipcRenderer.on('config-generate-end', callback);
         return () => ipcRenderer.off('config-generate-end', callback);
+    },
+    onConfigImportStep: (callback: (step: string) => void) => {
+        const handler = (_: any, step: string) => callback(step);
+        ipcRenderer.on('config-import-step', handler);
+        return () => ipcRenderer.off('config-import-step', handler);
     },
 
     // Logger APIs

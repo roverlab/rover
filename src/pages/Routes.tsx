@@ -258,7 +258,7 @@ function RuleDetail({ rule }: { rule: RouteRule }) {
                                         key={i}
                                         className="inline-flex items-center px-1.5 py-0.5 rounded-[4px] bg-[var(--app-bg-secondary)] text-[var(--app-text-tertiary)]"
                                     >
-                                        {v}
+                                        {String(v)}
                                     </span>
                                 ))}
                                 {item.value.length > DETAIL_ARRAY_LIMIT && (
@@ -278,7 +278,7 @@ function RuleDetail({ rule }: { rule: RouteRule }) {
 }
 
 // 规则行组件（紧凑列表样式）
-function RuleItem({ rule, index }: { rule: RouteRule; index: number }) {
+function RuleItem({ rule, index }: { rule: RouteRule; index: number; key?: React.Key }) {
     const action = rule.action || 'route';
     const outbound = rule.outbound || '-';
     const [detailOpen, setDetailOpen] = useState(false);
@@ -319,7 +319,7 @@ function RuleItem({ rule, index }: { rule: RouteRule; index: number }) {
 }
 
 // 规则集卡片组件
-function RuleSetCard({ ruleSet }: { ruleSet: RuleSetConfig }) {
+function RuleSetCard({ ruleSet }: { ruleSet: RuleSetConfig; key?: React.Key }) {
     return (
         <Card className="p-4 hover:border-[var(--app-accent-border)]/60 transition-colors group">
             <div className="flex items-start gap-3">

@@ -56,31 +56,33 @@ function compactRules(rules: HeadlessRule[]): HeadlessRule[] {
     const processName: string[] = [];
 
     for (const r of rules) {
-        if (r.domain_suffix) domainSuffix.push(...r.domain_suffix);
-        if (r.domain_keyword) domainKeyword.push(...r.domain_keyword);
-        if (r.domain) domain.push(...r.domain);
-        if (r.domain_regex) domainRegex.push(...r.domain_regex);
-        if (r.ip_cidr) ipCidr.push(...r.ip_cidr);
-        if (r.source_ip_cidr) sourceIpCidr.push(...r.source_ip_cidr);
-        if (r.port) port.push(...r.port);
-        if (r.port_range) portRange.push(...r.port_range);
-        if (r.source_port) sourcePort.push(...r.source_port);
-        if (r.source_port_range) sourcePortRange.push(...r.source_port_range);
-        if (r.process_name) processName.push(...r.process_name);
+        // 使用 for 循环逐个 push 避免大数组栈溢出
+        if (r.domain_suffix) { for (const item of r.domain_suffix) domainSuffix.push(item); }
+        if (r.domain_keyword) { for (const item of r.domain_keyword) domainKeyword.push(item); }
+        if (r.domain) { for (const item of r.domain) domain.push(item); }
+        if (r.domain_regex) { for (const item of r.domain_regex) domainRegex.push(item); }
+        if (r.ip_cidr) { for (const item of r.ip_cidr) ipCidr.push(item); }
+        if (r.source_ip_cidr) { for (const item of r.source_ip_cidr) sourceIpCidr.push(item); }
+        if (r.port) { for (const item of r.port) port.push(item); }
+        if (r.port_range) { for (const item of r.port_range) portRange.push(item); }
+        if (r.source_port) { for (const item of r.source_port) sourcePort.push(item); }
+        if (r.source_port_range) { for (const item of r.source_port_range) sourcePortRange.push(item); }
+        if (r.process_name) { for (const item of r.process_name) processName.push(item); }
     }
 
     const result: HeadlessRule[] = [];
-    if (domainSuffix.length) result.push({ domain_suffix: [...new Set(domainSuffix)] });
-    if (domainKeyword.length) result.push({ domain_keyword: [...new Set(domainKeyword)] });
-    if (domain.length) result.push({ domain: [...new Set(domain)] });
-    if (domainRegex.length) result.push({ domain_regex: [...new Set(domainRegex)] });
-    if (ipCidr.length) result.push({ ip_cidr: [...new Set(ipCidr)] });
-    if (sourceIpCidr.length) result.push({ source_ip_cidr: [...new Set(sourceIpCidr)] });
-    if (port.length) result.push({ port: [...new Set(port)] });
-    if (portRange.length) result.push({ port_range: [...new Set(portRange)] });
-    if (sourcePort.length) result.push({ source_port: [...new Set(sourcePort)] });
-    if (sourcePortRange.length) result.push({ source_port_range: [...new Set(sourcePortRange)] });
-    if (processName.length) result.push({ process_name: [...new Set(processName)] });
+    // 使用 Array.from 避免大数组导致栈溢出 (spread operator 在大数组时会触发 Maximum call stack size exceeded)
+    if (domainSuffix.length) result.push({ domain_suffix: Array.from(new Set(domainSuffix)) });
+    if (domainKeyword.length) result.push({ domain_keyword: Array.from(new Set(domainKeyword)) });
+    if (domain.length) result.push({ domain: Array.from(new Set(domain)) });
+    if (domainRegex.length) result.push({ domain_regex: Array.from(new Set(domainRegex)) });
+    if (ipCidr.length) result.push({ ip_cidr: Array.from(new Set(ipCidr)) });
+    if (sourceIpCidr.length) result.push({ source_ip_cidr: Array.from(new Set(sourceIpCidr)) });
+    if (port.length) result.push({ port: Array.from(new Set(port)) });
+    if (portRange.length) result.push({ port_range: Array.from(new Set(portRange)) });
+    if (sourcePort.length) result.push({ source_port: Array.from(new Set(sourcePort)) });
+    if (sourcePortRange.length) result.push({ source_port_range: Array.from(new Set(sourcePortRange)) });
+    if (processName.length) result.push({ process_name: Array.from(new Set(processName)) });
 
     return result;
 }
@@ -180,14 +182,14 @@ function domainFormatToSingbox(lines: string[]): SingboxRuleSetSource {
         }
     }
 
-    // 添加 domain_suffix 规则
+    // 添加 domain_suffix 规则 (使用 Array.from 避免大数组栈溢出)
     if (domainSuffixes.length > 0) {
-        rules.push({ domain_suffix: [...new Set(domainSuffixes)] });
+        rules.push({ domain_suffix: Array.from(new Set(domainSuffixes)) });
     }
     
     // 添加 domain 规则
     if (domains.length > 0) {
-        rules.push({ domain: [...new Set(domains)] });
+        rules.push({ domain: Array.from(new Set(domains)) });
     }
 
     return { version: 3, rules: compactRules(rules) };
@@ -208,7 +210,7 @@ function ipcidrFormatToSingbox(lines: string[]): SingboxRuleSetSource {
     }
 
     if (ipCidrs.length > 0) {
-        rules.push({ ip_cidr: [...new Set(ipCidrs)] });
+        rules.push({ ip_cidr: Array.from(new Set(ipCidrs)) });
     }
 
     return { version: 3, rules: compactRules(rules) };

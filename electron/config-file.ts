@@ -21,18 +21,135 @@ import {
     isRuleProviderUsedByEnabledPolicies,
     POLICY_FINAL_OUTBOUND_VALUES
 } from './route-policy';
-import { policiesToSingboxConfig } from '../src/types/policy';
+import { policiesToSingboxConfig, getPolicyMatchableFields } from '../src/types/policy';
+import { dnsPoliciesToSingboxConfig } from '../src/types/dns-policy';
 
-/** 从 route.rules 中搜集所有引用的 rule_set tag */
-function collectRuleSetRefsFromRules(rules: any[]): Set<string> {
-    const refs = new Set<string>();
-    if (!Array.isArray(rules)) return refs;
-    for (const rule of rules) {
-        const tags = rule?.rule_set;
-        if (Array.isArray(tags)) {
-            for (const tag of tags) {
-                if (typeof tag === 'string' && tag.trim()) refs.add(tag.trim());
+/** 判断是否为 IPv6 地址 */
+function isIPv6(ip: string): boolean {
+    return ip.includes(':');
+}
+
+/** 解析 hosts-override 行，返回 { hostname, ip }[] */
+function parseHostsOverrideLines(lines: string[]): Array<{ hostname: string; ip: string }> {
+    const result: Array<{ hostname: string; ip: string }> = [];
+    for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('#')) continue;
+        const parts = trimmed.split(/\s+/);
+        if (parts.length < 2) continue;
+        const ip = parts[0];
+        const hostnames = parts.slice(1).filter((h) => h && !h.startsWith('#'));
+        for (const hostname of hostnames) {
+            result.push({ hostname, ip });
+        }
+    }
+    return result;
+}
+
+/** 将高级配置 hosts-override 转为 dns servers + rules */
+function hostsOverrideToDnsConfig(hostsOverrideLines: string[]): {
+    server?: { type: 'hosts'; tag: string; predefined: Record<string, string> };
+    rules: any[];
+} {
+    const entries = parseHostsOverrideLines(hostsOverrideLines);
+    if (entries.length === 0) return { rules: [] };
+
+    const singleDomains: Record<string, string> = {};
+    const wildcardMap = new Map<string, { ipv4: string | null; ipv6: string | null }>();
+
+    for (const { hostname, ip } of entries) {
+        const isWildcard = hostname.startsWith('*.');
+        if (isWildcard) {
+            const suffix = hostname.slice(1);
+            const domainSuffix = suffix.startsWith('.') ? suffix : '.' + suffix;
+            if (!wildcardMap.has(domainSuffix)) {
+                wildcardMap.set(domainSuffix, { ipv4: null, ipv6: null });
             }
+            const entry = wildcardMap.get(domainSuffix)!;
+            if (isIPv6(ip)) {
+                entry.ipv6 = ip;
+            } else {
+                entry.ipv4 = ip;
+            }
+        } else {
+            singleDomains[hostname] = ip;
+        }
+    }
+
+    const rules: any[] = [];
+
+
+ 
+
+    for (const [domainSuffix, { ipv4, ipv6 }] of wildcardMap) {
+        const wildcardDomain = '*' + domainSuffix;
+        if (ipv6) {
+            rules.push({
+                query_type: ['AAAA'],
+                domain_suffix: [domainSuffix],
+                action: 'predefined',
+                rcode: 'NOERROR',
+                answer: [`${wildcardDomain}. IN AAAA ${ipv6}`],
+            });
+        }
+        if (ipv4) {
+            rules.push({
+                query_type: ['A'],
+                domain_suffix: [domainSuffix],
+                action: 'predefined',
+                rcode: 'NOERROR',
+                answer: [`${wildcardDomain}. IN A ${ipv4}`],
+            });
+        }
+    }
+
+    let server: { type: 'hosts'; tag: string; predefined: Record<string, string> } | undefined;
+    if (Object.keys(singleDomains).length > 0) {
+        server = {
+            type: 'hosts',
+            tag: 'dns_hosts',
+            predefined: singleDomains,
+        };
+        rules.push({ ip_accept_any: true, server: 'dns_hosts' });
+    }
+
+
+    return { server, rules };
+}
+
+/** 从单条规则中搜集 rule_set 引用（支持 route 的数组格式与 dns 的字符串格式） */
+function collectRuleSetRefsFromRule(rule: any): string[] {
+    const tags = rule?.rule_set;
+    if (!tags) return [];
+    if (Array.isArray(tags)) {
+        return tags.filter((t: any) => typeof t === 'string' && (t as string).trim()).map((t: string) => (t as string).trim());
+    }
+    if (typeof tags === 'string' && tags.trim()) return [tags.trim()];
+    return [];
+}
+
+/** 递归搜集规则中的 rule_set 引用（含嵌套 logical） */
+function collectRuleSetRefsRecursive(rule: any, refs: Set<string>): void {
+    if (!rule) return;
+    for (const tag of collectRuleSetRefsFromRule(rule)) refs.add(tag);
+    if (rule.type === 'logical' && Array.isArray(rule.rules)) {
+        for (const sub of rule.rules) collectRuleSetRefsRecursive(sub, refs);
+    }
+}
+
+/** 从 route.rules 和 dns.rules 中搜集所有引用的 rule_set tag */
+function collectAllRuleSetRefs(config: any): Set<string> {
+    const refs = new Set<string>();
+    const routeRules = config?.route?.rules;
+    if (Array.isArray(routeRules)) {
+        for (const rule of routeRules) {
+            collectRuleSetRefsRecursive(rule, refs);
+        }
+    }
+    const dnsRules = config?.dns?.rules;
+    if (Array.isArray(dnsRules)) {
+        for (const rule of dnsRules) {
+            collectRuleSetRefsRecursive(rule, refs);
         }
     }
     return refs;
@@ -40,8 +157,7 @@ function collectRuleSetRefsFromRules(rules: any[]): Set<string> {
 
 /** 根据引用的 rule_set 构建 rule_set 配置并写入 config.route.rule_set；有冒号用内置路径，无冒号用自定义规则集路径 */
 function buildAndAssignRuleSets(config: any): void {
-    const rules = config?.route?.rules;
-    const refs = collectRuleSetRefsFromRules(rules);
+    const refs = collectAllRuleSetRefs(config);
     if (refs.size === 0) return;
 
     const ruleProviders = dbUtils.getRuleProviders();
@@ -79,7 +195,7 @@ export function readConfig(): any | null {
     try {
         return JSON.parse(fs.readFileSync(configPath, 'utf8'));
     } catch {
-        return null;
+        throw new Error('配置文件损坏，请重新生成配置文件');
     }
 }
 
@@ -219,7 +335,7 @@ export async function getProfileConfig(profileId: string, skipRules = false): Pr
 }
 
 /** 将用户设置合并到 config */
-export function mergeSettingsIntoConfig(config: any): SingboxConfig {
+export function mergeSettingsIntoConfig(config: any, profileId?: string): SingboxConfig {
     const settings = dbUtils.getAllSettings();
 
     const isAllowLan = settings['allow-lan'] === 'true';
@@ -261,16 +377,56 @@ export function mergeSettingsIntoConfig(config: any): SingboxConfig {
         // default_mode: defaultMode,
     };
 
-    const dnsConfigStr = settings['dns-config'];
-    if (dnsConfigStr && dnsConfigStr.trim()) {
-        try {
-            const dnsConfig = JSON.parse(dnsConfigStr);
-            if (typeof dnsConfig === 'object' && dnsConfig !== null) {
-                config.dns = dnsConfig;
-                console.log('[Config] Applied custom DNS config from settings');
+    const dnsServers = dbUtils.getDnsServers();
+    const enabledDnsServers = dnsServers.filter(s => s.enabled !== false);
+    if (enabledDnsServers.length > 0) {
+        const servers = enabledDnsServers.map((s) => {
+            const obj: any = { type: s.type, tag: s.id };
+            if (s.server) obj.server = s.server;
+            if (s.server_port != null) obj.server_port = s.server_port;
+            if (s.path) obj.path = s.path;
+            if (s.detour) obj.detour = s.detour;
+            if (s.prefer_go != null) obj.prefer_go = s.prefer_go;
+            if (s.inet4_range) obj.inet4_range = s.inet4_range;
+            if (s.inet6_range) obj.inet6_range = s.inet6_range;
+            if (s.predefined && Object.keys(s.predefined).length > 0) obj.predefined = s.predefined;
+            return obj;
+        });
+        const defaultServer = enabledDnsServers.find(s => s.is_default);
+        config.dns = { servers };
+        if (defaultServer) config.dns.final = defaultServer.id;
+        // 使用数据库 dnsPolicies 重新生成 dns.rules
+        const dnsPolicies = dbUtils.getDnsPolicies();
+        if (dnsPolicies.length > 0) {
+            const { rules } = dnsPoliciesToSingboxConfig(dnsPolicies);
+            config.dns.rules = rules;
+        }
+        console.log('[Config] Applied DNS config from dnsServers + dnsPolicies');
+    }
+
+    // 高级配置 hosts-override 转为 dns 配置：单域名用 hosts 服务器，泛域名用 rule 的 predefined
+    const hostsOverrideVal = settings['hosts-override'] || '[]';
+    let hostsOverrideLines: string[] = [];
+    try {
+        const arr = JSON.parse(hostsOverrideVal);
+        hostsOverrideLines = Array.isArray(arr) ? arr.filter((s: unknown) => typeof s === 'string') : [];
+    } catch {
+        /* ignore */
+    }
+    if (hostsOverrideLines.length > 0) {
+        const { server: hostsServer, rules: hostsRules } = hostsOverrideToDnsConfig(hostsOverrideLines);
+        if (hostsServer || hostsRules.length > 0) {
+            if (!config.dns) config.dns = { servers: [], rules: [] };
+            if (!Array.isArray(config.dns.servers)) config.dns.servers = [];
+            if (hostsServer) {
+                config.dns.servers = config.dns.servers.filter((s: any) => s?.tag !== 'dns_hosts');
+                config.dns.servers.unshift(hostsServer);
             }
-        } catch (e: any) {
-            console.error('[Config] Failed to parse custom DNS config:', e?.message || e);
+            if (hostsRules.length > 0) {
+                const existingRules = Array.isArray(config.dns.rules) ? config.dns.rules : [];
+                config.dns.rules = [...hostsRules, ...existingRules];
+            }
+            console.log('[Config] Applied hosts-override to DNS (single domains -> hosts, wildcards -> predefined rules)');
         }
     }
 
@@ -356,10 +512,14 @@ function ensureDnsDirectOutExists(config: any): void {
     }
 }
 
-/** 确保 route.default_domain_resolver 已设置（sing-box 要求） */
-function ensureRouteDefaultDomainResolver(config: any): void {
-    if (config.route && !config.route.default_domain_resolver) {
-        config.route.default_domain_resolver = { server: 'dns_direct_out' };
+/** 确保 route 默认值已设置（sing-box 要求及常用配置） */
+function ensureRouteDefaults(config: any): void {
+    if (!config.route) return;
+    // 始终将 default_domain_resolver.server 与 dns.final 同步（默认 DNS 服务器）
+    const defaultResolverServer = config.dns?.final ?? 'dns_direct_out';
+    config.route.default_domain_resolver = { ...config.route.default_domain_resolver, server: defaultResolverServer };
+    if (config.route.auto_detect_interface === undefined) {
+        config.route.auto_detect_interface = true;
     }
 }
 
@@ -412,7 +572,7 @@ export async function generateConfigFile(
         const overrideRules = settings['override-rules'] === 'true';
 
         const { config } = await getProfileConfig(profileId, overrideRules);
-        const mergedConfig = mergeSettingsIntoConfig(config);
+        const mergedConfig = mergeSettingsIntoConfig(config, profileId);
 
         let policies: any[] = [];
         if (overrideRules) {
@@ -423,12 +583,16 @@ export async function generateConfigFile(
 
         buildAndAssignRuleSets(mergedConfig);
         ensureDnsDirectOutExists(mergedConfig);
-        ensureRouteDefaultDomainResolver(mergedConfig);
+        ensureRouteDefaults(mergedConfig);
         appendExtraOutbounds(mergedConfig);
 
         if (overrideRules) {
-            const allProfilePolicies = dbUtils.getProfilePolicies();
-            const profilePolicies = allProfilePolicies.filter((pp: any) => pp.profile_id === profileId);
+            const profile = dbUtils.getProfileById(profileId);
+            const profilePolicies = (profile?.policies ?? []).map((pp) => ({
+                profile_id: profileId,
+                policy_id: pp.policy_id,
+                preferred_outbounds: pp.preferred_outbounds,
+            }));
             createCustomUrltestOutbounds(mergedConfig, policies, profilePolicies);
         }
 
@@ -654,23 +818,21 @@ function createCustomUrltestOutbounds(
 
 /** 检查规则是否属于指定策略 */
 function isRuleFromPolicy(rule: any, policy: any): boolean {
-    // 通过规则集匹配
-    if (rule.rule_set && policy.ruleSetBuildIn) {
+    const fields = getPolicyMatchableFields(policy);
+    if (rule.rule_set && Array.isArray(fields.rule_set) && fields.rule_set.length > 0) {
         const ruleRuleSets = new Set(rule.rule_set);
-        const policyRuleSets = new Set(policy.ruleSetBuildIn);
-        if (Array.from(ruleRuleSets).some(rs => policyRuleSets.has(rs))) {
+        const policyRuleSets = new Set(fields.rule_set);
+        if (Array.from(ruleRuleSets).some((rs: string) => policyRuleSets.has(rs))) {
             return true;
         }
     }
-    
-    // 通过其他字段匹配
     return (
-        (rule.domain && policy.domain && arraysOverlap(rule.domain, policy.domain)) ||
-        (rule.domain_keyword && policy.domain_keyword && arraysOverlap(rule.domain_keyword, policy.domain_keyword)) ||
-        (rule.domain_suffix && policy.domain_suffix && arraysOverlap(rule.domain_suffix, policy.domain_suffix)) ||
-        (rule.ip_cidr && policy.ip_cidr && arraysOverlap(rule.ip_cidr, policy.ip_cidr)) ||
-        (rule.package_name && policy.package && arraysOverlap(rule.package_name, policy.package)) ||
-        (rule.process_name && policy.processName && arraysOverlap(rule.process_name, policy.processName))
+        (rule.domain && fields.domain && arraysOverlap(rule.domain, fields.domain)) ||
+        (rule.domain_keyword && fields.domain_keyword && arraysOverlap(rule.domain_keyword, fields.domain_keyword)) ||
+        (rule.domain_suffix && fields.domain_suffix && arraysOverlap(rule.domain_suffix, fields.domain_suffix)) ||
+        (rule.ip_cidr && fields.ip_cidr && arraysOverlap(rule.ip_cidr, fields.ip_cidr)) ||
+        (rule.package_name && fields.package_name && arraysOverlap(rule.package_name, fields.package_name)) ||
+        (rule.process_name && fields.process_name && arraysOverlap(rule.process_name, fields.process_name))
     );
 }
 

@@ -6,8 +6,12 @@ import { Badge } from '../../components/ui/Surface';
 import { X, Copy, Edit2 } from 'lucide-react';
 import { cn } from '../../components/Sidebar';
 import type { Policy } from '../../types/policy';
+import { getPolicyRuleSet, getPolicyMatchableFields } from '../../types/policy';
 import type { RuleProvider } from '../../types/rule-providers';
 import { getRuleSetBadgeClass, getOutboundLabel, getOutboundTone, getPolicyOutbound } from './utils';
+import { RuleTreeView } from './components/RuleTreeView';
+import { singboxLogicalToRuleTreeNodeRoot } from './utils/ruleTreeNodeConversion';
+import { RULE_FIELD_CONFIG } from './utils/ruleFieldConfig';
 
 interface PolicyDetailModalProps {
     open: boolean;
@@ -51,10 +55,6 @@ export function PolicyDetailModal({
                     <div className="flex shrink-0 items-center justify-between px-6 py-4 border-b border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/50">
                         <h2 className="text-[15px] font-semibold text-[var(--app-text)]">策略详情</h2>
                         <div className="flex items-center gap-2">
-                            <Button variant="ghost" size="sm" onClick={onCopy}>
-                                <Copy className="w-3.5 h-3.5 mr-1" />
-                                复制
-                            </Button>
                             <button
                                 type="button"
                                 onClick={onClose}
@@ -104,155 +104,192 @@ export function PolicyDetailModal({
 
                         {detailPolicy.type === 'raw' ? (
                             <div className="space-y-3">
-                                <h3 className="text-[13px] font-semibold text-[var(--app-text)] flex items-center gap-2">
-                                    <span className="w-1 h-4 bg-purple-500 rounded-full" />
-                                    原始规则
-                                </h3>
-                                <pre className="bg-gray-900 rounded-[10px] p-4 overflow-x-auto">
-                                    <code className="text-[12px] font-mono text-green-400">
+                                <div className="flex items-center justify-between gap-2">
+                                    <h3 className="text-[13px] font-semibold text-[var(--app-text)] flex items-center gap-2">
+                                        <span className="w-1 h-4 bg-purple-500 rounded-full" />
+                                        原始规则
+                                    </h3>
+                                    <Button variant="ghost" size="sm" onClick={onCopy}>
+                                        <Copy className="w-3.5 h-3.5 mr-1" />
+                                        复制
+                                    </Button>
+                                </div>
+                                <pre className="bg-[var(--app-bg-secondary)] rounded-[10px] p-4 overflow-x-auto border border-[rgba(39,44,54,0.08)]">
+                                    <code className="text-[12px] font-mono text-[var(--app-text-secondary)]">
                                         {JSON.stringify(detailPolicy.raw_data || {}, null, 2)}
                                     </code>
                                 </pre>
                             </div>
                         ) : (
                             <>
-                                {detailPolicy.ruleSetBuildIn && detailPolicy.ruleSetBuildIn.length > 0 && (
-                                    <div className="space-y-3">
-                                        <h3 className="text-[13px] font-semibold text-[var(--app-text)] flex items-center gap-2">
-                                            <span className="w-1 h-4 bg-emerald-500 rounded-full" />
-                                            规则集 ({detailPolicy.ruleSetBuildIn.length})
-                                        </h3>
-                                        <div className="flex flex-wrap gap-1.5">
-                                            {detailPolicy.ruleSetBuildIn.map((rule, idx) => (
-                                                <span key={idx} className={cn(
-                                                    "inline-flex items-center pl-2 pr-2 py-1 rounded-[6px] text-[11px] border-l-2 border font-mono",
-                                                    getRuleSetBadgeClass(rule)
-                                                )}>
-                                                    {rule}
-                                                </span>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
-
-                                {(detailPolicy.domain?.length || detailPolicy.domain_keyword?.length || detailPolicy.domain_suffix?.length) ? (
-                                    <div className="space-y-3">
-                                        <h3 className="text-[13px] font-semibold text-[var(--app-text)] flex items-center gap-2">
-                                            <span className="w-1 h-4 bg-blue-500 rounded-full" />
-                                            域名规则
-                                        </h3>
-                                        <div className="space-y-2">
-                                            {detailPolicy.domain && detailPolicy.domain.length > 0 && (
-                                                <div className="bg-blue-50 rounded-[10px] p-3">
-                                                    <p className="text-[11px] text-blue-600 mb-2">域名 ({detailPolicy.domain.length})</p>
-                                                    <div className="flex flex-wrap gap-1">
-                                                        {detailPolicy.domain.map((d, idx) => (
-                                                            <span key={idx} className="text-[11px] px-2 py-0.5 bg-white rounded text-blue-700">{d}</span>
-                                                        ))}
-                                                    </div>
-                                                </div>
-                                            )}
-                                            {detailPolicy.domain_keyword && detailPolicy.domain_keyword.length > 0 && (
-                                                <div className="bg-purple-50 rounded-[10px] p-3">
-                                                    <p className="text-[11px] text-purple-600 mb-2">域名关键词 ({detailPolicy.domain_keyword.length})</p>
-                                                    <div className="flex flex-wrap gap-1">
-                                                        {detailPolicy.domain_keyword.map((d, idx) => (
-                                                            <span key={idx} className="text-[11px] px-2 py-0.5 bg-white rounded text-purple-700">{d}</span>
-                                                        ))}
-                                                    </div>
-                                                </div>
-                                            )}
-                                            {detailPolicy.domain_suffix && detailPolicy.domain_suffix.length > 0 && (
-                                                <div className="bg-indigo-50 rounded-[10px] p-3">
-                                                    <p className="text-[11px] text-indigo-600 mb-2">域名后缀 ({detailPolicy.domain_suffix.length})</p>
-                                                    <div className="flex flex-wrap gap-1">
-                                                        {detailPolicy.domain_suffix.map((d, idx) => (
-                                                            <span key={idx} className="text-[11px] px-2 py-0.5 bg-white rounded text-indigo-700">{d}</span>
-                                                        ))}
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                ) : null}
-
-                                {(detailPolicy.ip_cidr?.length || detailPolicy.source_ip_cidr?.length) ? (
-                                    <div className="space-y-3">
-                                        <h3 className="text-[13px] font-semibold text-[var(--app-text)] flex items-center gap-2">
-                                            <span className="w-1 h-4 bg-orange-500 rounded-full" />
-                                            IP 规则
-                                        </h3>
-                                        <div className="space-y-2">
-                                            {detailPolicy.ip_cidr && detailPolicy.ip_cidr.length > 0 && (
-                                                <div className="bg-orange-50 rounded-[10px] p-3">
-                                                    <p className="text-[11px] text-orange-600 mb-2">IP CIDR ({detailPolicy.ip_cidr.length})</p>
-                                                    <div className="flex flex-wrap gap-1">
-                                                        {detailPolicy.ip_cidr.map((ip, idx) => (
-                                                            <span key={idx} className="text-[11px] px-2 py-0.5 bg-white rounded text-orange-700 font-mono">{ip}</span>
-                                                        ))}
-                                                    </div>
-                                                </div>
-                                            )}
-                                            {detailPolicy.source_ip_cidr && detailPolicy.source_ip_cidr.length > 0 && (
-                                                <div className="bg-amber-50 rounded-[10px] p-3">
-                                                    <p className="text-[11px] text-amber-600 mb-2">源 IP CIDR ({detailPolicy.source_ip_cidr.length})</p>
-                                                    <div className="flex flex-wrap gap-1">
-                                                        {detailPolicy.source_ip_cidr.map((ip, idx) => (
-                                                            <span key={idx} className="text-[11px] px-2 py-0.5 bg-white rounded text-amber-700 font-mono">{ip}</span>
-                                                        ))}
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                ) : null}
-
-                                {detailPolicy.port && detailPolicy.port.length > 0 && (
-                                    <div className="space-y-3">
-                                        <h3 className="text-[13px] font-semibold text-[var(--app-text)] flex items-center gap-2">
-                                            <span className="w-1 h-4 bg-cyan-500 rounded-full" />
-                                            端口规则 ({detailPolicy.port.length})
-                                        </h3>
-                                        <div className="bg-cyan-50 rounded-[10px] p-3">
-                                            <div className="flex flex-wrap gap-1">
-                                                {detailPolicy.port.map((p, idx) => (
-                                                    <span key={idx} className="text-[11px] px-2 py-0.5 bg-white rounded text-cyan-700 font-mono">{p}</span>
+                                {(() => {
+                                    const arr = getPolicyRuleSet(detailPolicy);
+                                    if (arr.length === 0) return null;
+                                    return (
+                                        <div className="space-y-3">
+                                            <h3 className="text-[13px] font-semibold text-[var(--app-text)] flex items-center gap-2">
+                                                <span className="w-1 h-4 bg-emerald-500 rounded-full" />
+                                                规则集 ({arr.length})
+                                            </h3>
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {arr.map((rule: string, idx: number) => (
+                                                    <span key={idx} className={cn(
+                                                        "inline-flex items-center pl-2 pr-2 py-1 rounded-[6px] text-[11px] border-l-2 border font-mono",
+                                                        getRuleSetBadgeClass(rule)
+                                                    )}>
+                                                        {rule}
+                                                    </span>
                                                 ))}
                                             </div>
                                         </div>
-                                    </div>
-                                )}
+                                    );
+                                })()}
 
-                                {(detailPolicy.processName?.length || detailPolicy.package?.length) ? (
-                                    <div className="space-y-3">
-                                        <h3 className="text-[13px] font-semibold text-[var(--app-text)] flex items-center gap-2">
-                                            <span className="w-1 h-4 bg-green-500 rounded-full" />
-                                            进程与应用
-                                        </h3>
-                                        <div className="space-y-2">
-                                            {detailPolicy.processName && detailPolicy.processName.length > 0 && (
-                                                <div className="bg-green-50 rounded-[10px] p-3">
-                                                    <p className="text-[11px] text-green-600 mb-2">进程名 ({detailPolicy.processName.length})</p>
-                                                    <div className="flex flex-wrap gap-1">
-                                                        {detailPolicy.processName.map((p, idx) => (
-                                                            <span key={idx} className="text-[11px] px-2 py-0.5 bg-white rounded text-green-700">{p}</span>
-                                                        ))}
+                                {(() => {
+                                    const matchable = getPolicyMatchableFields(detailPolicy);
+                                    const domain = (matchable.domain ?? []) as string[];
+                                    const domainKeyword = (matchable.domain_keyword ?? []) as string[];
+                                    const domainSuffix = (matchable.domain_suffix ?? []) as string[];
+                                    const hasDomain = domain.length > 0 || domainKeyword.length > 0 || domainSuffix.length > 0;
+                                    if (!hasDomain) return null;
+                                    return (
+                                        <div className="space-y-3">
+                                            <h3 className="text-[13px] font-semibold text-[var(--app-text)] flex items-center gap-2">
+                                                <span className="w-1 h-4 bg-blue-500 rounded-full" />
+                                                域名规则
+                                            </h3>
+                                            <div className="space-y-2">
+                                                {domain.length > 0 && (
+                                                    <div className="bg-blue-50 rounded-[10px] p-3">
+                                                        <p className="text-[11px] text-blue-600 mb-2">域名 ({domain.length})</p>
+                                                        <div className="flex flex-wrap gap-1">
+                                                            {domain.map((d, idx) => (
+                                                                <span key={idx} className="text-[11px] px-2 py-0.5 bg-white rounded text-blue-700">{d}</span>
+                                                            ))}
+                                                        </div>
                                                     </div>
-                                                </div>
-                                            )}
-                                            {detailPolicy.package && detailPolicy.package.length > 0 && (
-                                                <div className="bg-teal-50 rounded-[10px] p-3">
-                                                    <p className="text-[11px] text-teal-600 mb-2">包名 Android ({detailPolicy.package.length})</p>
-                                                    <div className="flex flex-wrap gap-1">
-                                                        {detailPolicy.package.map((p, idx) => (
-                                                            <span key={idx} className="text-[11px] px-2 py-0.5 bg-white rounded text-teal-700 font-mono">{p}</span>
-                                                        ))}
+                                                )}
+                                                {domainKeyword.length > 0 && (
+                                                    <div className="bg-purple-50 rounded-[10px] p-3">
+                                                        <p className="text-[11px] text-purple-600 mb-2">域名关键词 ({domainKeyword.length})</p>
+                                                        <div className="flex flex-wrap gap-1">
+                                                            {domainKeyword.map((d, idx) => (
+                                                                <span key={idx} className="text-[11px] px-2 py-0.5 bg-white rounded text-purple-700">{d}</span>
+                                                            ))}
+                                                        </div>
                                                     </div>
-                                                </div>
-                                            )}
+                                                )}
+                                                {domainSuffix.length > 0 && (
+                                                    <div className="bg-indigo-50 rounded-[10px] p-3">
+                                                        <p className="text-[11px] text-indigo-600 mb-2">域名后缀 ({domainSuffix.length})</p>
+                                                        <div className="flex flex-wrap gap-1">
+                                                            {domainSuffix.map((d, idx) => (
+                                                                <span key={idx} className="text-[11px] px-2 py-0.5 bg-white rounded text-indigo-700">{d}</span>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
-                                    </div>
-                                ) : null}
+                                    );
+                                })()}
+
+                                {(() => {
+                                    const matchable = getPolicyMatchableFields(detailPolicy);
+                                    const ipCidr = (matchable.ip_cidr ?? []) as string[];
+                                    const sourceIpCidr = (matchable.source_ip_cidr ?? []) as string[];
+                                    const hasIp = ipCidr.length > 0 || sourceIpCidr.length > 0;
+                                    if (!hasIp) return null;
+                                    return (
+                                        <div className="space-y-3">
+                                            <h3 className="text-[13px] font-semibold text-[var(--app-text)] flex items-center gap-2">
+                                                <span className="w-1 h-4 bg-orange-500 rounded-full" />
+                                                IP 规则
+                                            </h3>
+                                            <div className="space-y-2">
+                                                {ipCidr.length > 0 && (
+                                                    <div className="bg-orange-50 rounded-[10px] p-3">
+                                                        <p className="text-[11px] text-orange-600 mb-2">IP CIDR ({ipCidr.length})</p>
+                                                        <div className="flex flex-wrap gap-1">
+                                                            {ipCidr.map((ip, idx) => (
+                                                                <span key={idx} className="text-[11px] px-2 py-0.5 bg-white rounded text-orange-700 font-mono">{ip}</span>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                {sourceIpCidr.length > 0 && (
+                                                    <div className="bg-amber-50 rounded-[10px] p-3">
+                                                        <p className="text-[11px] text-amber-600 mb-2">源 IP CIDR ({sourceIpCidr.length})</p>
+                                                        <div className="flex flex-wrap gap-1">
+                                                            {sourceIpCidr.map((ip, idx) => (
+                                                                <span key={idx} className="text-[11px] px-2 py-0.5 bg-white rounded text-amber-700 font-mono">{ip}</span>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
+
+                                {(() => {
+                                    const matchable = getPolicyMatchableFields(detailPolicy);
+                                    const port = (matchable.port ?? []) as (string | number)[];
+                                    if (port.length === 0) return null;
+                                    return (
+                                        <div className="space-y-3">
+                                            <h3 className="text-[13px] font-semibold text-[var(--app-text)] flex items-center gap-2">
+                                                <span className="w-1 h-4 bg-cyan-500 rounded-full" />
+                                                端口规则 ({port.length})
+                                            </h3>
+                                            <div className="bg-cyan-50 rounded-[10px] p-3">
+                                                <div className="flex flex-wrap gap-1">
+                                                    {port.map((p, idx) => (
+                                                        <span key={idx} className="text-[11px] px-2 py-0.5 bg-white rounded text-cyan-700 font-mono">{String(p)}</span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
+
+                                {(() => {
+                                    const matchable = getPolicyMatchableFields(detailPolicy);
+                                    const processName = (matchable.process_name ?? []) as string[];
+                                    const packageName = (matchable.package_name ?? []) as string[];
+                                    const hasProcess = processName.length > 0 || packageName.length > 0;
+                                    if (!hasProcess) return null;
+                                    return (
+                                        <div className="space-y-3">
+                                            <h3 className="text-[13px] font-semibold text-[var(--app-text)] flex items-center gap-2">
+                                                <span className="w-1 h-4 bg-green-500 rounded-full" />
+                                                进程与应用
+                                            </h3>
+                                            <div className="space-y-2">
+                                                {processName.length > 0 && (
+                                                    <div className="bg-green-50 rounded-[10px] p-3">
+                                                        <p className="text-[11px] text-green-600 mb-2">进程名 ({processName.length})</p>
+                                                        <div className="flex flex-wrap gap-1">
+                                                            {processName.map((p, idx) => (
+                                                                <span key={idx} className="text-[11px] px-2 py-0.5 bg-white rounded text-green-700">{p}</span>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                {packageName.length > 0 && (
+                                                    <div className="bg-teal-50 rounded-[10px] p-3">
+                                                        <p className="text-[11px] text-teal-600 mb-2">包名 Android ({packageName.length})</p>
+                                                        <div className="flex flex-wrap gap-1">
+                                                            {packageName.map((p, idx) => (
+                                                                <span key={idx} className="text-[11px] px-2 py-0.5 bg-white rounded text-teal-700 font-mono">{p}</span>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
                             </>
                         )}
 
@@ -276,6 +313,19 @@ export function PolicyDetailModal({
                                 </div>
                             </div>
                         </div>
+
+                        {(detailPolicy.type !== 'raw' && (detailPolicy as any).logical_rule?.rules?.length > 0) && (
+                            <div className="space-y-3">
+                                <h3 className="text-[13px] font-semibold text-[var(--app-text)] flex items-center gap-2">
+                                    <span className="w-1 h-4 bg-indigo-500 rounded-full" />
+                                    规则嵌套视图
+                                </h3>
+                                <RuleTreeView
+                                    node={singboxLogicalToRuleTreeNodeRoot((detailPolicy as any).logical_rule)}
+                                    formConfig={RULE_FIELD_CONFIG}
+                                />
+                            </div>
+                        )}
                     </div>
 
                     <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/30">

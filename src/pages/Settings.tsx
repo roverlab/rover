@@ -6,12 +6,13 @@ import { Input } from '../components/ui/Field';
 import { Card, ListRow, SectionHeader } from '../components/ui/Surface';
 import { Modal } from '../components/ui/Modal';
 import { useApi } from '../contexts/ApiContext';
-import { Settings as SettingsIcon, Sliders, Check, AlertCircle } from 'lucide-react';
+import { Settings as SettingsIcon, Sliders, Check, Globe, Download, Upload, Info, ExternalLink } from 'lucide-react';
+import { DnsServersTab } from './Settings/DnsServersTab';
 import { useOverrideRules } from '../contexts/OverrideRulesContext';
 
 interface SettingsProps {
   isActive?: boolean;
-  initialTab?: 'basic' | 'advanced' | null;
+  initialTab?: 'basic' | 'advanced' | 'dns' | 'about' | null;
   onTabConsumed?: () => void;
 }
 
@@ -43,13 +44,17 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
   const [singboxVersion, setSingboxVersion] = useState('sing-box 1.8.0');
   const [buildTime, setBuildTime] = useState('');
 
-  // DNS 配置（JSON 格式，留空则使用订阅中的 DNS）
-  const [dnsConfig, setDnsConfig] = useState('');
-  const [dnsConfigSaved, setDnsConfigSaved] = useState(false);
-  const [dnsErrorModalOpen, setDnsErrorModalOpen] = useState(false);
-  const [dnsErrorModalMessage, setDnsErrorModalMessage] = useState('');
-  // 编辑框显示状态：根据 dnsConfig 是否有内容判断，打开后才显示编辑框
-  const [showDnsEditor, setShowDnsEditor] = useState(false);
+  // Hosts 配置（数组存储，每行一个元素）
+  const [hostsText, setHostsText] = useState('');
+  const [hostsSaved, setHostsSaved] = useState(false);
+
+  // 配置导出/导入
+  const [configExporting, setConfigExporting] = useState(false);
+  const [configImporting, setConfigImporting] = useState(false);
+  const [configImportError, setConfigImportError] = useState<string | null>(null);
+  const [configExportError, setConfigExportError] = useState<string | null>(null);
+  const [configImportSuccessModal, setConfigImportSuccessModal] = useState(false);
+  const [configImportStep, setConfigImportStep] = useState<string | null>(null);
 
   const loadSettings = async () => {
     try {
@@ -63,7 +68,6 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
       const overrideRulesVal = allSettings['override-rules'] || 'false';
       const subscriptionUserAgentVal = allSettings['subscription-user-agent'] || '';
       const autoStartProxyVal = allSettings['auto-start-proxy'] ?? 'true';
-      const dnsConfigVal = allSettings['dns-config'] || '';
 
       setPort(parseInt(portVal, 10) || 7890);
       setAllowLan(lanVal === 'true');
@@ -73,18 +77,15 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
       setOverrideRules(overrideRulesVal === 'true');
       setSubscriptionUserAgent(subscriptionUserAgentVal);
       setAutoStartProxy(autoStartProxyVal === 'true');
-      // 初始加载时美化 JSON
-      if (dnsConfigVal.trim()) {
-        try {
-          const parsed = JSON.parse(dnsConfigVal);
-          setDnsConfig(JSON.stringify(parsed, null, 2));
-        } catch {
-          setDnsConfig(dnsConfigVal);
-        }
-      } else {
-        setDnsConfig(dnsConfigVal);
+
+      // Hosts 配置（数组存储）
+      const hostsVal = allSettings['hosts-override'] || '[]';
+      try {
+        const arr = JSON.parse(hostsVal);
+        setHostsText(Array.isArray(arr) ? arr.filter((s: unknown) => typeof s === 'string').join('\n') : '');
+      } catch {
+        setHostsText('');
       }
-      setShowDnsEditor(dnsConfigVal.trim().length > 0);
     } catch (e) {
       console.error(e);
     }
@@ -139,6 +140,56 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
     return () => clearInterval(timer);
   }, [isActive]);
 
+  // 导入进度提示
+  useEffect(() => {
+    const unsub = window.ipcRenderer.onConfigImportStep((step) => setConfigImportStep(step));
+    return unsub;
+  }, []);
+
+  const handleExportConfig = async () => {
+    setConfigExporting(true);
+    setConfigExportError(null);
+    try {
+      const result = await window.ipcRenderer.config.export();
+      if (!result.ok) {
+        // 用户取消，不显示错误
+      }
+    } catch (e: any) {
+      setConfigExportError(e?.message || '导出失败');
+    } finally {
+      setConfigExporting(false);
+    }
+  };
+
+  const handleImportConfig = async () => {
+    setConfigImporting(true);
+    setConfigImportError(null);
+    setConfigImportStep(null);
+    try {
+      const result = await window.ipcRenderer.config.import();
+      if (result.ok) {
+        setConfigImportSuccessModal(true);
+      }
+    } catch (e: any) {
+      setConfigImportError(e?.message || '导入失败');
+    } finally {
+      setConfigImporting(false);
+      setConfigImportStep(null);
+    }
+  };
+
+  const CONFIG_IMPORT_STEP_LABELS: Record<string, string> = {
+    restoring: '正在恢复配置...',
+    downloading: '正在下载订阅配置...',
+    generating: '正在生成主配置...',
+    done: '处理完成',
+  };
+
+  const handleImportSuccessConfirm = () => {
+    setConfigImportSuccessModal(false);
+    window.location.reload();
+  };
+
   const handleUpdateConfig = async (key: string, value: any) => {
     try {
       // Save to database
@@ -177,65 +228,23 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
     await window.ipcRenderer.core.generateConfig();
   };
 
-  // 验证 DNS JSON 配置是否合法
-  const validateDnsConfig = (value: string): string => {
-    if (!value.trim()) {
-      return ''; // 空值合法
-    }
-    try {
-      const parsed = JSON.parse(value);
-      if (typeof parsed !== 'object' || parsed === null) {
-        return 'DNS 配置必须是一个 JSON 对象';
-      }
-      // 基本验证：检查是否有 servers 字段（sing-box DNS 配置必须）
-      if (!Array.isArray(parsed.servers)) {
-        return 'DNS 配置必须包含 servers 数组';
-      }
-      return '';
-    } catch (e) {
-      return 'JSON 格式不正确';
-    }
-  };
-
-  // 保存 DNS 配置
-  const handleSaveDnsConfig = async () => {
-    const error = validateDnsConfig(dnsConfig);
-    if (error) {
-      setDnsErrorModalMessage(error);
-      setDnsErrorModalOpen(true);
-      setDnsConfigSaved(false);
-      return false;
-    }
-    const trimmed = dnsConfig.trim();
-    await window.ipcRenderer.db.setSetting('dns-config', trimmed);
-    if (trimmed.length === 0) {
-      setShowDnsEditor(false);
-    }
+  // 保存 Hosts 配置（数组存储，原样保存不修改内容，解析时再处理）
+  const handleSaveHosts = async () => {
+    const lines = hostsText.split(/\r?\n/);
+    await window.ipcRenderer.db.setSetting('hosts-override', JSON.stringify(lines));
+    setHostsSaved(true);
+    setTimeout(() => setHostsSaved(false), 3000);
     await regenerateConfigIfNeeded();
-    setDnsConfigSaved(true);
-    setTimeout(() => setDnsConfigSaved(false), 3000);
-    return true;
-  };
-
-  // DNS 开关：打开显示编辑框，关闭时清空并保存
-  const handleDnsSwitch = async (checked: boolean) => {
-    setShowDnsEditor(checked);
-    if (!checked) {
-      setDnsConfig('');
-      setDnsConfigSaved(false);
-      await window.ipcRenderer.db.setSetting('dns-config', '');
-      await regenerateConfigIfNeeded();
-    }
   };
 
   // Tab 切换
-  type SettingsTab = 'basic' | 'advanced';
+  type SettingsTab = 'basic' | 'advanced' | 'dns' | 'about';
   const [activeTab, setActiveTab] = useState<SettingsTab>('basic');
 
-  // 当从引导页跳转过来时，自动切换到高级设置
+  // 当从引导页跳转过来时，自动切换到对应 Tab
   useEffect(() => {
-    if (initialTab === 'advanced') {
-      setActiveTab('advanced');
+    if (initialTab === 'advanced' || initialTab === 'dns' || initialTab === 'about') {
+      setActiveTab(initialTab);
       onTabConsumed?.();
     }
   }, [initialTab]);
@@ -257,6 +266,8 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
           {[
             { id: 'basic' as SettingsTab, label: '基础设置', icon: SettingsIcon },
             { id: 'advanced' as SettingsTab, label: '高级设置', icon: Sliders },
+            { id: 'dns' as SettingsTab, label: 'DNS 服务器', icon: Globe },
+            { id: 'about' as SettingsTab, label: '关于', icon: Info },
           ].map(({ id, label, icon: Icon }) => (
             <button
               key={id}
@@ -401,14 +412,6 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
 
                 <ListRow>
                   <div>
-                    <div className="list-row-title">主目录</div>
-                    <div className="list-row-description">UserData folder</div>
-                  </div>
-                  <Button variant="secondary" size="sm" onClick={() => window.ipcRenderer.core.openUserDataPath()}>打开</Button>
-                </ListRow>
-
-                <ListRow>
-                  <div>
                     <div className="list-row-title">主题</div>
                     <div className="list-row-description">Light / Dark mode</div>
                   </div>
@@ -435,54 +438,11 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
                     <option value="zh">中文</option>
                   </Select>
                 </ListRow>
-
-                <ListRow>
-                  <div>
-                    <div className="list-row-title">应用名称</div>
-                    <div className="list-row-description font-medium">Rover</div>
-                  </div>
-                </ListRow>
-
-                <ListRow>
-                  <div>
-                    <div className="list-row-title">应用版本</div>
-                    <div className="list-row-description">
-                      <div className="flex flex-col gap-0.5">
-                        <div className="font-medium">{appVersion}</div>
-                        {buildTime && <div className="text-xs text-[var(--app-text-quaternary)]">{buildTime}</div>}
-                      </div>
-                    </div>
-                  </div>
-                </ListRow>
-
-                <ListRow>
-                  <div>
-                    <div className="list-row-title">内核版本</div>
-                    <div className="list-row-description">{singboxVersion}</div>
-                  </div>
-                </ListRow>
               </div>
             </Card>
           </div>
         </div>
         )}
-
-        {/* DNS 配置错误弹窗 */}
-        <Modal
-          open={dnsErrorModalOpen}
-          onClose={() => setDnsErrorModalOpen(false)}
-          title="DNS 配置错误"
-          maxWidth="max-w-md"
-          contentClassName="p-5"
-          footer={
-            <Button onClick={() => setDnsErrorModalOpen(false)}>确定</Button>
-          }
-        >
-          <div className="flex items-start gap-3">
-            <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
-            <p className="text-[14px] text-[var(--app-text-secondary)]">{dnsErrorModalMessage}</p>
-          </div>
-        </Modal>
 
         {/* 高级设置 Tab */}
         {activeTab === 'advanced' && (
@@ -515,82 +475,153 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
                   />
                 </ListRow>
 
-                <ListRow>
+                <ListRow className="flex-col items-stretch gap-2 py-3">
                   <div>
-                    <div className="list-row-title">自定义 DNS 配置</div>
-                    <div className="list-row-description">留空则使用本机默认DNS；填写 sing-box JSON 格式则覆盖</div>
+                    <div className="list-row-title">Hosts 配置</div>
+                    <div className="list-row-description">类似 Windows hosts，每行：IP + 空格/制表符 + 域名，支持 IPv4/IPv6（如 ::1）及泛解析（*.example.com）</div>
                   </div>
-                  <Switch
-                    checked={showDnsEditor}
-                    onCheckedChange={handleDnsSwitch}
-                  />
+                  <div className="w-full">
+                    <textarea
+                      value={hostsText}
+                      onChange={(e) => setHostsText(e.target.value)}
+                      placeholder={`127.0.0.1   localhost
+::1         localhost
+127.0.0.1   *.example.com`}
+                      rows={12}
+                      className="w-full px-3 py-2 text-[13px] font-mono border rounded-[10px] resize-y focus:outline-none focus:ring-2 focus:ring-[var(--app-accent)] focus:border-transparent bg-white text-[var(--app-text)] placeholder:text-[var(--app-text-quaternary)] border-[rgba(39,44,54,0.12)]"
+                    />
+                    <div className="flex items-center gap-2 mt-2 justify-end">
+                      {hostsSaved && (
+                        <span className="inline-flex items-center gap-1 text-[11px] text-green-600">
+                          <Check className="w-3 h-3" />
+                          已保存
+                        </span>
+                      )}
+                      <Button variant="secondary" size="sm" onClick={handleSaveHosts}>
+                        保存
+                      </Button>
+                    </div>
+                  </div>
                 </ListRow>
 
-                {showDnsEditor && (
-                <ListRow className="flex-col items-stretch gap-2 py-3">
-                  <div className="w-full">
-                      <textarea
-                          value={dnsConfig}
-                          onChange={(e) => {
-                            setDnsConfig(e.target.value);
-                            setDnsConfigSaved(false);
-                          }}
-                          placeholder={`示例（sing-box 格式）：
-{
-  "servers": [
-    { "tag": "local", "type": "udp", "server": "223.5.5.5" },
-    { "tag": "remote", "type": "tls", "server": "8.8.8.8", "detour": "proxy" }
-  ],
-  "rules": [
-    { "rule_set": "geosite:geolocation-cn", "server": "local" },
-    { "query_type": ["A", "AAAA"], "server": "remote" }
-  ],
-  "independent_cache": true
-}`}
-                          className="w-full h-64 px-3 py-2 text-[13px] text-left border rounded-[10px] resize-none focus:outline-none focus:ring-2 focus:ring-[var(--app-accent)] focus:border-transparent bg-white text-[var(--app-text)] placeholder:text-[var(--app-text-quaternary)] border-[rgba(39,44,54,0.12)] font-mono"
-                        />
-                        <div className="flex items-center justify-between mt-2">
-                          {dnsConfigSaved && (
-                            <span className="inline-flex items-center gap-1 text-[11px] text-green-600">
-                              <Check className="w-3 h-3" />
-                              已保存
-                            </span>
-                          )}
-                          <div className="ml-auto flex gap-2">
-                            <Button
-                              variant="secondary"
-                              size="sm"
-                              onClick={() => {
-                                if (dnsConfig.trim()) {
-                                  try {
-                                    const parsed = JSON.parse(dnsConfig);
-                                    setDnsConfig(JSON.stringify(parsed, null, 2));
-                                  } catch {
-                                    setDnsErrorModalMessage('JSON 格式不正确，无法美化');
-                                    setDnsErrorModalOpen(true);
-                                  }
-                                }
-                              }}
-                            >
-                              格式化
-                            </Button>
-                            <Button
-                              variant="secondary"
-                              size="sm"
-                              onClick={handleSaveDnsConfig}
-                            >
-                              保存
-                            </Button>
-                          </div>
-                        </div>
-                  </div>
-                </ListRow>
-                )}
               </div>
             </Card>
         </div>
         )}
+
+        {/* DNS 服务器 Tab */}
+        {activeTab === 'dns' && (
+          <DnsServersTab isActive={isActive} onRegenerateConfig={regenerateConfigIfNeeded} />
+        )}
+
+        {/* 关于 Tab */}
+        {activeTab === 'about' && (
+          <div className="max-w-5xl">
+            <Card>
+              <SectionHeader>
+                <div>
+                  <h2 className="text-[12px] font-semibold uppercase tracking-[0.18em] text-[var(--app-text-quaternary)]">关于</h2>
+                  <p className="text-[12px] text-[var(--app-text-quaternary)] mt-1">应用版本、主目录与配置备份。</p>
+                </div>
+              </SectionHeader>
+              <div className="panel-section">
+                <ListRow>
+                  <div>
+                    <div className="list-row-title">应用名称</div>
+                    <div className="list-row-description font-medium">Rover</div>
+                  </div>
+                </ListRow>
+                <ListRow>
+                  <div>
+                    <div className="list-row-title">应用版本</div>
+                    <div className="list-row-description">
+                      <div className="flex flex-col gap-0.5">
+                        <div className="font-medium">{appVersion}</div>
+                        {buildTime && <div className="text-xs text-[var(--app-text-quaternary)]">{buildTime}</div>}
+                      </div>
+                    </div>
+                  </div>
+                </ListRow>
+                <ListRow>
+                  <div>
+                    <div className="list-row-title">内核版本</div>
+                    <div className="list-row-description">{singboxVersion}</div>
+                  </div>
+                </ListRow>
+                <ListRow>
+                  <div>
+                    <div className="list-row-title">项目链接</div>
+                    <div className="list-row-description">GitHub 开源仓库</div>
+                  </div>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => window.ipcRenderer.core.openExternalUrl('https://github.com/roverlab/rover')}
+                  >
+                    <ExternalLink className="w-3.5 h-3.5 mr-1" />
+                    打开
+                  </Button>
+                </ListRow>
+                <ListRow>
+                  <div>
+                    <div className="list-row-title">主目录</div>
+                    <div className="list-row-description">UserData folder</div>
+                  </div>
+                  <Button variant="secondary" size="sm" onClick={() => window.ipcRenderer.core.openUserDataPath()}>打开</Button>
+                </ListRow>
+                <ListRow>
+                  <div>
+                    <div className="list-row-title">导出/导入配置</div>
+                    <div className="list-row-description">备份或恢复 database.json（ZIP 格式，含格式版本）</div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={handleExportConfig}
+                      disabled={configExporting}
+                    >
+                      <Download className="w-3.5 h-3.5 mr-1" />
+                      导出
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={handleImportConfig}
+                      disabled={configImporting}
+                    >
+                      <Upload className="w-3.5 h-3.5 mr-1" />
+                      导入
+                    </Button>
+                    {configImporting && configImportStep && configImportStep !== 'done' && (
+                      <span className="text-[12px] text-[var(--app-text-secondary)]">
+                        {CONFIG_IMPORT_STEP_LABELS[configImportStep] || configImportStep}
+                      </span>
+                    )}
+                    {(configImportError || configExportError) && (
+                      <span className="text-[11px] text-red-600">{configImportError || configExportError}</span>
+                    )}
+                  </div>
+                </ListRow>
+              </div>
+            </Card>
+          </div>
+        )}
       </div>
+
+      {/* 导入成功引导弹窗 */}
+      <Modal
+        open={configImportSuccessModal}
+        onClose={handleImportSuccessConfirm}
+        title="配置已导入"
+        maxWidth="max-w-md"
+        contentClassName="p-5"
+        footer={<Button onClick={handleImportSuccessConfirm}>确定</Button>}
+      >
+        <p className="text-[13px] text-[var(--app-text-secondary)]">
+          配置已导入成功。点击确定刷新页面以应用新配置，页面将返回首页。
+        </p>
+      </Modal>
     </div>
   );
 }

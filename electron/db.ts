@@ -1,8 +1,33 @@
 import fs from 'node:fs';
-import path from 'node:path';
-import { getDbPath, getDataDir, getProfilesDir, toDataRelativePath } from './paths';
-import type { RuleProvider } from '../src/types/rule-providers';
+import { getDbPath, getDataDir, toDataRelativePath } from './paths';
+import type { RuleProvider, LocalRuleSetData } from '../src/types/rule-providers';
 import type { Policy } from '../src/types/policy';
+import type { DnsPolicy } from '../src/types/dns-policy';
+import { getPolicyRuleSet } from '../src/types/policy';
+
+/** 订阅用户信息（从 Subscription-Userinfo 响应头解析） */
+export interface SubscriptionUserinfo {
+    /** 上传流量（字节） */
+    upload: number;
+    /** 下载流量（字节） */
+    download: number;
+    /** 总流量（字节） */
+    total: number;
+    /** 过期时间（Unix 时间戳） */
+    expire: number;
+}
+
+/** 嵌入在 Profile 内的策略偏好（不含 profile_id） */
+export interface ProfilePolicyItem {
+    policy_id: string;
+    preferred_outbounds: string[];
+}
+
+/** 嵌入在 Profile 内的 DNS 策略偏好（不含 profile_id） */
+export interface ProfileDnsPolicyItem {
+    dns_policy_id: string;
+    preferred_server: string | null;
+}
 
 export interface Profile {
     id: string;
@@ -16,12 +41,47 @@ export interface Profile {
     updateInterval?: number;
     /** 记录此profile使用的rule provider IDs */
     usedRuleProviderIds?: string[];
+    /** 订阅用户信息（流量、过期时间，从响应头 Subscription-Userinfo 解析） */
+    subscriptionUserinfo?: SubscriptionUserinfo;
+    /** 路由策略偏好（直接嵌入 profile） */
+    policies?: ProfilePolicyItem[];
+    /** DNS 策略偏好（直接嵌入 profile） */
+    dnsPolicies?: ProfileDnsPolicyItem[];
 }
 
+/** @deprecated 使用 ProfilePolicyItem，保留用于兼容返回格式 */
 export interface ProfilePolicy {
     profile_id: string;
     policy_id: string;
     preferred_outbounds: string[];
+}
+
+/** @deprecated 使用 ProfileDnsPolicyItem，保留用于兼容返回格式 */
+export interface ProfileDnsPolicy {
+    profile_id: string;
+    dns_policy_id: string;
+    preferred_server: string | null;
+}
+
+/** DNS 服务器表（单独存储，不存 dns-config 原字段） */
+export interface DnsServer {
+    id: string;
+    tag: string;
+    type: string;
+    order: number;
+    /** 是否启用 */
+    enabled: boolean;
+    /** 是否为默认DNS服务器 */
+    is_default: boolean;
+    server?: string;
+    server_port?: number;
+    path?: string;
+    detour?: string;
+    prefer_go?: boolean;
+    inet4_range?: string;
+    inet6_range?: string;
+    predefined?: Record<string, string | string[]>;
+    [key: string]: unknown;
 }
 
 interface DbData {
@@ -29,9 +89,8 @@ interface DbData {
     settings: Record<string, string>;
     ruleProviders: RuleProvider[];
     policies: Policy[];
-    profilePolicies: ProfilePolicy[];
-    nextId: number;
-    nextProviderId: number;
+    dnsServers: DnsServer[];
+    dnsPolicies: DnsPolicy[];
 }
 
 const defaultData: DbData = {
@@ -39,9 +98,8 @@ const defaultData: DbData = {
     settings: {},
     ruleProviders: [],
     policies: [],
-    profilePolicies: [],
-    nextId: 1,
-    nextProviderId: 1,
+    dnsServers: [],
+    dnsPolicies: [],
 };
 
 function generateShortId(existingIds: Set<string>): string {
@@ -94,7 +152,8 @@ function loadDb(): DbData {
             ...p,
             id: typeof p.id === 'number' ? String(p.id) : String(p.id ?? ''),
         }));
-        return {
+
+        const result: DbData = {
             profiles,
             settings: data.settings ?? {},
             ruleProviders: (data.ruleProviders ?? []).map((provider: RuleProvider) => ({
@@ -102,104 +161,13 @@ function loadDb(): DbData {
                 id: String(provider.id),
             })),
             policies: data.policies ?? [],
-            profilePolicies: data.profilePolicies ?? [],
-            nextId: data.nextId ?? 1,
-            nextProviderId: data.nextProviderId ?? 1,
+            dnsServers: data.dnsServers ?? [],
+            dnsPolicies: data.dnsPolicies ?? [],
         };
+        return result;
     } catch {
         return { ...defaultData };
     }
-}
-
-/**
- * 将旧的数字型 profile id 迁移为规则集同款的短 id（字符串）
- */
-export function migrateProfileIdsToShortId(): void {
-    const data = loadDb();
-    const profilesDir = getProfilesDir();
-    const existingIds = new Set<string>([
-        ...data.profiles.map((p) => String(p.id)),
-        ...data.ruleProviders.map((p) => p.id),
-    ]);
-    let migrated = false;
-    for (const profile of data.profiles) {
-        const idStr = String(profile.id);
-        const isNumericId = /^\d+$/.test(idStr);
-        if (!isNumericId) continue;
-        const newId = generateShortId(existingIds);
-        existingIds.add(newId);
-        const oldPath = path.join(profilesDir, `profile_${profile.id}`);
-        const newPath = path.join(profilesDir, `profile_${newId}`);
-        if (fs.existsSync(oldPath)) {
-            fs.renameSync(oldPath, newPath);
-        }
-        profile.id = newId;
-        if (profile.path) {
-            profile.path = `profiles/profile_${newId}`;
-        }
-        migrated = true;
-    }
-    if (migrated) {
-        saveDb(data);
-    }
-}
-
-/** 将数据库中的绝对路径迁移为相对路径 */
-export function migratePathsToRelative(): void {
-    const data = loadDb();
-    let changed = false;
-    for (const p of data.profiles) {
-        if (p.path && path.isAbsolute(p.path)) {
-            const rel = toDataRelativePath(p.path);
-            if (rel !== p.path) {
-                p.path = rel;
-                changed = true;
-            }
-        }
-    }
-    for (const p of data.ruleProviders) {
-        if (p.path && path.isAbsolute(p.path)) {
-            const rel = toDataRelativePath(p.path);
-            if (rel !== p.path) {
-                p.path = rel;
-                changed = true;
-            }
-        }
-    }
-    if (changed) saveDb(data);
-}
-
-/** 将规则集文件名从 provider_ 前缀迁移为 ruleset_ 前缀 */
-export function migrateRuleProviderFilePrefix(): void {
-    const data = loadDb();
-    const dataDir = getDataDir();
-    let changed = false;
-
-    for (const p of data.ruleProviders) {
-        if (!p.path || !p.path.includes('provider_')) continue;
-        const newPath = p.path.replace(/rulesets\/provider_/g, 'rulesets/ruleset_');
-        if (newPath === p.path) continue;
-
-        const oldFull = path.join(dataDir, p.path);
-        const newFull = path.join(dataDir, newPath);
-        if (fs.existsSync(oldFull)) {
-            try {
-                fs.renameSync(oldFull, newFull);
-            } catch (_) { /* 文件可能被占用，跳过 */ }
-        }
-        for (const ext of ['.list', '.srs']) {
-            const oldExt = oldFull.replace(/\.(json|list|srs)$/i, ext);
-            const newExt = newFull.replace(/\.(json|list|srs)$/i, ext);
-            if (oldExt !== oldFull && fs.existsSync(oldExt)) {
-                try {
-                    fs.renameSync(oldExt, newExt);
-                } catch (_) { /* ignore */ }
-            }
-        }
-        p.path = newPath;
-        changed = true;
-    }
-    if (changed) saveDb(data);
 }
 
 function saveDb(data: DbData) {
@@ -267,6 +235,126 @@ export function setSetting(key: string, value: string) {
     });
 }
 
+// ===== DNS Servers 表 =====
+
+export function getDnsServers(): DnsServer[] {
+    return withDb((data) => [...(data.dnsServers ?? [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)));
+}
+
+export function addDnsServer(server: Omit<DnsServer, 'id' | 'order'> & { order?: number }): string {
+    return withDb((data) => {
+        const dnsServers = data.dnsServers ?? [];
+        const maxOrder = dnsServers.reduce((m, s) => Math.max(m, s.order ?? 0), -1);
+        const tag = (typeof server.tag === 'string' ? server.tag : '').trim();
+        if (!tag) throw new Error('DNS 服务器名称不能为空');
+        const tags = new Set(dnsServers.map((s) => (s.tag || '').trim().toLowerCase()));
+        if (tags.has(tag.toLowerCase())) throw new Error(`DNS 服务器名称 "${tag}" 已存在`);
+        const id = tag;
+        const newServer = {
+            ...server,
+            id,
+            tag,
+            order: server.order ?? maxOrder + 1,
+            enabled: server.enabled ?? true,
+            is_default: server.is_default ?? false,
+        } as DnsServer;
+        dnsServers.push(newServer);
+        data.dnsServers = dnsServers;
+        return id;
+    });
+}
+
+export function updateDnsServer(id: string, updates: Partial<DnsServer>): void {
+    withDb((data) => {
+        const arr = data.dnsServers ?? [];
+        const idx = arr.findIndex((s) => s.id === id);
+        if (idx < 0) return;
+
+        const server = arr[idx];
+        const newTag = typeof updates.tag === 'string' ? updates.tag.trim() : undefined;
+        const oldTag = (server.tag || '').trim();
+        const oldId = server.id;
+
+        // tag 变更时，id 同步更新为 newTag，并迁移所有引用
+        if (newTag && newTag !== oldTag) {
+            const newId = newTag;
+            // 检查新 tag 是否已被其他服务器占用
+            const conflict = arr.some((s, i) => i !== idx && ((s.tag || '').trim() === newTag || s.id === newId));
+            if (conflict) {
+                throw new Error(`DNS 服务器名称 "${newTag}" 已存在`);
+            }
+
+            // 更新服务器记录（id 与 tag 同步）
+            arr[idx] = { ...server, ...updates, id: newId, tag: newTag };
+
+            // 迁移 profile.dnsPolicies[].preferred_server
+            for (const profile of data.profiles) {
+                const items = profile.dnsPolicies ?? [];
+                for (const p of items) {
+                    if (p.preferred_server === oldId) p.preferred_server = newId;
+                }
+            }
+
+            // 迁移 dnsPolicies.server（统一使用 id）
+            const dnsPolicies = data.dnsPolicies ?? [];
+            for (const p of dnsPolicies) {
+                if ((p.server || '').trim() === oldId) p.server = newId;
+            }
+
+            // 迁移 policies（路由规则）中 raw_data.server（统一使用 id）
+            const policies = data.policies ?? [];
+            for (const p of policies) {
+                const raw = (p as { raw_data?: { server?: string } }).raw_data;
+                if (raw?.server && typeof raw.server === 'string' && raw.server.trim() === oldId) {
+                    raw.server = newId;
+                }
+            }
+        } else {
+            // tag 未变更，仅应用其他字段（不允许通过 updates 修改 id）
+            const { id: _unusedId, ...rest } = updates;
+            arr[idx] = { ...server, ...rest };
+        }
+    });
+}
+
+export function deleteDnsServer(id: string): void {
+    withDb((data) => {
+        data.dnsServers = (data.dnsServers ?? []).filter((s) => s.id !== id);
+    });
+}
+
+/**
+ * 按 tag 作为 id 插入或更新 DNS 服务器（重复 tag 则覆盖）
+ */
+export function upsertDnsServerByTag(serverFromTemplate: Record<string, unknown>, order: number): string {
+    const tag = serverFromTemplate?.tag;
+    if (typeof tag !== 'string' || !tag.trim()) {
+        throw new Error('DNS server must have a valid tag');
+    }
+    const id = tag;
+    return withDb((data) => {
+        let dnsServers = (data.dnsServers ?? []).filter((s) => s.tag !== tag && s.id !== id);
+        const base: Partial<DnsServer> = {
+            id,
+            tag,
+            type: (serverFromTemplate.type as string) || 'udp',
+            order,
+            enabled: true,
+            is_default: false,
+        };
+        const extra: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(serverFromTemplate)) {
+            if (!['tag', 'type', 'id'].includes(k) && v !== undefined) {
+                extra[k] = v;
+            }
+        }
+        const newServer = { ...base, ...extra } as DnsServer;
+        dnsServers.push(newServer);
+        data.dnsServers = dnsServers;
+        return id;
+    });
+}
+
 export function updateProfileDetails(id: string, name: string, url: string, updateInterval?: number) {
     withDb((data) => {
         const p = data.profiles.find((x) => x.id === id);
@@ -289,8 +377,8 @@ export function updateProfileRuleProviderReferences(profileId: string): void {
         if (!profile) return;
         
         // 获取此profile关联的所有策略
-        const profilePolicies = data.profilePolicies.filter((pp: ProfilePolicy) => pp.profile_id === profileId);
-        const policyIds = new Set(profilePolicies.map((pp: ProfilePolicy) => pp.policy_id));
+        const policyItems = profile.policies ?? [];
+        const policyIds = new Set(policyItems.map((pp) => pp.policy_id));
         
         // 收集这些策略使用的所有rule provider IDs
         const ruleProviderIds = new Set<string>();
@@ -313,8 +401,8 @@ export function updateAllProfileRuleProviderReferences(): void {
     withDb((data) => {
         for (const profile of data.profiles) {
             // 获取此profile关联的所有策略
-            const profilePolicies = data.profilePolicies.filter((pp: ProfilePolicy) => pp.profile_id === profile.id);
-            const policyIds = new Set(profilePolicies.map((pp: ProfilePolicy) => pp.policy_id));
+            const policyItems = profile.policies ?? [];
+            const policyIds = new Set(policyItems.map((pp) => pp.policy_id));
             
             // 收集这些策略使用的所有rule provider IDs
             const ruleProviderIds = new Set<string>();
@@ -337,6 +425,18 @@ export function updateProfileContent(id: string, filePath: string, lastUpdate?: 
         if (p) {
             p.path = toDataRelativePath(filePath);
             p.last_update = lastUpdate ?? new Date().toISOString();
+        }
+    });
+}
+
+/**
+ * 更新订阅用户信息（流量、过期时间，从 Subscription-Userinfo 响应头解析）
+ */
+export function updateProfileSubscriptionInfo(id: string, userinfo: SubscriptionUserinfo) {
+    withDb((data) => {
+        const p = data.profiles.find((x) => x.id === id);
+        if (p) {
+            p.subscriptionUserinfo = userinfo;
         }
     });
 }
@@ -430,26 +530,17 @@ export function deleteRuleProvider(id: string) {
  * 获取策略引用的规则集ID
  */
 export function getPolicyReferencedRuleProviderRefs(policy: Policy): string[] {
-    const rawRuleSets = policy.ruleSetBuildIn ?? [];
-    const aclRuleSets = policy.ruleSetAcl ?? [];
-    
+    const ruleSets = getPolicyRuleSet(policy);
     const refs: string[] = [];
-    
-    // 从ruleSetBuildIn中提取acl:前缀的规则集ID
-    for (const item of rawRuleSets) {
+    for (const item of ruleSets) {
         if (typeof item === 'string') {
             if (item.startsWith('acl:')) {
                 refs.push(item.slice(4));
             } else if (!item.startsWith('geosite:') && !item.startsWith('geoip:')) {
-                // 没有前缀的认为是自定义规则集ID
                 refs.push(item);
             }
         }
     }
-    
-    // 从ruleSetAcl中添加自定义规则集ID
-    refs.push(...aclRuleSets.filter(id => typeof id === 'string'));
-    
     return refs;
 }
 
@@ -504,13 +595,9 @@ export function getRuleProviderReferences(providerId: string): {
         
         // 获取包含这些策略的profile
         const relevantPolicyIds = new Set(referencingPolicies.map(p => p.id));
-        const referencingProfiles = data.profilePolicies
-            .filter((pp: ProfilePolicy) => relevantPolicyIds.has(pp.policy_id))
-            .map((pp: ProfilePolicy) => {
-                const profile = data.profiles.find((p: Profile) => p.id === pp.profile_id);
-                return profile ? { id: profile.id, name: profile.name } : null;
-            })
-            .filter(Boolean);
+        const referencingProfiles = data.profiles
+            .filter((p: Profile) => (p.policies ?? []).some((pp) => relevantPolicyIds.has(pp.policy_id)))
+            .map((p: Profile) => ({ id: p.id, name: p.name }));
         
         return {
             policies: referencingPolicies,
@@ -539,46 +626,35 @@ export function updateRuleProviderContent(id: string, filePath: string, lastUpda
 }
 
 /**
- * 迁移数据库中的时间格式为标准ISO格式
- * 用于将原有的formatDateFixed格式转换为ISO格式
+ * 更新本地规则集的 raw_data 和 srs 文件路径
  */
-export function migrateDateTimeFormats() {
+export function updateLocalRuleProviderData(id: string, rawData: LocalRuleSetData, srsPath?: string) {
     withDb((data) => {
-        let migratedCount = 0;
-        
-        // 迁移profiles的last_update字段
-        data.profiles.forEach((profile) => {
-            if (profile.last_update && !profile.last_update.includes('T')) {
-                try {
-                    // 尝试解析原有的固定格式并转换为ISO格式
-                    const date = new Date(profile.last_update);
-                    if (!isNaN(date.getTime())) {
-                        profile.last_update = date.toISOString();
-                        migratedCount++;
-                    }
-                } catch (e) {
-                    console.warn(`Failed to migrate profile ${profile.id} last_update:`, e);
-                }
+        const p = data.ruleProviders.find((x) => x.id === id);
+        if (p) {
+            p.raw_data = rawData;
+            if (srsPath) {
+                p.path = toDataRelativePath(srsPath);
             }
-        });
-        
-        // 迁移ruleProviders的last_update字段
-        data.ruleProviders.forEach((provider) => {
-            if (provider.last_update && !provider.last_update.includes('T')) {
-                try {
-                    // 尝试解析原有的固定格式并转换为ISO格式
-                    const date = new Date(provider.last_update);
-                    if (!isNaN(date.getTime())) {
-                        provider.last_update = date.toISOString();
-                        migratedCount++;
-                    }
-                } catch (e) {
-                    console.warn(`Failed to migrate rule provider ${provider.id} last_update:`, e);
-                }
-            }
-        });
-        
-        console.log(`Database migration completed: migrated ${migratedCount} time fields to ISO format`);
+            p.last_update = new Date().toISOString();
+        }
+    });
+}
+
+/**
+ * 添加本地类型的规则集
+ */
+export function addLocalRuleProvider(provider: Omit<RuleProvider, 'id'>, reservedId?: string): string {
+    return withDb((data) => {
+        const existingIds = new Set([
+            ...data.profiles.map((p) => p.id),
+            ...data.ruleProviders.map((p) => p.id),
+        ]);
+        const id = reservedId && !existingIds.has(reservedId) ? reservedId : generateShortId(existingIds);
+        const p = { ...provider, id };
+        if (p.path) p.path = toDataRelativePath(p.path);
+        data.ruleProviders.push(p);
+        return id;
     });
 }
 
@@ -670,7 +746,7 @@ export function getPolicyById(id: string): Policy | undefined {
 /** raw 类型策略写入前移除不应存储的字段 */
 function sanitizeRawPolicy<T extends Record<string, unknown>>(obj: T): T {
     if ((obj as { type?: string }).type !== 'raw') return obj;
-    const { ruleSetBuildIn, outbound, ...rest } = obj;
+    const { ruleSet, ruleSetBuildIn, ruleSetAcl, outbound, ...rest } = obj;
     return rest as T;
 }
 
@@ -707,7 +783,7 @@ export function updatePolicy(id: string, updates: Partial<Omit<Policy, 'id' | 'c
             let toApply: Partial<Omit<Policy, 'id' | 'createdAt'>> = updates;
             if (isRaw) {
                 toApply = { ...updates };
-                delete (toApply as Record<string, unknown>).ruleSetBuildIn;
+                delete (toApply as Record<string, unknown>).ruleSet;
                 delete (toApply as Record<string, unknown>).outbound;
             }
             Object.assign(p, toApply, { updatedAt: new Date().toISOString() });
@@ -793,56 +869,262 @@ export function clearPolicies(): void {
 
 // ===== Profile Policies =====
 
+/** 返回所有 profile 的 policies 扁平列表（兼容旧 API） */
 export function getProfilePolicies(): ProfilePolicy[] {
-    return withDb((data) => [...data.profilePolicies]);
+    return withDb((data) => {
+        const result: ProfilePolicy[] = [];
+        for (const profile of data.profiles) {
+            for (const pp of profile.policies ?? []) {
+                result.push({
+                    profile_id: profile.id,
+                    policy_id: pp.policy_id,
+                    preferred_outbounds: pp.preferred_outbounds,
+                });
+            }
+        }
+        return result;
+    });
 }
 
 export function getProfilePolicy(profileId: string): ProfilePolicy | undefined {
-    return withDb((data) => data.profilePolicies.find((p) => p.profile_id === profileId));
+    return withDb((data) => {
+        const profile = data.profiles.find((p) => p.id === profileId);
+        const first = profile?.policies?.[0];
+        return first ? { profile_id: profileId, policy_id: first.policy_id, preferred_outbounds: first.preferred_outbounds } : undefined;
+    });
 }
 
 export function getProfilePolicyByPolicyId(profileId: string, policyId: string): ProfilePolicy | undefined {
-    return withDb((data) => data.profilePolicies.find((p) => p.profile_id === profileId && p.policy_id === policyId));
+    return withDb((data) => {
+        const profile = data.profiles.find((p) => p.id === profileId);
+        const item = profile?.policies?.find((pp) => pp.policy_id === policyId);
+        return item ? { profile_id: profileId, policy_id: policyId, preferred_outbounds: item.preferred_outbounds } : undefined;
+    });
 }
 
 export function setProfilePolicy(profileId: string, policyId: string, preferredOutbounds: string[]): void {
     withDb((data) => {
-        const existingIndex = data.profilePolicies.findIndex((p) => p.profile_id === profileId && p.policy_id === policyId);
-        if (existingIndex >= 0) {
-            data.profilePolicies[existingIndex].preferred_outbounds = preferredOutbounds;
+        const profile = data.profiles.find((p) => p.id === profileId);
+        if (!profile) return;
+        const policies = profile.policies ?? [];
+        const idx = policies.findIndex((pp) => pp.policy_id === policyId);
+        if (idx >= 0) {
+            policies[idx].preferred_outbounds = preferredOutbounds;
         } else {
-            data.profilePolicies.push({
-                profile_id: profileId,
-                policy_id: policyId,
-                preferred_outbounds: preferredOutbounds,
-            });
+            policies.push({ policy_id: policyId, preferred_outbounds: preferredOutbounds });
         }
+        profile.policies = policies;
     });
 }
 
 export function deleteProfilePolicy(profileId: string): void {
     withDb((data) => {
-        data.profilePolicies = data.profilePolicies.filter((p) => p.profile_id !== profileId);
+        const profile = data.profiles.find((p) => p.id === profileId);
+        if (profile) profile.policies = [];
     });
 }
 
 /**
- * 清理无效的 profilePolicies 条目
- * 移除 profile_id 或 policy_id 不存在的条目
+ * 清理无效的 profile.policies 条目
+ * 移除 policy_id 不存在的条目
  */
 export function cleanupProfilePolicies(): void {
     withDb((data) => {
-        const validProfileIds = new Set(data.profiles.map((p) => p.id));
         const validPolicyIds = new Set(data.policies.map((p) => p.id));
-        
-        const before = data.profilePolicies.length;
-        data.profilePolicies = data.profilePolicies.filter((pp) => {
-            return validProfileIds.has(pp.profile_id) && validPolicyIds.has(pp.policy_id);
-        });
-        const after = data.profilePolicies.length;
-        
-        if (before !== after) {
-            console.log(`[DB] Cleaned up ${before - after} invalid profilePolicies entries`);
+        let cleanedCount = 0;
+        for (const profile of data.profiles) {
+            const before = (profile.policies ?? []).length;
+            profile.policies = (profile.policies ?? []).filter((pp) => validPolicyIds.has(pp.policy_id));
+            cleanedCount += before - (profile.policies?.length ?? 0);
+        }
+        if (cleanedCount > 0) {
+            console.log(`[DB] Cleaned up ${cleanedCount} invalid profile.policies entries`);
+        }
+    });
+}
+
+// ===== DNS Policies =====
+
+export function getDnsPolicies(): DnsPolicy[] {
+    return withDb((data) => [...data.dnsPolicies].sort((a, b) => a.order - b.order));
+}
+
+export function getDnsPolicyById(id: string): DnsPolicy | undefined {
+    return withDb((data) => data.dnsPolicies.find((p) => p.id === id));
+}
+
+/** raw 类型策略写入前移除不应存储的字段（保留 server、name，仅移除表单冗余字段） */
+function sanitizeRawDnsPolicy<T extends Record<string, unknown>>(obj: T): T {
+    if ((obj as { type?: string }).type !== 'raw') return obj;
+    const { ruleSet, ruleSetBuildIn, ruleSetAcl, ...rest } = obj;
+    return rest as T;
+}
+
+export function addDnsPolicy(policy: Omit<DnsPolicy, 'id' | 'createdAt' | 'updatedAt'>): string {
+    return withDb((data) => {
+        const existingIds = new Set([
+            ...data.policies.map((p) => p.id),
+            ...data.dnsPolicies.map((p) => p.id),
+            ...data.profiles.map((p) => p.id),
+            ...data.ruleProviders.map((p) => p.id),
+        ]);
+        const id = generateShortId(existingIds);
+        const now = new Date().toISOString();
+        const sanitized = sanitizeRawDnsPolicy(policy as Record<string, unknown>);
+        const newPolicy = {
+            ...sanitized,
+            id,
+            createdAt: now,
+            updatedAt: now,
+        } as DnsPolicy;
+        data.dnsPolicies.push(newPolicy);
+        return id;
+    });
+}
+
+export function updateDnsPolicy(id: string, updates: Partial<Omit<DnsPolicy, 'id' | 'createdAt'>>): void {
+    withDb((data) => {
+        const p = data.dnsPolicies.find((x) => x.id === id);
+        if (p) {
+            const isRaw = (p as { type?: string }).type === 'raw' || (updates as { type?: string }).type === 'raw';
+            let toApply: Partial<Omit<DnsPolicy, 'id' | 'createdAt'>> = updates;
+            if (isRaw) {
+                toApply = { ...updates };
+                delete (toApply as Record<string, unknown>).ruleSet;
+                delete (toApply as Record<string, unknown>).server;
+            }
+            Object.assign(p, toApply, { updatedAt: new Date().toISOString() });
+        }
+    });
+}
+
+export function deleteDnsPolicy(id: string): void {
+    withDb((data) => {
+        data.dnsPolicies = data.dnsPolicies.filter((p) => p.id !== id);
+    });
+}
+
+/**
+ * 更新DNS策略排序
+ */
+export function updateDnsPoliciesOrder(orders: Array<{ id: string; order: number }>): void {
+    withDb((data) => {
+        for (const { id, order } of orders) {
+            const p = data.dnsPolicies.find((x) => x.id === id);
+            if (p) {
+                p.order = order;
+                p.updatedAt = new Date().toISOString();
+            }
+        }
+    });
+}
+
+/**
+ * 清空所有DNS策略
+ */
+export function clearDnsPolicies(): void {
+    withDb((data) => {
+        data.dnsPolicies = [];
+    });
+}
+
+export interface DnsServerRef {
+    source: 'dns' | 'route';
+    index: number;
+    name: string;
+}
+
+/** 返回引用指定 DNS 服务器 id 的规则列表（用于删除前校验，含具体规则#行号#名称） */
+export function getDnsServerRefs(id: string): DnsServerRef[] {
+    const t = (id || '').trim();
+    if (!t) return [];
+    const refs: DnsServerRef[] = [];
+    const dnsPolicies = getDnsPolicies();
+    for (const p of dnsPolicies) {
+        const s = (p.server || '').trim();
+        if (s === t) refs.push({ source: 'dns', index: (p.order ?? 0) + 1, name: p.name || `DNS 规则 ${(p.order ?? 0) + 1}` });
+    }
+    const policies = getPolicies();
+    for (const p of policies) {
+        const raw = (p as { raw_data?: { server?: string } }).raw_data;
+        const s = raw?.server && typeof raw.server === 'string' ? raw.server.trim() : '';
+        if (s === t) refs.push({ source: 'route', index: (p.order ?? 0) + 1, name: p.name || `规则 ${(p.order ?? 0) + 1}` });
+    }
+    return refs;
+}
+
+// ===== Profile DNS Policies =====
+
+/** 返回所有 profile 的 dnsPolicies 扁平列表（兼容旧 API） */
+export function getProfileDnsPolicies(): ProfileDnsPolicy[] {
+    return withDb((data) => {
+        const result: ProfileDnsPolicy[] = [];
+        for (const profile of data.profiles) {
+            for (const pp of profile.dnsPolicies ?? []) {
+                result.push({
+                    profile_id: profile.id,
+                    dns_policy_id: pp.dns_policy_id,
+                    preferred_server: pp.preferred_server,
+                });
+            }
+        }
+        return result;
+    });
+}
+
+export function getProfileDnsPolicy(profileId: string): ProfileDnsPolicy | undefined {
+    return withDb((data) => {
+        const profile = data.profiles.find((p) => p.id === profileId);
+        const first = profile?.dnsPolicies?.[0];
+        return first ? { profile_id: profileId, dns_policy_id: first.dns_policy_id, preferred_server: first.preferred_server } : undefined;
+    });
+}
+
+export function getProfileDnsPolicyByPolicyId(profileId: string, dnsPolicyId: string): ProfileDnsPolicy | undefined {
+    return withDb((data) => {
+        const profile = data.profiles.find((p) => p.id === profileId);
+        const item = profile?.dnsPolicies?.find((pp) => pp.dns_policy_id === dnsPolicyId);
+        return item ? { profile_id: profileId, dns_policy_id: dnsPolicyId, preferred_server: item.preferred_server } : undefined;
+    });
+}
+
+export function setProfileDnsPolicy(profileId: string, dnsPolicyId: string, preferredServer: string | null): void {
+    withDb((data) => {
+        const profile = data.profiles.find((p) => p.id === profileId);
+        if (!profile) return;
+        const dnsPolicies = profile.dnsPolicies ?? [];
+        const idx = dnsPolicies.findIndex((pp) => pp.dns_policy_id === dnsPolicyId);
+        if (idx >= 0) {
+            dnsPolicies[idx].preferred_server = preferredServer;
+        } else {
+            dnsPolicies.push({ dns_policy_id: dnsPolicyId, preferred_server: preferredServer });
+        }
+        profile.dnsPolicies = dnsPolicies;
+    });
+}
+
+export function deleteProfileDnsPolicy(profileId: string): void {
+    withDb((data) => {
+        const profile = data.profiles.find((p) => p.id === profileId);
+        if (profile) profile.dnsPolicies = [];
+    });
+}
+
+/**
+ * 清理无效的 profile.dnsPolicies 条目
+ * 移除 dns_policy_id 不存在的条目
+ */
+export function cleanupProfileDnsPolicies(): void {
+    withDb((data) => {
+        const validDnsPolicyIds = new Set(data.dnsPolicies.map((p) => p.id));
+        let cleanedCount = 0;
+        for (const profile of data.profiles) {
+            const before = (profile.dnsPolicies ?? []).length;
+            profile.dnsPolicies = (profile.dnsPolicies ?? []).filter((pp) => validDnsPolicyIds.has(pp.dns_policy_id));
+            cleanedCount += before - (profile.dnsPolicies?.length ?? 0);
+        }
+        if (cleanedCount > 0) {
+            console.log(`[DB] Cleaned up ${cleanedCount} invalid profile.dnsPolicies entries`);
         }
     });
 }

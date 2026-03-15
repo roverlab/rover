@@ -4,13 +4,14 @@ import { Sliders, GitBranch, List } from 'lucide-react';
 import { useOverrideRules } from '../contexts/OverrideRulesContext';
 
 interface OverrideRulesGateProps {
-  pageName: 'Policies' | 'RuleProviders';
+  pageName: 'Policies' | 'DnsPolicies' | 'RuleProviders';
   onGoToAdvancedSettings: () => void;
   children: React.ReactNode;
 }
 
-const PAGE_INFO: Record<'Policies' | 'RuleProviders', { title: string; icon: React.ElementType }> = {
+const PAGE_INFO: Record<'Policies' | 'DnsPolicies' | 'RuleProviders', { title: string; icon: React.ElementType }> = {
   Policies: { title: '策略', icon: GitBranch },
+  DnsPolicies: { title: 'DNS策略', icon: GitBranch },
   RuleProviders: { title: '规则集', icon: List },
 };
 

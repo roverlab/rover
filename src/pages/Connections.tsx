@@ -168,14 +168,14 @@ export function Connections({ isActive = true }: ConnectionsProps) {
           <div className="text-[13px] font-medium text-[var(--app-text-secondary)]">实时连接列表</div>
         </div>
         <div className="table-scroll-x flex-1 min-w-0 min-h-0">
-          <table className="data-table text-[12px] min-w-[640px]">
+          <table className="data-table text-[12px] min-w-[700px]">
           <thead className="sticky top-0 z-10 text-[12px] font-semibold text-[var(--app-text-secondary)] bg-[rgba(255,255,255,0.7)]">
             <tr>
               <th className="px-5 py-2.5">地址</th>
               <th className="px-5 py-2.5">网络</th>
               <th className="px-5 py-2.5">链路</th>
               <th className="px-5 py-2.5">规则</th>
-              <th className="px-5 py-2.5 text-right">流量</th>
+              <th className="px-5 py-2.5 text-right min-w-[140px]">流量</th>
               <th className="px-5 py-2.5 text-right">时间</th>
               <th className="px-5 py-2.5 text-center">操作</th>
             </tr>
@@ -205,7 +205,7 @@ export function Connections({ isActive = true }: ConnectionsProps) {
                   </div>
                 </td>
                 <td className="px-5 py-2.5 text-[var(--app-text-quaternary)] text-[11px]">{conn.rule}</td>
-                <td className="px-5 py-2.5 text-right">
+                <td className="px-5 py-2.5 text-right min-w-[140px] whitespace-nowrap">
                   <div className="flex flex-col text-[11px] font-mono">
                     <span className="text-[var(--app-success)]">↓ {formatBytes(conn.download)}</span>
                     <span className="text-[var(--app-accent)]">↑ {formatBytes(conn.upload)}</span>

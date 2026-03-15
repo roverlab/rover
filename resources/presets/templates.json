@@ -1,11 +1,11 @@
 [
   {
-    "name": "Clash模板测试",
+    "name": "国内网站白名单+国外代理（Clash规则集）",
     "description": "Clash 内置规则模板（包含直连应用、私有网络、广告拦截、苹果服务、Google、常用国外域名、Telegram、直连域名、局域网IP、中国大陆IP等规则）",
     "path": "templates/1.json"
   },
   {
-    "name": "国内网站白名单+国外代理",
+    "name": "国内网站白名单+国外代理（ACL4SSR规则集）",
     "description": "ACL4SSR + Geosite 规则模板（包含苹果服务、Google Play、哔哩哔哩、国内直连、国外穿墙等规则）",
     "path": "templates/2.json"
   },

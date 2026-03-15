@@ -4,6 +4,7 @@ import { Dashboard } from './pages/Dashboard';
 import { Proxies } from './pages/Proxies';
 import { Profiles } from './pages/Profiles';
 import { Policies } from './pages/Policies';
+import { DnsPolicies } from './pages/DnsPolicies';
 import { Logs } from './pages/Logs';
 import { Connections } from './pages/Connections';
 import { Settings } from './pages/Settings';
@@ -14,7 +15,7 @@ import { OverrideRulesProvider } from './contexts/OverrideRulesContext';
 import { ProfileProvider } from './contexts/ProfileContext';
 import { OverrideRulesGate } from './components/OverrideRulesGate';
 
-export type Page = 'Dashboard' | 'Proxies' | 'Profiles' | 'Policies' | 'RuleProviders' | 'Routes' | 'Logs' | 'Connections' | 'Settings';
+export type Page = 'Dashboard' | 'Proxies' | 'Profiles' | 'Policies' | 'DnsPolicies' | 'RuleProviders' | 'Routes' | 'Logs' | 'Connections' | 'Settings';
 
 function ConfigLoaderOverlay() {
   const [loading, setLoading] = useState(false);
@@ -52,7 +53,7 @@ function ConfigLoaderOverlay() {
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState<Page>('Dashboard');
-  const [settingsInitialTab, setSettingsInitialTab] = useState<'basic' | 'advanced' | null>(null);
+  const [settingsInitialTab, setSettingsInitialTab] = useState<'basic' | 'advanced' | 'dns' | 'about' | null>(null);
 
   const isPage = (pageName: Page) => currentPage === pageName ? 'flex flex-col flex-1 min-h-0' : 'hidden';
 
@@ -83,7 +84,12 @@ export default function App() {
                   <Policies />
                 </OverrideRulesGate>
               </div>
-              <div className={isPage('RuleProviders')}>
+              <div className={isPage('DnsPolicies')}>
+                <OverrideRulesGate pageName="DnsPolicies" onGoToAdvancedSettings={goToAdvancedSettings}>
+                  <DnsPolicies isActive={currentPage === 'DnsPolicies'} />
+                </OverrideRulesGate>
+              </div>
+              <div className={isPage('RuleProviders')}>,
                 <OverrideRulesGate pageName="RuleProviders" onGoToAdvancedSettings={goToAdvancedSettings}>
                   <RuleProviders isActive={currentPage === 'RuleProviders'} />
                 </OverrideRulesGate>

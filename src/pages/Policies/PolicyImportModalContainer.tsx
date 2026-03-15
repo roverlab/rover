@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { Policy, SingboxRouteRuleWithOutbound } from '../../types/policy';
-import { cnJsonRuleToPolicy, configRouteRuleToPolicy } from '../../types/policy';
+import { cnJsonRuleToPolicy, configRouteRuleToPolicy, getPolicyRuleSet } from '../../types/policy';
 import type { RuleProvider } from '../../types/rule-providers';
 import { normalizeRuleSetBuildInToAclIds } from './utils';
 import { PolicyImportModal } from './PolicyImportModal';
@@ -86,6 +86,9 @@ export function PolicyImportModalContainer({
                 addNotification('TUN模式没有设置成功，请以管理员权限重启应用后在仪表盘打开', 'error');
             }
 
+            // 前端触发配置生成
+            await window.ipcRenderer.core.generateConfig();
+
             // 获取更新后的策略列表和兜底出站设置
             const updatedPolicies = await window.ipcRenderer.db.getPolicies() as Policy[];
             onImportComplete(updatedPolicies || [], result.finalOutbound);
@@ -146,8 +149,13 @@ export function PolicyImportModalContainer({
             selectedIndices.forEach((index, order) => {
                 const rule = configRules[index];
                 const policy = configRouteRuleToPolicy(rule, order);
-                const normalized = normalizeRuleSetBuildInToAclIds(policy.ruleSetBuildIn || [], providers || [], presetIds);
-                policiesToImport.push({ ...policy, ruleSetBuildIn: normalized.normalized });
+                const ruleSets = getPolicyRuleSet(policy);
+                const normalized = normalizeRuleSetBuildInToAclIds(ruleSets, providers || [], presetIds);
+                const policyToAdd = { ...policy };
+                if (normalized.normalized.length > 0) {
+                    policyToAdd.ruleSet = normalized.normalized;
+                }
+                policiesToImport.push(policyToAdd);
             });
             if (policiesToImport.length === 0) {
                 addNotification('未找到有效的策略配置', 'error');
@@ -155,7 +163,7 @@ export function PolicyImportModalContainer({
             }
             const aclRefsInPolicies = new Set<string>();
             for (const p of policiesToImport) {
-                for (const v of p.ruleSetBuildIn || []) {
+                for (const v of getPolicyRuleSet(p)) {
                     if (typeof v === 'string' && v.startsWith('acl:')) aclRefsInPolicies.add(v.substring(4));
                 }
             }

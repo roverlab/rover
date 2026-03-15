@@ -351,6 +351,40 @@ export function Proxies() {
     processQueue();
   }, [nodeTestState, processQueue]);
 
+  // 搜索结果 - 在所有组中搜索匹配的节点（需在 testLatency 之前定义）
+  const searchResults = useMemo(() => {
+    if (!searchQuery.trim()) return [];
+
+    const query = searchQuery.toLowerCase();
+    const results: Array<{ group: ProxyGroup; node: Node }> = [];
+
+    groups.forEach(group => {
+      group.nodes.forEach(node => {
+        if (node.name.toLowerCase().includes(query) ||
+            node.type.toLowerCase().includes(query)) {
+          results.push({ group, node });
+        }
+      });
+    });
+
+    return results;
+  }, [groups, searchQuery]);
+
+  // 获取搜索结果中涉及的组（去重）
+  const searchResultGroups = useMemo(() => {
+    const groupNames = new Set(searchResults.map(r => r.group.name));
+    return groups.filter(g => groupNames.has(g.name));
+  }, [searchResults, groups]);
+
+  // 当前搜索选中的组
+  const [searchActiveGroup, setSearchActiveGroup] = useState<string>('');
+
+  // 当前显示的搜索结果节点（按选中的组过滤）
+  const displayedSearchNodes = useMemo(() => {
+    if (!searchActiveGroup) return searchResults;
+    return searchResults.filter(r => r.group.name === searchActiveGroup);
+  }, [searchResults, searchActiveGroup]);
+
   const testLatency = useCallback(async () => {
     // 防止重复触发
     if (isTestRunningRef.current) return;
@@ -435,40 +469,6 @@ export function Proxies() {
         return nodes;
     }
   }, [groups, activeTab, settings.sortBy, nodeDelays]);
-
-  // 搜索结果 - 在所有组中搜索匹配的节点
-  const searchResults = useMemo(() => {
-    if (!searchQuery.trim()) return [];
-
-    const query = searchQuery.toLowerCase();
-    const results: Array<{ group: ProxyGroup; node: Node }> = [];
-
-    groups.forEach(group => {
-      group.nodes.forEach(node => {
-        if (node.name.toLowerCase().includes(query) ||
-            node.type.toLowerCase().includes(query)) {
-          results.push({ group, node });
-        }
-      });
-    });
-
-    return results;
-  }, [groups, searchQuery]);
-
-  // 获取搜索结果中涉及的组（去重）
-  const searchResultGroups = useMemo(() => {
-    const groupNames = new Set(searchResults.map(r => r.group.name));
-    return groups.filter(g => groupNames.has(g.name));
-  }, [searchResults, groups]);
-
-  // 当前搜索选中的组
-  const [searchActiveGroup, setSearchActiveGroup] = useState<string>('');
-
-  // 当前显示的搜索结果节点（按选中的组过滤）
-  const displayedSearchNodes = useMemo(() => {
-    if (!searchActiveGroup) return searchResults;
-    return searchResults.filter(r => r.group.name === searchActiveGroup);
-  }, [searchResults, searchActiveGroup]);
 
   // 进入搜索模式时，默认选中第一个组
   useEffect(() => {

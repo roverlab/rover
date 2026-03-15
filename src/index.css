@@ -67,6 +67,12 @@
         box-sizing: border-box;
     }
 
+    /* 允许拖拽句柄元素进行拖动 */
+    .sortable-handle,
+    .sortable-item {
+        -webkit-user-drag: element;
+    }
+
     ::selection {
         background: rgba(85, 96, 111, 0.18);
     }

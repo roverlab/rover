@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useApi } from '../contexts/ApiContext';
 import { fetchConfigs, getWsUrl, checkApiAvailable } from '../services/api';
 import { Switch } from '../components/ui/Switch';
@@ -8,11 +8,100 @@ import { Activity, Shuffle, Network, GitBranch, Globe, Monitor, PieChart, Play, 
 import { cn } from '../components/Sidebar';
 import * as FlagIcons from 'country-flag-icons/react/3x2';
 import { useNotificationState, NotificationList } from '../components/ui/Notification';
+import { getDisplayErrorMessage } from '../shared/error-utils';
 
 interface TrafficData {
     up: number;
     down: number;
     time: number;
+}
+
+interface TrafficChartProps {
+     trafficHistory: TrafficData[];
+     maxTraffic: number;
+     chartDownFill: string;
+     chartDownStroke: string;
+     chartUpFill: string;
+     chartUpStroke: string;
+ }
+
+// 自定义Hook用于管理流量数据
+function useTrafficData(isRunning: boolean, apiUrl: string, apiSecret: string) {
+    const [currentTraffic, setCurrentTraffic] = useState({ up: 0, down: 0 });
+    const [totalTraffic, setTotalTraffic] = useState({ up: 0, down: 0 });
+    const [trafficHistory, setTrafficHistory] = useState<TrafficData[]>([]);
+
+    useEffect(() => {
+        if (!isRunning || !apiUrl) {
+            setCurrentTraffic({ up: 0, down: 0 });
+            return;
+        }
+
+        let ws: WebSocket;
+        let lastUpdate = 0;
+        const DEBOUNCE_MS = 200;
+        let reconnectTimeout: NodeJS.Timeout;
+        const MAX_RECONNECT_DELAY = 10000;
+        let reconnectAttempts = 0;
+
+        const connectWs = () => {
+            const url = getWsUrl(apiUrl, '/traffic', apiSecret);
+            ws = new WebSocket(url);
+
+            ws.onmessage = (event) => {
+                try {
+                    const now = Date.now();
+                    const data = JSON.parse(event.data);
+                    
+                    // 更新当前流量（实时性要求高）
+                    setCurrentTraffic({ up: data.up, down: data.down });
+                    
+                    // 累计总流量和历史数据去抖处理
+                    if (now - lastUpdate >= DEBOUNCE_MS) {
+                        setTotalTraffic(prev => ({ 
+                            up: prev.up + data.up, 
+                            down: prev.down + data.down 
+                        }));
+                        
+                        setTrafficHistory(prev => {
+                            const next = [...prev, { up: data.up, down: data.down, time: now }];
+                            if (next.length > 60) next.shift();
+                            return next;
+                        });
+                        lastUpdate = now;
+                        reconnectAttempts = 0; // 重置重连计数器
+                    }
+                } catch (e) {
+                    console.warn('[Traffic] WebSocket消息解析失败:', e);
+                }
+            };
+
+            ws.onerror = () => {
+                console.warn('[Traffic] WebSocket连接错误');
+                ws.close();
+            };
+            
+            ws.onclose = () => {
+                console.log('[Traffic] WebSocket连接关闭');
+                if (isRunning) {
+                    // 指数退避重连策略
+                    const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), MAX_RECONNECT_DELAY);
+                    reconnectAttempts++;
+                    console.log(`[Traffic] ${delay}ms后进行第${reconnectAttempts}次重连`);
+                    reconnectTimeout = setTimeout(connectWs, delay);
+                }
+            };
+        };
+
+        connectWs();
+        
+        return () => {
+            if (ws) ws.close();
+            if (reconnectTimeout) clearTimeout(reconnectTimeout);
+        };
+    }, [isRunning, apiUrl, apiSecret]);
+
+    return { currentTraffic, totalTraffic, trafficHistory };
 }
 
 function formatBytes(bytes: number) {
@@ -27,14 +116,56 @@ interface DashboardProps {
     isActive: boolean;
 }
 
+const TrafficChart = React.memo<TrafficChartProps>(function TrafficChart({
+    trafficHistory,
+    maxTraffic,
+    chartDownFill,
+    chartDownStroke,
+    chartUpFill,
+    chartUpStroke
+}) {
+    const createPath = useCallback((key: 'up' | 'down') => {
+        if (trafficHistory.length === 0) return '';
+        const width = 800;
+        const height = 200;
+        const step = width / 60;
+
+        let path = `M 0 ${height} `;
+        trafficHistory.forEach((d, i) => {
+            const x = i * step + (60 - trafficHistory.length) * step;
+            const y = height - (d[key] / maxTraffic) * height * 0.9;
+            path += `L ${x} ${y} `;
+        });
+
+        if (trafficHistory.length > 0) {
+            const lastX = (60 - 1) * step;
+            const lastY = height - (trafficHistory[trafficHistory.length - 1][key] / maxTraffic) * height * 0.9;
+            path += `L ${800} ${lastY} L 800 ${height} Z`;
+        }
+        return path;
+    }, [trafficHistory, maxTraffic]);
+
+    return (
+        <svg preserveAspectRatio="none" viewBox="0 0 800 200" className="w-full h-full absolute bottom-0 left-0">
+            <path d="M 0 50 L 800 50 M 0 100 L 800 100 M 0 150 L 800 150" stroke="rgba(23,26,33,0.06)" strokeWidth="1" strokeDasharray="4 6" fill="none" />
+            <path d={createPath('down')} fill={chartDownFill} stroke={chartDownStroke} strokeWidth="1.6" strokeLinejoin="round" />
+            <path d={createPath('up')} fill={chartUpFill} stroke={chartUpStroke} strokeWidth="1.6" strokeLinejoin="round" />
+        </svg>
+    );
+}, (prevProps, nextProps) => {
+    // 只有当历史数据或最大值发生变化时才重新渲染
+    return prevProps.trafficHistory.length === nextProps.trafficHistory.length && 
+           prevProps.maxTraffic === nextProps.maxTraffic;
+});
+
 export function Dashboard({ isActive }: DashboardProps) {
     const { apiUrl, apiSecret, setApiUrl, setApiSecret } = useApi();
     const [isRunning, setIsRunning] = useState(false);
     const [systemProxy, setSystemProxy] = useState(false);
     const [tunMode, setTunMode] = useState(false); // 数据库中的设置
-    const [trafficHistory, setTrafficHistory] = useState<TrafficData[]>([]);
-    const [currentTraffic, setCurrentTraffic] = useState({ up: 0, down: 0 });
-    const [totalTraffic, setTotalTraffic] = useState({ up: 0, down: 0 });
+    
+    // 使用自定义Hook管理流量数据
+    const { currentTraffic, totalTraffic, trafficHistory } = useTrafficData(isRunning, apiUrl, apiSecret);
     const [mode, setMode] = useState('rule');
     const [modeChanging, setModeChanging] = useState<string | null>(null); // 正在切换的模式
     const [coreLoading, setCoreLoading] = useState(false); // 内核启动/停止中
@@ -49,6 +180,7 @@ export function Dashboard({ isActive }: DashboardProps) {
     startTimeRef.current = startTime;
     const [uptime, setUptime] = useState<string>('');
     const [networkInfo, setNetworkInfo] = useState<{ ip: string; country: string; countryCode: string } | null>(null);
+    const [networkCheckFailed, setNetworkCheckFailed] = useState(false); // 网络检测失败
     const [localIp, setLocalIp] = useState("127.0.0.1");
     const [isLoaded, setIsLoaded] = useState(false);
     const [settingsLoaded, setSettingsLoaded] = useState(false); // 设置是否已从数据库加载
@@ -61,32 +193,22 @@ export function Dashboard({ isActive }: DashboardProps) {
         return () => clearTimeout(timer);
     }, []);
 
-    const checkNetwork = async () => {
-        // 备选 API 列表
-        const apis = [
-            { url: 'https://ipapi.co/json/', parse: (data: any) => ({ ip: data.ip, country: data.country_name, code: data.country_code }) },
-            { url: 'https://ipwho.is/', parse: (data: any) => ({ ip: data.ip, country: data.country, code: data.country_code }) },
-            { url: 'http://ip-api.com/json/?lang=zh-CN', parse: (data: any) => ({ ip: data.query, country: data.country, code: data.countryCode }) },
-        ];
-
-        for (const api of apis) {
-            try {
-                const res = await fetch(api.url, {
-                    signal: AbortSignal.timeout(5000)  // 5秒超时
-                });
-                if (!res.ok) continue;
-                const data = await res.json();
-                const { ip, country, code } = api.parse(data);
-                if (ip) {
-                    const upperCode = code ? code.toUpperCase() : '';
-                    setNetworkInfo({ ip, country: country || '未知', countryCode: upperCode || 'UN' });
-                    return;  // 成功后退出
-                }
-            } catch (err) {
-                // 继续尝试下一个 API
+    /** 网络检测：内核运行中走代理，未启动走直连 */
+    const checkNetwork = useCallback(async () => {
+        setNetworkCheckFailed(false);
+        try {
+            const result = isRunning
+                ? await window.ipcRenderer.core.fetchIpThroughProxy()
+                : await window.ipcRenderer.core.fetchIpDirect();
+            if (result) {
+                setNetworkInfo({ ip: result.ip, country: result.country, countryCode: result.countryCode || 'UN' });
+            } else {
+                setNetworkCheckFailed(true);
             }
+        } catch (err) {
+            setNetworkCheckFailed(true);
         }
-    };
+    }, [isRunning]);
 
     const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -165,10 +287,11 @@ export function Dashboard({ isActive }: DashboardProps) {
         }
     }, [isRunning]);
 
-    // 组件加载时检测网络信息（不依赖内核状态）
+    // 网络检测：应用启动、进入首页、内核状态变化时刷新
     useEffect(() => {
+        if (!isActive) return;
         checkNetwork();
-    }, []);
+    }, [isActive, isRunning, checkNetwork]);
 
     // 从数据库加载 API 设置
     useEffect(() => {
@@ -275,41 +398,6 @@ export function Dashboard({ isActive }: DashboardProps) {
         return () => clearInterval(interval);
     }, [isRunning, startTime]);
 
-    useEffect(() => {
-        if (!isRunning || !apiUrl) {
-            setCurrentTraffic({ up: 0, down: 0 });
-            return;
-        }
-
-        let ws: WebSocket;
-        const connectWs = () => {
-            const url = getWsUrl(apiUrl, '/traffic', apiSecret);
-            ws = new WebSocket(url);
-
-            ws.onmessage = (event) => {
-                try {
-                    const data = JSON.parse(event.data);
-                    setCurrentTraffic({ up: data.up, down: data.down });
-                    setTotalTraffic(prev => ({ up: prev.up + data.up, down: prev.down + data.down }));
-                    setTrafficHistory(prev => {
-                        const next = [...prev, { up: data.up, down: data.down, time: Date.now() }];
-                        if (next.length > 60) next.shift();
-                        return next;
-                    });
-                } catch (e) { }
-            };
-
-            ws.onerror = () => ws.close();
-            ws.onclose = () => {
-                if (isRunning) setTimeout(connectWs, 3000);
-            };
-        };
-
-        connectWs();
-        return () => {
-            if (ws) ws.close();
-        };
-    }, [isRunning, apiUrl, apiSecret]);
 
     const runStopService = async () => {
         if (coreActionLockRef.current) return;
@@ -322,7 +410,7 @@ export function Dashboard({ isActive }: DashboardProps) {
             await checkStatus(true);
         } catch (err: any) {
             console.error('Failed to stop core', err);
-            addNotification(`停止内核失败: ${err?.message || '未知错误'}`, 'error');
+            addNotification(`停止内核失败: ${getDisplayErrorMessage(err)}`, 'error');
         } finally {
             setCoreLoading(false);
             setCoreAction(null);
@@ -350,7 +438,7 @@ export function Dashboard({ isActive }: DashboardProps) {
             }
         } catch (err: any) {
             console.error('Failed to start core', err);
-            addNotification(`启动内核失败: ${err?.message || '未知错误'}`, 'error');
+            addNotification(`启动内核失败: ${getDisplayErrorMessage(err)}`, 'error');
         } finally {
             setCoreLoading(false);
             setCoreAction(null);
@@ -377,7 +465,7 @@ export function Dashboard({ isActive }: DashboardProps) {
             addNotification('内核已重启', 'success');
         } catch (err: any) {
             console.error('Failed to restart core', err);
-            addNotification(`重启内核失败: ${err?.message || '未知错误'}`, 'error');
+            addNotification(`重启内核失败: ${getDisplayErrorMessage(err)}`, 'error');
         } finally {
             setCoreLoading(false);
             setCoreAction(null);
@@ -478,8 +566,7 @@ export function Dashboard({ isActive }: DashboardProps) {
             }
         } catch (err: any) {
             console.error('Failed to toggle tun mode', err);
-            const errorMsg = err?.message || '未知错误';
-            addNotification(`虚拟网卡切换失败: ${errorMsg}`, 'error');
+            addNotification(`虚拟网卡切换失败: ${getDisplayErrorMessage(err)}`, 'error');
         } finally {
             setTunLoading(false);
         }
@@ -524,7 +611,7 @@ export function Dashboard({ isActive }: DashboardProps) {
             console.log('[Dashboard] 托盘菜单更新完成');
         } catch (err: any) {
             console.error('[Mode Change] Failed:', err.message);
-            showToast(`切换模式失败: ${err.message}`, 'error');
+            showToast(`切换模式失败: ${getDisplayErrorMessage(err)}`, 'error');
         } finally {
             setModeChanging(null);
         }
@@ -570,36 +657,16 @@ export function Dashboard({ isActive }: DashboardProps) {
         // 注意：不在这里移除监听器，因为严格模式会重新挂载
     }, []);
 
-    const maxTraffic = Math.max(
-        ...trafficHistory.map(d => Math.max(d.up, d.down)),
-        1024
-    );
+    const maxTraffic = useMemo(() =>
+        Math.max(
+            ...trafficHistory.map(d => Math.max(d.up, d.down)),
+            1024
+        ), [trafficHistory]);
 
     const chartDownFill = 'rgba(111, 138, 122, 0.18)';
     const chartDownStroke = '#6f8a7a';
     const chartUpFill = 'rgba(85, 96, 111, 0.16)';
     const chartUpStroke = '#55606f';
-
-    const createPath = (key: 'up' | 'down') => {
-        if (trafficHistory.length === 0) return '';
-        const width = 800;
-        const height = 200;
-        const step = width / 60;
-
-        let path = `M 0 ${height} `;
-        trafficHistory.forEach((d, i) => {
-            const x = i * step + (60 - trafficHistory.length) * step;
-            const y = height - (d[key] / maxTraffic) * height * 0.9;
-            path += `L ${x} ${y} `;
-        });
-
-        if (trafficHistory.length > 0) {
-            const lastX = (60 - 1) * step;
-            const lastY = height - (trafficHistory[trafficHistory.length - 1][key] / maxTraffic) * height * 0.9;
-            path += `L ${800} ${lastY} L 800 ${height} Z`;
-        }
-        return path;
-    };
 
     return (
         <div className="page-shell text-[var(--app-text-secondary)]">
@@ -654,11 +721,14 @@ export function Dashboard({ isActive }: DashboardProps) {
                                 <span>最近 60 秒</span>
                                 <span className="font-mono">峰值 {formatBytes(maxTraffic)}/s</span>
                             </div>
-                            <svg preserveAspectRatio="none" viewBox="0 0 800 200" className="w-full h-full absolute bottom-0 left-0">
-                                <path d="M 0 50 L 800 50 M 0 100 L 800 100 M 0 150 L 800 150" stroke="rgba(23,26,33,0.06)" strokeWidth="1" strokeDasharray="4 6" fill="none" />
-                                <path d={createPath('down')} fill={chartDownFill} stroke={chartDownStroke} strokeWidth="1.6" strokeLinejoin="round" />
-                                <path d={createPath('up')} fill={chartUpFill} stroke={chartUpStroke} strokeWidth="1.6" strokeLinejoin="round" />
-                            </svg>
+                            <TrafficChart 
+                                trafficHistory={trafficHistory}
+                                maxTraffic={maxTraffic}
+                                chartDownFill={chartDownFill}
+                                chartDownStroke={chartDownStroke}
+                                chartUpFill={chartUpFill}
+                                chartUpStroke={chartUpStroke}
+                            />
                         </div>
                     </Card>
 
@@ -781,10 +851,26 @@ export function Dashboard({ isActive }: DashboardProps) {
                                     <span className="text-[11px] text-[var(--app-text-quaternary)]">{networkInfo.country}</span>
                                 </div>
                             </div>
-                        ) : (
+                        ) : networkCheckFailed ? (
                             <div className="flex items-center gap-3">
                                 <div className="w-10 h-10 rounded-full bg-[var(--app-surface)] flex items-center justify-center">
                                     <Globe className="w-5 h-5 text-[var(--app-text-quaternary)]" />
+                                </div>
+                                <div className="flex flex-col gap-1">
+                                    <span className="text-[13px] text-[var(--app-text-quaternary)]">检测失败</span>
+                                    <button
+                                        type="button"
+                                        onClick={() => checkNetwork()}
+                                        className="text-[11px] text-[var(--app-accent)] hover:underline"
+                                    >
+                                        重试
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-full bg-[var(--app-surface)] flex items-center justify-center">
+                                    <Loader2 className="w-5 h-5 text-[var(--app-text-quaternary)] animate-spin" />
                                 </div>
                                 <span className="text-[13px] text-[var(--app-text-quaternary)]">检测中...</span>
                             </div>

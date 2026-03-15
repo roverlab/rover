@@ -68,10 +68,10 @@ export function Policies() {
     };
 
     const handleCopyDetailPolicy = async () => {
-        if (!detailPolicy) return;
+        if (!detailPolicy || detailPolicy.type !== 'raw') return;
         try {
-            await navigator.clipboard.writeText(JSON.stringify(detailPolicy, null, 2));
-            addNotification('策略详情已复制到剪贴板');
+            await navigator.clipboard.writeText(JSON.stringify(detailPolicy.raw_data || {}, null, 2));
+            addNotification('原始规则已复制到剪贴板');
         } catch (err: unknown) {
             addNotification(`复制失败: ${(err as Error)?.message || '未知错误'}`, 'error');
         }

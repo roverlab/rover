@@ -11,9 +11,9 @@ import * as dbUtils from './db';
 // import { formatDateFixed } from './db'; // 不再使用，改用标准ISO格式
 import * as singbox from './singbox';
 import { getDataDir, getRulesetsDir, resolveDataPath, getBuiltinResourcesPath, getPresetRulesetsPath, getPresetTemplatesPath } from './paths';
-import { cnJsonRuleToPolicy } from '../src/types/policy';
+import { cnJsonRuleToPolicy, getPolicyRuleSet } from '../src/types/policy';
 import type { RuleProviderForConfig, CnJsonRule } from '../src/types/policy';
-import { getRuleProviderFileBaseName, downloadAndConvertRuleSet } from './ruleset-utils';
+import { getRuleProviderFileBaseName, downloadAndConvertRuleSet, compileLocalRuleSet } from './ruleset-utils';
 import {
     regenerateConfigIfOverrideRulesEnabled,
     regenerateConfigForRuleProviderIfNeeded
@@ -50,8 +50,7 @@ function checkIsAdmin(): boolean {
 }
 
 export function getPolicyReferencedRuleProviderRefs(policy: any): string[] {
-    const rawRuleSets = policy?.ruleSetBuildIn ?? policy?.rule_set_build_in ?? [];
-    if (!Array.isArray(rawRuleSets)) return [];
+    const rawRuleSets = getPolicyRuleSet(policy as import('../src/types/policy').Policy);
     const refs: string[] = [];
     for (const item of rawRuleSets) {
         if (typeof item !== 'string') continue;
@@ -189,6 +188,97 @@ export function loadBuiltinRulesets(): import('../src/types/rule-providers').Rul
     return allRulesets;
 }
 
+/** 分组键显示名称映射 */
+const RULE_SET_GROUP_DISPLAY_NAMES: Record<string, string> = {
+    custom: '自定义规则集',
+    acl: 'ACL 规则',
+    geoip: 'GeoIP 规则',
+    geosite: 'GeoSite 规则',
+    clash: 'Clash 规则',
+    singbox: 'SingBox 规则',
+};
+
+/** 从规则集 ID 提取分组键，如 "acl:360" -> "acl" */
+function getRuleSetGroupKey(id: string, isFromDb: boolean): string {
+    if (isFromDb) return 'custom';
+    const colonIndex = id.indexOf(':');
+    if (colonIndex > 0) {
+        return id.substring(0, colonIndex).toLowerCase();
+    }
+    return '其他';
+}
+
+/** 内置规则集分组顺序 */
+const BUILTIN_GROUP_ORDER = ['acl', 'geosite', 'geoip', 'clash', 'singbox', '其他'];
+
+export interface RuleSetGroupItem {
+    groupKey: string;
+    displayName: string;
+    items: RuleProvider[];
+}
+
+/**
+ * 获取全部规则集（内置 + 自定义），已按分组整理，供策略编辑使用
+ */
+export function getAllRuleSetsGrouped(): RuleSetGroupItem[] {
+    const customProviders = dbUtils.getRuleProviders();
+    const builtinRulesets = loadBuiltinRulesets();
+
+    const groups = new Map<string, RuleProvider[]>();
+
+    // 自定义规则集
+    if (customProviders.length > 0) {
+        groups.set('custom', [...customProviders]);
+    }
+
+    // 内置规则集按前缀分组
+    for (const item of builtinRulesets) {
+        const key = getRuleSetGroupKey(item.id, false);
+        if (!groups.has(key)) {
+            groups.set(key, []);
+        }
+        groups.get(key)!.push(item);
+    }
+
+    const result: RuleSetGroupItem[] = [];
+    const seenKeys = new Set<string>();
+
+    // 先添加自定义
+    if (groups.has('custom')) {
+        result.push({
+            groupKey: 'custom',
+            displayName: RULE_SET_GROUP_DISPLAY_NAMES.custom,
+            items: groups.get('custom')!,
+        });
+        seenKeys.add('custom');
+    }
+
+    // 按固定顺序添加内置分组
+    for (const key of BUILTIN_GROUP_ORDER) {
+        if (groups.has(key) && !seenKeys.has(key)) {
+            result.push({
+                groupKey: key,
+                displayName: RULE_SET_GROUP_DISPLAY_NAMES[key] || key,
+                items: groups.get(key)!,
+            });
+            seenKeys.add(key);
+        }
+    }
+
+    // 其余未在顺序中的分组
+    for (const [key, items] of groups) {
+        if (!seenKeys.has(key)) {
+            result.push({
+                groupKey: key,
+                displayName: RULE_SET_GROUP_DISPLAY_NAMES[key] || key,
+                items,
+            });
+        }
+    }
+
+    return result;
+}
+
 /** 从预设添加或重写规则集到数据库 */
 export async function addRuleProvidersFromPreset(
     aclIds: string[],
@@ -221,6 +311,56 @@ export async function addRuleProvidersFromPreset(
     return { added, updated };
 }
 
+/** sing-box DNS 规则中 default 类型支持的字段（rule_set + server + name），其余字段需放入 raw_data */
+const DNS_DEFAULT_ONLY_KEYS = new Set(['rule_set', 'server', 'name']);
+
+/** 从规则中提取 name，用于 DnsPolicy 显示名称（写入数据库） */
+function getRuleName(rule: Record<string, unknown>, fallback: string): string {
+    const n = rule.name;
+    return typeof n === 'string' && n.trim() ? n.trim() : fallback;
+}
+
+/** 判断规则是否为 default 类型：有 rule_set + server，且仅有 default 允许的字段 */
+function isDefaultDnsRuleFormat(rule: Record<string, unknown>): boolean {
+    const ruleSet = rule.rule_set;
+    const hasRuleSet = ruleSet !== undefined && ruleSet !== null &&
+        (Array.isArray(ruleSet) ? ruleSet.length > 0 : typeof ruleSet === 'string');
+    const hasServer = rule.server !== undefined && rule.server !== null;
+    if (!hasRuleSet || !hasServer) return false;
+    const ruleKeys = Object.keys(rule).filter(k => rule[k] !== undefined && rule[k] !== null);
+    return ruleKeys.every(k => DNS_DEFAULT_ONLY_KEYS.has(k));
+}
+
+/** 将模板 dns.rules 中的单条规则转换为 DnsPolicy 输入：rule_set+server(+name) 当作 default，其余当作 raw */
+function templateDnsRuleToDnsPolicy(rule: Record<string, unknown>, order: number): Omit<import('../src/types/dns-policy').DnsPolicy, 'id' | 'createdAt' | 'updatedAt'> {
+    const server = String(rule.server ?? 'local');
+    if (isDefaultDnsRuleFormat(rule)) {
+        const ruleSet = rule.rule_set;
+        const ruleSetArr = Array.isArray(ruleSet) ? ruleSet : typeof ruleSet === 'string' ? [ruleSet] : [];
+        const builtIn = ruleSetArr.filter((v: unknown) => typeof v === 'string' && (v.startsWith('geosite:') || v.startsWith('geoip:')));
+        const acl = ruleSetArr.filter((v: unknown) => typeof v === 'string' && v.startsWith('acl:'));
+        const defaultName = ruleSetArr.length > 0 ? `规则集 ${ruleSetArr.join(', ')}` : `DNS 规则 ${order + 1}`;
+        return {
+            type: 'default',
+            name: getRuleName(rule, defaultName),
+            server,
+            enabled: true,
+            order,
+            rule_set_build_in: builtIn.length > 0 ? builtIn : undefined,
+            ruleSetAcl: acl.length > 0 ? acl : undefined,
+        };
+    }
+    const { server: _s, name: _n, ...rawData } = rule;
+    return {
+        type: 'raw',
+        name: getRuleName(rule, `DNS 规则 ${order + 1}`),
+        server,
+        enabled: true,
+        order,
+        raw_data: rawData,
+    };
+}
+
 /** 注册规则集相关 IPC 处理器 */
 export function registerRuleProviderIpcHandlers(
     ipcMain: import('electron').IpcMain,
@@ -241,34 +381,50 @@ export function registerRuleProviderIpcHandlers(
             const data = JSON.parse(content);
             const rules = data.rules || [];
 
-            if (rules.length === 0) {
-                return { success: false, message: '该模板没有可导入的策略', addedCount: 0 };
-            }
-
             const policiesToImport: Array<Omit<any, 'id' | 'createdAt' | 'updatedAt'>> = [];
-
             rules.forEach((rule: Record<string, unknown>, order: number) => {
                 const policy = cnJsonRuleToPolicy(rule as unknown as CnJsonRule, order);
                 policiesToImport.push(policy);
             });
 
-            if (policiesToImport.length === 0) {
-                return { success: false, message: '未找到有效的策略配置', addedCount: 0 };
+            const hasDns = data.dns && typeof data.dns === 'object' && (
+                (Array.isArray(data.dns.servers) && data.dns.servers.length > 0) ||
+                (Array.isArray(data.dns.rules) && data.dns.rules.length > 0)
+            );
+            if (policiesToImport.length === 0 && !hasDns) {
+                return { success: false, message: '该模板没有可导入的策略或 DNS 配置', addedCount: 0 };
             }
 
-            const addedCount = dbUtils.addPoliciesBatch(policiesToImport, true);
+            const addedCount = policiesToImport.length > 0 ? dbUtils.addPoliciesBatch(policiesToImport, true) : 0;
 
             let dnsSet = false;
-            // 导入模板时，根据 dns 字段更新数据库
-            // - dns 有内容：保存到数据库
-            // - dns 为空/null/{}/不存在：清空数据库中的 dns 配置
+            // 导入模板时：dns.servers -> dnsServers 表（tag 作为 id，重复覆盖）；dns.rules -> dnsPolicies 表（先清空再写入）
             try {
-                if (data.dns && typeof data.dns === 'object' && Object.keys(data.dns).length > 0) {
-                    dbUtils.setSetting('dns-config', JSON.stringify(data.dns));
+                const dns = data.dns;
+                if (dns && typeof dns === 'object') {
+                    const servers = Array.isArray(dns.servers) ? dns.servers : [];
+                    for (let i = 0; i < servers.length; i++) {
+                        const s = servers[i];
+                        if (s && typeof s === 'object' && s.tag) {
+                            dbUtils.upsertDnsServerByTag(s as Record<string, unknown>, i);
+                        }
+                    }
+                    const rules = Array.isArray(dns.rules) ? dns.rules : [];
+                    dbUtils.clearDnsPolicies();
+                    for (let i = 0; i < rules.length; i++) {
+                        const r = rules[i];
+                        if (r && typeof r === 'object' && r.server) {
+                            const policy = templateDnsRuleToDnsPolicy(r as Record<string, unknown>, i);
+                            dbUtils.addDnsPolicy(policy);
+                        }
+                    }
+                    dbUtils.cleanupProfileDnsPolicies();
+                    dnsSet = servers.length > 0 || rules.length > 0;
                 } else {
-                    dbUtils.setSetting('dns-config', '');
+                    // 模板没有 DNS 配置时，清空 DNS 策略数据
+                    dbUtils.clearDnsPolicies();
+                    dbUtils.cleanupProfileDnsPolicies();
                 }
-                dnsSet = true;
             } catch (e) {
                 console.error('Failed to save DNS config from template:', e);
             }
@@ -312,10 +468,7 @@ export function registerRuleProviderIpcHandlers(
                 console.error('Failed to process tun setting from template:', e);
             }
 
-            // 策略导入成功后，触发 config.json 写入
-            if (addedCount > 0) {
-                await regenerateConfigIfOverrideRulesEnabled('policies imported from template', sendToRenderer, log);
-            }
+            // 配置生成由前端在导入成功后触发
 
             return {
                 success: true,
@@ -432,6 +585,53 @@ export function registerRuleProviderIpcHandlers(
         }
 
         return results;
+    });
+
+    // 添加本地类型规则集
+    ipcMain.handle('core:addLocalRuleProvider', async (_, provider: { name: string; enabled?: boolean }) => {
+        const { name, enabled = true } = provider;
+        if (!name?.trim()) throw new Error('规则集名称不能为空');
+
+        const providerId = dbUtils.allocateId();
+        
+        // 创建空的规则集数据
+        const emptyRawData: import('../src/types/rule-providers').LocalRuleSetData = {
+            version: 1,
+            rules: []
+        };
+        
+        dbUtils.addRuleProvider({
+            name: name.trim(),
+            url: '', // 本地规则集没有 URL
+            type: 'local',
+            enabled,
+            raw_data: emptyRawData,
+            last_update: new Date().toISOString(),
+        }, providerId);
+
+        return providerId;
+    });
+
+    // 保存本地规则集数据并编译为 srs
+    ipcMain.handle('core:saveLocalRuleProvider', async (_, providerId: string, rawData: import('../src/types/rule-providers').LocalRuleSetData) => {
+        const provider = dbUtils.getRuleProviderById(providerId);
+        if (!provider) throw new Error('规则集不存在');
+        if (provider.type !== 'local') throw new Error('只能编辑本地类型的规则集');
+
+        // 编译为 srs 文件
+        const result = compileLocalRuleSet(providerId, rawData);
+        
+        if (result.error) {
+            throw new Error(result.error);
+        }
+
+        // 更新数据库
+        dbUtils.updateLocalRuleProviderData(providerId, rawData, result.srsPath || undefined);
+
+        // 如果规则集被启用的策略引用，重新生成配置
+        await regenerateConfigForRuleProviderIfNeeded(providerId, 'local rule provider saved', sendToRenderer, log);
+        
+        return { success: true, srsPath: result.srsPath };
     });
 
 }

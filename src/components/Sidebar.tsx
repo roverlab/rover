@@ -1,5 +1,5 @@
 import React from 'react';
-import { Activity, Globe, FileText, Settings, List, Zap, GitBranch, Route, ScrollText } from 'lucide-react';
+import { Activity, Globe, FileText, Settings, List, Zap, GitBranch, Route, ScrollText, Network } from 'lucide-react';
 import { Page } from '../App';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -21,6 +21,7 @@ const NAV_ITEMS: { id: Page; label: string; icon: React.ElementType }[] = [
   { id: 'Logs', label: '日志', icon: ScrollText },
   { id: 'Connections', label: '连接', icon: Zap },
   { id: 'Policies', label: '策略', icon: GitBranch },
+  { id: 'DnsPolicies', label: 'DNS策略', icon: Network },
   { id: 'RuleProviders', label: '规则集', icon: List },
   { id: 'Settings', label: '设置', icon: Settings },
 ];

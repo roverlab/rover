@@ -2,12 +2,12 @@
   "dns": {
     "servers": [
       {
-        "tag": "google",
-        "type": "tls",
+        "tag": "Google",
+        "type": "udp",
         "server": "8.8.8.8"
       },
       {
-        "tag": "aliyun",
+        "tag": "阿里云",
         "type": "udp",
         "server": "223.5.5.5"
       },
@@ -20,14 +20,16 @@
     ],
     "rules": [
       {
+        "name": "🎯 国内域名解析",
         "rule_set": "geosite:geolocation-cn",
-        "server": "aliyun"
+        "server": "阿里云"
       },
       {
         "query_type": [
           "A",
           "AAAA"
         ],
+        "name": "🌏 其它域名IP伪装",
         "server": "fakeip"
       }
     ],
@@ -73,7 +75,7 @@
       "name": "🔍 未匹配域名DNS解析",
       "raw_data": {
         "action": "resolve",
-        "server": "google"
+        "server": "Google"
       }
     },
     {

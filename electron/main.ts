@@ -53,7 +53,7 @@ import { createTray, updateTrayMenu } from './tray';
 import * as scheduler from './scheduler';
 import { policiesToSingboxConfig } from '../src/types/policy';
 import { initLogger, createLogger, getLogDir, getLogFiles, clearAllLogs, redirectConsole, log as loggerLog, logBatch } from './logger';
-import { getDataDir, getProfilesDir, getGeoDir, resolveDataPath, getAppRootPath, getDistPath, getPublicPath, getPreloadPath, getTemplatesIndexPath, getPresetTemplatesPath, getBuildInfoPath } from './paths';
+import { getDataDir, getProfilesDir, getGeoDir, resolveDataPath, getAppRootPath, getDistPath, getPublicPath, getPreloadPath, getTemplatesIndexPath, getPresetTemplatesPath, getBuildInfoPath, getSingboxLogPath } from './paths';
 import {
     getConfigPath,
     readConfig,
@@ -68,6 +68,7 @@ import {
 import {
     loadPresetRulesets,
     loadBuiltinRulesets,
+    getAllRuleSetsGrouped,
     addRuleProvidersFromPreset as addRuleProvidersFromPresetFn,
     buildProvidersForConfig,
     registerRuleProviderIpcHandlers
@@ -75,6 +76,8 @@ import {
 import { decompileSrsToJson } from './ruleset-utils';
 import { validateProfileContent } from './validation';
 import * as subscription from './subscription';
+import { fetchIpThroughProxy, fetchIpDirect } from './network-check';
+import * as configBackup from './config-backup';
 import type { LogLevel, LogEntry } from './logger';
 
 const log = createLogger('Main');
@@ -114,6 +117,96 @@ ipcMain.handle('core:getAutoLaunch', () => {
 
 ipcMain.handle('core:openUserDataPath', () => {
     shell.openPath(getDataDir());
+});
+
+ipcMain.handle('core:openExternalUrl', (_, url: string) => {
+    if (url && (url.startsWith('https://') || url.startsWith('http://'))) {
+        shell.openExternal(url);
+    }
+});
+
+// 配置导出/导入
+ipcMain.handle('config:export', async (event) => {
+    const parentWindow = BrowserWindow.fromWebContents(event.sender) || undefined;
+    const defaultName = `rover-config-${new Date().toISOString().slice(0, 10)}.zip`;
+    const result = await dialog.showSaveDialog(parentWindow, {
+        title: '导出应用配置',
+        defaultPath: defaultName,
+        filters: [{ name: 'ZIP 备份', extensions: ['zip'] }, { name: 'All Files', extensions: ['*'] }],
+    });
+    if (result.canceled || !result.filePath) return { ok: false, path: null };
+    try {
+        const buffer = configBackup.createBackupZipBuffer();
+        fs.writeFileSync(result.filePath, buffer);
+        log.info(`[Config] export success: ${result.filePath}`);
+        await dialog.showMessageBox(parentWindow ?? undefined, {
+            type: 'info',
+            title: '导出成功',
+            message: '配置已导出',
+            detail: result.filePath,
+        });
+        return { ok: true, path: result.filePath };
+    } catch (err: any) {
+        log.error(`[Config] export failed: ${err?.message || err}`);
+        throw err;
+    }
+});
+
+ipcMain.handle('config:import', async (event) => {
+    const parentWindow = BrowserWindow.fromWebContents(event.sender) || undefined;
+    const result = await dialog.showOpenDialog(parentWindow, {
+        title: '导入应用配置',
+        filters: [{ name: 'ZIP 备份', extensions: ['zip'] }, { name: 'All Files', extensions: ['*'] }],
+        properties: ['openFile'],
+    });
+    if (result.canceled || result.filePaths.length === 0) return { ok: false };
+    try {
+        configBackup.restoreFromZip(result.filePaths[0]);
+        scheduler.initSchedulers();
+        log.info(`[Config] import success: ${result.filePaths[0]}`);
+
+        // 导入成功后：下载订阅配置、重新生成主配置、尝试重启内核
+        sendToRenderer('config-generate-start');
+        sendToRenderer('config-import-step', 'restoring');
+        try {
+            const profiles = dbUtils.getProfiles();
+            const remoteProfiles = profiles.filter((p) => p.type === 'remote' && p.url);
+            if (remoteProfiles.length > 0) {
+                sendToRenderer('config-import-step', 'downloading');
+                log.info(`[Config] importing: downloading ${remoteProfiles.length} remote profile(s)`);
+                const downloadResults = await Promise.allSettled(
+                    remoteProfiles.map((p) => subscription.downloadProfile(p.id))
+                );
+                const failed = downloadResults.filter((r) => r.status === 'rejected');
+                if (failed.length > 0) {
+                    log.warn(`[Config] import: ${failed.length} profile(s) download failed`);
+                }
+            }
+
+            const selectedProfile = dbUtils.getSelectedProfile();
+            if (selectedProfile) {
+                sendToRenderer('config-import-step', 'generating');
+                log.info(`[Config] import: regenerating config for profile=${selectedProfile.id}`);
+                await generateConfigFile(selectedProfile.id, sendToRenderer);
+                // generateConfigFile 内部已发送 config-generate-end
+            } else {
+                log.info('[Config] import: no selected profile, skip config regeneration');
+            }
+            sendToRenderer('config-import-step', 'done');
+        } finally {
+            // 无选中 profile 时 generateConfigFile 未调用，需手动发送 end 以关闭 loading
+            const selectedProfile = dbUtils.getSelectedProfile();
+            if (!selectedProfile) {
+                sendToRenderer('config-generate-end');
+            }
+        }
+
+        return { ok: true };
+    } catch (err: any) {
+        sendToRenderer('config-generate-end');
+        log.error(`[Config] import failed: ${err?.message || err}`);
+        throw err;
+    }
 });
 
 scheduler.setRuleProviderUpdatedHook(async (providerId) => {
@@ -263,6 +356,25 @@ ipcMain.handle('db:getProfilePolicy', (_, profileId) => dbUtils.getProfilePolicy
 ipcMain.handle('db:getProfilePolicyByPolicyId', (_, profileId, policyId) => dbUtils.getProfilePolicyByPolicyId(profileId, policyId));
 ipcMain.handle('db:setProfilePolicy', (_, profileId, policyId, preferredOutbounds) => dbUtils.setProfilePolicy(profileId, policyId, preferredOutbounds));
 ipcMain.handle('db:deleteProfilePolicy', (_, profileId) => dbUtils.deleteProfilePolicy(profileId));
+// DNS Policies (配置生成在前端触发)
+ipcMain.handle('db:getDnsPolicies', () => dbUtils.getDnsPolicies());
+ipcMain.handle('db:getDnsPolicyById', (_, id) => dbUtils.getDnsPolicyById(id));
+ipcMain.handle('db:addDnsPolicy', (_, policy) => dbUtils.addDnsPolicy(policy));
+ipcMain.handle('db:updateDnsPolicy', (_, id, updates) => dbUtils.updateDnsPolicy(id, updates));
+ipcMain.handle('db:deleteDnsPolicy', (_, id) => dbUtils.deleteDnsPolicy(id));
+ipcMain.handle('db:updateDnsPoliciesOrder', (_, orders) => dbUtils.updateDnsPoliciesOrder(orders));
+ipcMain.handle('db:clearDnsPolicies', () => dbUtils.clearDnsPolicies());
+// Profile DNS Policies
+ipcMain.handle('db:getProfileDnsPolicies', () => dbUtils.getProfileDnsPolicies());
+ipcMain.handle('db:getProfileDnsPolicy', (_, profileId) => dbUtils.getProfileDnsPolicy(profileId));
+ipcMain.handle('db:getProfileDnsPolicyByPolicyId', (_, profileId, dnsPolicyId) => dbUtils.getProfileDnsPolicyByPolicyId(profileId, dnsPolicyId));
+ipcMain.handle('db:setProfileDnsPolicy', (_, profileId, dnsPolicyId, dnsServerId) => dbUtils.setProfileDnsPolicy(profileId, dnsPolicyId, dnsServerId));
+ipcMain.handle('db:deleteProfileDnsPolicy', (_, profileId) => dbUtils.deleteProfileDnsPolicy(profileId));
+ipcMain.handle('db:getDnsServers', () => dbUtils.getDnsServers());
+ipcMain.handle('db:getDnsServerRefs', (_, tag: string) => dbUtils.getDnsServerRefs(tag));
+ipcMain.handle('db:addDnsServer', (_, server: any) => dbUtils.addDnsServer(server));
+ipcMain.handle('db:updateDnsServer', (_, id: string, updates: any) => dbUtils.updateDnsServer(id, updates));
+ipcMain.handle('db:deleteDnsServer', (_, id: string) => dbUtils.deleteDnsServer(id));
 ipcMain.handle('db:clearRuleProviders', async () => {
     dbUtils.clearRuleProviders();
     scheduler.initSchedulers();
@@ -271,6 +383,7 @@ ipcMain.handle('db:clearRuleProviders', async () => {
 
 ipcMain.handle('core:getPresetRulesets', () => loadPresetRulesets());
 ipcMain.handle('core:getBuiltinRulesets', () => loadBuiltinRulesets());
+ipcMain.handle('core:getAllRuleSetsGrouped', () => getAllRuleSetsGrouped());
 
 ipcMain.handle('core:addRuleProvidersFromPreset', async (_, aclIds: string[]) => {
     return addRuleProvidersFromPresetFn(aclIds, () =>
@@ -406,6 +519,26 @@ ipcMain.handle('core:restart', async () => {
 ipcMain.handle('core:setSystemProxy', (_, enable) => proxy.setSystemProxy(enable));
 ipcMain.handle('core:getSystemProxyStatus', () => proxy.getSystemProxyStatus());
 
+// 网络检测：内核运行中走代理，未启动走直连
+ipcMain.handle('core:fetchIpThroughProxy', async () => {
+    log.info('[网络检测] 收到代理检测请求');
+    try {
+        return await fetchIpThroughProxy();
+    } catch (e: any) {
+        log.warn(`[网络检测] 通过代理获取 IP 失败: ${e?.message || e}`);
+        return null;
+    }
+});
+ipcMain.handle('core:fetchIpDirect', async () => {
+    log.info('[网络检测] 收到直连检测请求');
+    try {
+        return await fetchIpDirect();
+    } catch (e: any) {
+        log.warn(`[网络检测] 直连获取 IP 失败: ${e?.message || e}`);
+        return null;
+    }
+});
+
 // 更新托盘菜单
 ipcMain.handle('core:updateTrayMenu', () => {
     log.info('IPC core:updateTrayMenu');
@@ -539,7 +672,8 @@ ipcMain.handle('core:getActiveConfig', async () => {
         return readConfig();
     } catch (e) {
         console.error('Failed to get active config:', e);
-        return null;
+        // 解析错误等需要抛给前端显示，只有文件不存在时 readConfig 才返回 null（不会进 catch）
+        throw e;
     }
 });
 
@@ -833,6 +967,52 @@ ipcMain.handle('logger:clearAllLogs', () => clearAllLogs());
 ipcMain.handle('logger:log', (_event, level: LogLevel, module: string, message: string) => loggerLog(level, module, message));
 ipcMain.handle('logger:logBatch', (_event, entries: LogEntry[]) => logBatch(entries));
 
+// 读取 sing-box 内核日志文件（本地文件，不调接口）
+// 容错：编码回退、移除不可打印字符、读取异常时返回空
+ipcMain.handle('singbox:readLog', async (_event, options?: { fromLine?: number }) => {
+    const logPath = getSingboxLogPath();
+    if (!fs.existsSync(logPath)) {
+        return { lines: [], totalLines: 0 };
+    }
+    try {
+        let buf: Buffer;
+        try {
+            buf = fs.readFileSync(logPath);
+        } catch (readErr) {
+            log.error(`读取 sing-box 日志文件失败: ${(readErr as Error).message}`);
+            return { lines: [], totalLines: 0 };
+        }
+        let content: string;
+        try {
+            content = buf.toString('utf8');
+        } catch {
+            content = buf.toString('latin1');
+        }
+        // 移除不可打印字符，避免前端解析异常
+        content = content.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '');
+        const allLines = content.split(/\r?\n/);
+        const totalLines = allLines.length;
+        const fromLine = Math.max(0, options?.fromLine ?? 0);
+        const lines = fromLine >= totalLines ? [] : allLines.slice(fromLine);
+        return { lines, totalLines };
+    } catch (err) {
+        log.error(`读取 sing-box 日志失败: ${(err as Error).message}`);
+        return { lines: [], totalLines: 0 };
+    }
+});
+
+// 清理 sing-box 内核日志文件（写入空字符）
+ipcMain.handle('singbox:clearLog', async () => {
+    const logPath = getSingboxLogPath();
+    try {
+        fs.writeFileSync(logPath, '', 'utf-8');
+        return { success: true };
+    } catch (err) {
+        log.error(`清理 sing-box 日志失败: ${(err as Error).message}`);
+        return { success: false, error: (err as Error).message };
+    }
+});
+
 // 防止重复启动：获取单实例锁
 let gotTheLock = app.requestSingleInstanceLock();
 
@@ -871,16 +1051,9 @@ app.whenReady().then(async () => {
     log.info(`操作系统: ${process.platform} ${process.arch}`);
     log.info(`用户数据目录: ${getDataDir()}`);
 
-    // 迁移旧的数字型 profile id 为短 id（与规则集一致）
-    dbUtils.migrateProfileIdsToShortId();
-    dbUtils.migratePathsToRelative();
-    dbUtils.migrateRuleProviderFilePrefix();
-    
-    // 迁移时间格式为ISO标准格式
-    dbUtils.migrateDateTimeFormats();
-
-    // 清理无效的 profilePolicies 条目（profile 或 policy 不存在的）
+    // 清理无效的 profile.policies / profile.dnsPolicies 条目
     dbUtils.cleanupProfilePolicies();
+    dbUtils.cleanupProfileDnsPolicies();
 
     createWindow();
 

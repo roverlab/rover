@@ -12,6 +12,7 @@ import * as jschardet from 'jschardet';
 import * as singbox from './singbox';
 import {  clashRuleSetToSingbox } from './clash-rule-set';
 import { getRulesetsDir } from './paths';
+import type { LocalRuleSetData } from '../src/types/rule-providers';
 
 // 从共享模块导入并重新导出（保持向后兼容）
 import { isBuiltinRuleSet, getRuleProviderFileBaseName } from '../src/shared/ruleset';
@@ -170,5 +171,72 @@ export async function downloadAndConvertRuleSet(
     } catch (dlErr: any) {
         console.error('Failed to download rule set:', dlErr.message);
         return { srsPath: null, error: `下载失败: ${dlErr.message}` };
+    }
+}
+
+/**
+ * 编译本地规则集数据为 SRS 文件
+ * @param providerId 规则集 ID
+ * @param rawData 本地规则集数据
+ * @returns { srsPath: string | null, error: string | null }
+ */
+export function compileLocalRuleSet(
+    providerId: string,
+    rawData: LocalRuleSetData
+): { srsPath: string | null; error: string | null } {
+    const rulesetsDir = getRulesetsDir();
+    const fileBase = getRuleProviderFileBaseName(providerId);
+    const srsPath = path.join(rulesetsDir, `${fileBase}.srs`);
+    const jsonPath = path.join(rulesetsDir, `${fileBase}.json`);
+
+    // 验证规则数据
+    if (!rawData.rules || rawData.rules.length === 0) {
+        return { srsPath: null, error: '规则数据为空' };
+    }
+
+    try {
+        // 确保 rulesets 目录存在
+        if (!fs.existsSync(rulesetsDir)) {
+            fs.mkdirSync(rulesetsDir, { recursive: true });
+        }
+
+        // 保存 JSON 文件（用于编译）
+        const jsonContent = JSON.stringify(rawData, null, 2);
+        fs.writeFileSync(jsonPath, jsonContent, 'utf8');
+
+        try {
+            // 使用 sing-box 编译为 .srs
+            const singboxPath = singbox.getSingboxBinaryPath();
+            if (!singboxPath || !fs.existsSync(singboxPath)) {
+                console.error('sing-box 可执行文件不存在，无法转换为 SRS 格式');
+                return { srsPath: null, error: 'sing-box 可执行文件不存在，无法转换' };
+            }
+
+            const result = spawnSync(singboxPath, ['rule-set', 'compile', '--output', srsPath, jsonPath], {
+                encoding: 'utf8',
+                timeout: 60000,
+            });
+
+            if (result.status !== 0) {
+                const errMsg = (result.stderr || result.stdout || result.error?.message || `退出码 ${result.status}`).trim();
+                console.error(`SRS编译失败: ${errMsg}`);
+                return { srsPath: null, error: `SRS编译失败: ${errMsg}` };
+            }
+
+            console.log(`本地规则集已编译为 .srs: ${srsPath}`);
+            return { srsPath, error: null };
+        } finally {
+            // 清理临时 JSON 文件
+            try {
+                if (fs.existsSync(jsonPath)) {
+                    fs.unlinkSync(jsonPath);
+                }
+            } catch (cleanupError: any) {
+                console.error(`清理临时文件失败: ${cleanupError.message}`);
+            }
+        }
+    } catch (err: any) {
+        console.error('Failed to compile local rule set:', err.message);
+        return { srsPath: null, error: `编译失败: ${err.message}` };
     }
 }

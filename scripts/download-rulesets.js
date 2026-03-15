@@ -237,9 +237,17 @@ async function processJsonFile(jsonPath) {
     const results = await runWithConcurrency(downloadTasks, CONCURRENT_LIMIT);
     
     const successCount = results.filter(r => r.status === 'fulfilled' && r.value.success).length;
-    const failCount = results.filter(r => r.status === 'rejected' || !r.value.success).length;
+    const failedItems = results
+        .filter(r => r.status === 'rejected' || (r.value && !r.value.success))
+        .map(r => {
+            if (r.status === 'rejected') {
+                return { name: 'Unknown', error: r.reason?.message || String(r.reason) };
+            }
+            return { name:  r.value.item?.id || 'Unknown', error: r.value.error };
+        });
+    const failCount = failedItems.length;
 
-    return { successCount, failCount };
+    return { successCount, failCount, failedItems };
 }
 
 // 主函数
@@ -262,6 +270,7 @@ async function main() {
 
     let totalSuccess = 0;
     let totalFail = 0;
+    const failedItems = [];
 
     for (const file of jsonFiles) {
         const jsonPath = path.join(sourceDir, file);
@@ -269,6 +278,9 @@ async function main() {
             const result = await processJsonFile(jsonPath);
             totalSuccess += result.successCount;
             totalFail += result.failCount;
+            if (result.failedItems) {
+                for (const item of result.failedItems) failedItems.push(item);
+            }
         } catch (error) {
             console.error(`  ✗ Error processing ${file}: ${error.message}`);
         }
@@ -277,6 +289,14 @@ async function main() {
     console.log(`\n=== Download Summary ===`);
     console.log(`Total Success: ${totalSuccess}`);
     console.log(`Total Failed: ${totalFail}`);
+    
+    if (failedItems.length > 0) {
+        console.log('\nFailed items:');
+        for (const item of failedItems) {
+            console.log(`  ✗ ${item.name}: ${item.error}`);
+        }
+    }
+    
     console.log('Done!');
 }
 

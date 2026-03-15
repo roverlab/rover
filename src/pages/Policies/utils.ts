@@ -2,6 +2,7 @@
  * 策略页面工具函数
  */
 import type { Policy } from '../../types/policy';
+import { getPolicyRuleSet } from '../../types/policy';
 import type { RuleProvider } from '../../types/rule-providers';
 import { OUTBOUND_OPTIONS } from '../../types/policy';
 
@@ -88,22 +89,24 @@ export function getPolicyOutbound(policy: Policy): string | undefined {
 
 export function getPolicyRuleSets(policy: Policy): string[] {
     if (policy.type === 'raw') return [];
-    const values = (policy as any).ruleSetBuildIn ?? (policy as any).rule_set_build_in ?? [];
-    return Array.isArray(values) ? values : [];
+    return getPolicyRuleSet(policy);
+}
+
+function countRulesInLogical(lr: { rules: unknown[] }): number {
+    return lr.rules.reduce<number>((sum, r) => {
+        if (r && typeof r === 'object' && 'type' in r && (r as { type: string }).type === 'logical' && 'rules' in r) {
+            return sum + countRulesInLogical(r as { rules: unknown[] });
+        }
+        return sum + 1;
+    }, 0);
 }
 
 export function getPolicyMatchCount(policy: Policy): number {
-    return (
-        getPolicyRuleSets(policy).length +
-        (policy.domain?.length ?? 0) +
-        (policy.domain_keyword?.length ?? 0) +
-        (policy.domain_suffix?.length ?? 0) +
-        (policy.ip_cidr?.length ?? 0) +
-        (policy.source_ip_cidr?.length ?? 0) +
-        (policy.processName?.length ?? 0) +
-        (policy.package?.length ?? 0) +
-        (policy.port?.length ?? 0)
-    );
+    const lr = (policy as any).logical_rule;
+    if (lr && typeof lr === 'object' && 'rules' in lr && Array.isArray((lr as { rules: unknown[] }).rules)) {
+        return countRulesInLogical(lr as { rules: unknown[] });
+    }
+    return getPolicyRuleSets(policy).length;
 }
 
 export function getPolicyPreviewBadges(
@@ -119,20 +122,10 @@ export function getPolicyPreviewBadges(
         });
     });
 
-    if ((policy.domain?.length ?? 0) > 0) {
-        badges.push({ label: `域名 ${policy.domain!.length}`, className: 'bg-sky-50 text-sky-700 border-sky-100' });
-    }
-    if ((policy.domain_keyword?.length ?? 0) > 0) {
-        badges.push({ label: `关键词 ${policy.domain_keyword!.length}`, className: 'bg-violet-50 text-violet-700 border-violet-100' });
-    }
-    if ((policy.processName?.length ?? 0) > 0) {
-        badges.push({ label: `进程 ${policy.processName!.length}`, className: 'bg-emerald-50 text-emerald-700 border-emerald-100' });
-    }
-    if ((policy.package?.length ?? 0) > 0) {
-        badges.push({ label: `包名 ${policy.package!.length}`, className: 'bg-amber-50 text-amber-700 border-amber-100' });
-    }
-    if ((policy.ip_cidr?.length ?? 0) > 0) {
-        badges.push({ label: `IP ${policy.ip_cidr!.length}`, className: 'bg-orange-50 text-orange-700 border-orange-100' });
+    const lr = (policy as any).logical_rule;
+    if (lr && typeof lr === 'object' && 'rules' in lr && Array.isArray((lr as { rules: unknown[] }).rules)) {
+        const n = countRulesInLogical(lr as { rules: unknown[] });
+        if (n > 0) badges.push({ label: `规则 ×${n}`, className: 'bg-sky-50 text-sky-700 border-sky-100' });
     }
 
     return badges.slice(0, 5);

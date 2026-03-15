@@ -17,7 +17,7 @@ export default [
   {
     name: 'renderer',
     target: 'web',
-    experiments: { css: true },
+    experiments: { css: true,cache: {type: 'memory'} },
     entry: './src/main.tsx',
     output: {
       path: path.join(__dirname, 'dist'),

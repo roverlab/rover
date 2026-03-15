@@ -1,9 +1,27 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import type { Policy, PolicyType } from '../../types/policy';
-import type { RuleProvider } from '../../types/rule-providers';
-import { PolicyEditModal, type PolicyEditFormState } from './PolicyEditModal';
-import { PolicyMultiLineModal } from './PolicyMultiLineModal';
+import React from 'react';
+import type { Policy } from '../../types/policy';
+import { getPolicyRuleSet, OUTBOUND_OPTIONS } from '../../types/policy';
+import {
+    PolicyEditModalBase,
+    type PolicyEditFormStateBase,
+    type PolicyFieldConfig,
+} from './PolicyEditModalBase';
+import {
+    PolicyEditModalBaseContainer,
+    createGetInitialFormState,
+    createBuildPolicyData,
+    type BasePolicy,
+    type PolicyFieldDataConfig,
+} from './PolicyEditModalBaseContainer';
 import { useProfile } from '../../contexts/ProfileContext';
+import { PolicyPreferredOutboundModal } from './PolicyPreferredOutboundModal';
+import { cn } from '../../components/Sidebar';
+import { X, ChevronDown } from 'lucide-react';
+
+export interface PolicyEditFormState extends PolicyEditFormStateBase {
+    outbound: string;
+    preferredOutbounds: string[];
+}
 
 export interface PolicyEditModalContainerProps {
     open: boolean;
@@ -14,84 +32,31 @@ export interface PolicyEditModalContainerProps {
     addNotification: (message: string, type?: 'success' | 'error' | 'info') => void;
 }
 
-/**
- * 从数组字段中提取 ID Set
- * @param arr 数组
- * @returns ID Set
- */
-const extractIdsFromArray = (arr: string[] | undefined): Set<string> => {
-    if (!arr || !Array.isArray(arr)) return new Set();
-    return new Set(arr.filter(v => typeof v === 'string'));
+// Policy字段数据配置（用于工厂函数）
+const POLICY_FIELD_DATA_CONFIG: PolicyFieldDataConfig<PolicyEditFormState> = {
+    fieldName: 'outbound',
+    defaultValue: 'direct_out',
+    validValues: ['direct_out', 'block_out', 'selector_out'],
 };
 
-/**
- * 从 editingPolicy 的 ruleSetBuildIn 中提取指定前缀的规则集 ID
- * ID 已经包含前缀，直接返回完整值
- * @param editingPolicy 编辑的策略
- * @param prefixes 前缀数组，用于筛选规则集（如 ['acl:', 'geosite:', 'geoip:']）
- * @returns 提取的 ID Set
- */
-const extractRuleSetIds = (editingPolicy: Policy | null, prefixes: string[]): Set<string> => {
-    if (!editingPolicy || editingPolicy.type === 'raw') {
-        return new Set();
-    }
-    const rs = (editingPolicy as any).ruleSetBuildIn ?? (editingPolicy as any).rule_set_build_in ?? [];
-    const ids = new Set<string>();
-    for (const v of Array.isArray(rs) ? rs : []) {
-        if (typeof v !== 'string') continue;
-        if (prefixes.some(p => v.startsWith(p))) {
-            ids.add(v);  // ID 已经包含前缀，直接使用
-        }
-    }
-    return ids;
+// Policy字段UI配置（用于Modal渲染）
+const POLICY_FIELD_CONFIG: PolicyFieldConfig<PolicyEditFormState> = {
+    fieldName: 'outbound',
+    fieldLabel: '出站',
+    options: OUTBOUND_OPTIONS,
 };
 
-const getInitialFormState = (
-    editingPolicy: Policy | null,
-    ruleProviderIds: Set<string>,
-    builtinRuleSetIds: Set<string>
-): PolicyEditFormState => {
-    if (!editingPolicy) {
-        return {
-            policyType: 'default',
-            name: '',
-            outbound: 'direct_out',
-            preferredOutbounds: [],
-            rawDataContent: '',
-            selectedRuleProviderIds: new Set(),
-            selectedBuiltinRuleSetIds: new Set(),
-            processNames: [],
-            domain: [],
-            domainKeyword: [],
-            domainSuffix: [],
-            port: [],
-            ipCidr: [],
-            sourceIpCidr: [],
-        };
-    }
-    const obFromPolicy = editingPolicy.type === 'raw' && editingPolicy.raw_data
-        ? (editingPolicy.raw_data as { outbound?: string }).outbound
-        : editingPolicy.outbound;
-    const ob = ['direct_out', 'block_out', 'selector_out'].includes(obFromPolicy ?? '') ? (obFromPolicy ?? 'direct_out') : 'direct_out';
-    return {
-        policyType: (editingPolicy.type || 'default') as PolicyType,
-        name: editingPolicy.name,
-        outbound: ob,
-        preferredOutbounds: [],
-        rawDataContent: editingPolicy.type === 'raw' && editingPolicy.raw_data
-            ? JSON.stringify(editingPolicy.raw_data, null, 2)
-            : '',
-        selectedRuleProviderIds: ruleProviderIds,
-        selectedBuiltinRuleSetIds: builtinRuleSetIds,
-        processNames: editingPolicy.processName ?? [],
-        domain: editingPolicy.domain ?? [],
-        domainKeyword: editingPolicy.domain_keyword ?? [],
-        domainSuffix: editingPolicy.domain_suffix ?? [],
-        port: editingPolicy.port?.map(String) ?? [],
-        ipCidr: editingPolicy.ip_cidr ?? [],
-        sourceIpCidr: editingPolicy.source_ip_cidr ?? [],
-    };
-};
+// 使用工厂函数创建 getInitialFormState，额外字段为 preferredOutbounds
+const getInitialFormState = createGetInitialFormState(
+    POLICY_FIELD_DATA_CONFIG,
+    () => ({ preferredOutbounds: [] }) as Partial<PolicyEditFormState>
+);
+
+// 使用工厂函数创建 buildPolicyData，添加 preferredOutbounds 字段
+const buildPolicyData = createBuildPolicyData(
+    POLICY_FIELD_DATA_CONFIG,
+    (form) => ({ preferredOutbounds: form.preferredOutbounds })
+);
 
 export function PolicyEditModalContainer({
     open,
@@ -102,323 +67,158 @@ export function PolicyEditModalContainer({
     addNotification,
 }: PolicyEditModalContainerProps) {
     const { seed } = useProfile();
-    const [form, setForm] = useState<PolicyEditFormState>(() => getInitialFormState(null, new Set(), new Set()));
-    const [ruleProviders, setRuleProviders] = useState<RuleProvider[]>([]);
-    const [builtinRulesets, setBuiltinRulesets] = useState<RuleProvider[]>([]);
-    const [availableOutbounds, setAvailableOutbounds] = useState<Array<{ tag: string; type: string; all?: string[] }>>([]);
-    const [showRuleSetModal, setShowRuleSetModal] = useState(false);
-    const [showBuiltinRuleSetModal, setShowBuiltinRuleSetModal] = useState(false);
-    const [showPreferredOutboundModal, setShowPreferredOutboundModal] = useState(false);
-    const [showMultiLineModal, setShowMultiLineModal] = useState(false);
-    const [multiLineTitle, setMultiLineTitle] = useState('');
-    const [multiLineValue, setMultiLineValue] = useState('');
-    const [multiLineField, setMultiLineField] = useState<{ setter: (value: string[]) => void } | null>(null);
-
-    useEffect(() => {
-        if (open) {
-            // 从 ruleSetAcl 字段读取自定义规则集（数据库规则集）
-            const ruleProviderIds = extractIdsFromArray((editingPolicy as any)?.ruleSetAcl);
-            
-            // 从 ruleSetBuildIn 字段读取内置规则集（geosite:, geoip:, acl: 内置规则集）
-            const builtinRuleSetIds = extractRuleSetIds(editingPolicy, ['acl:']);
-            
-            // 立即设置初始表单状态
-            setForm(getInitialFormState(editingPolicy, ruleProviderIds, builtinRuleSetIds));
-            
-            setShowRuleSetModal(false);
-            setShowBuiltinRuleSetModal(false);
-            setShowPreferredOutboundModal(false);
-            
-            // 并行加载所有数据
-            Promise.all([
-                window.ipcRenderer.core.getSelectedProfile(),
-                window.ipcRenderer.db.getRuleProviders(),
-                window.ipcRenderer.core.getBuiltinRulesets(),
-                window.ipcRenderer.core.getAvailableOutbounds(),
-            ]).then(([selectedProfileResult, ruleProvidersData, builtinRulesetsData, outboundsData]) => {
-                const currentProfileId = (selectedProfileResult as any)?.profile?.id;
-                const rpData = ruleProvidersData as RuleProvider[];
-                const brData = builtinRulesetsData as RuleProvider[];
-                
-                // 更新规则集数据
-                setRuleProviders(rpData || []);
-                setBuiltinRulesets(brData || []);
-                setAvailableOutbounds((outboundsData as Array<{ tag: string; type: string; all?: string[] }>) || []);
-                
-                // 从 ruleSetAcl 字段读取自定义规则集（数据库规则集）
-                // 从 ruleSetBuildIn 字段读取内置规则集
-                if (editingPolicy) {
-                    const rpIds = new Set((rpData || []).map(p => p.id));
-                    const brIds = new Set((brData || []).map(p => p.id));
-                    
-                    // 自定义规则集：从 ruleSetAcl 字段读取
-                    const ruleProviderIdsFromAcl = extractIdsFromArray((editingPolicy as any).ruleSetAcl);
-                    
-                    // 内置规则集：从 ruleSetBuildIn 字段读取 acl: 开头的
-                    const builtinRuleSetIds = new Set<string>();
-                    const rs = (editingPolicy as any).ruleSetBuildIn ?? (editingPolicy as any).rule_set_build_in ?? [];
-                    for (const v of Array.isArray(rs) ? rs : []) {
-                        if (typeof v !== 'string') continue;
-                        if (brIds.has(v)) {
-                            builtinRuleSetIds.add(v);
-                        }
-                    }
-                    
-                    setForm(prev => ({
-                        ...prev,
-                        selectedRuleProviderIds: ruleProviderIdsFromAcl,
-                        selectedBuiltinRuleSetIds: builtinRuleSetIds,
-                    }));
-                }
-                
-                // 加载当前profile的preferred outbounds（仅编辑时加载，添加时不加载）
-                if (currentProfileId && editingPolicy) {
-                    window.ipcRenderer.db.getProfilePolicyByPolicyId(currentProfileId, editingPolicy.id).then((profilePolicy: any) => {
-                        if (profilePolicy?.preferred_outbounds) {
-                            setForm(prev => ({ ...prev, preferredOutbounds: profilePolicy.preferred_outbounds }));
-                        }
-                    }).catch((err: unknown) => {
-                        console.error('Failed to load profile policy by policy id:', err);
-                    });
-                }
-                // 注意：添加新策略时，不加载默认的 preferred_outbounds，保持为空数组
-            }).catch((err: unknown) => {
-                console.error('Failed to load data:', err);
-            });
-        }
-    }, [open, editingPolicy?.id, seed]);
-
-    // 处理数据库规则集的选中状态（当 ruleProviders 加载后进行名称匹配补充）
-    useEffect(() => {
-        if (open && ruleProviders.length > 0 && editingPolicy) {
-            const rs = (editingPolicy as any).ruleSetBuildIn ?? (editingPolicy as any).rule_set_build_in ?? [];
-            const rpIds = new Set(ruleProviders.map(p => p.id));
-            const rpNames = new Set(ruleProviders.map(p => p.name));
-            const selectedIds = new Set<string>();
-            for (const v of Array.isArray(rs) ? rs : []) {
-                if (typeof v !== 'string') continue;
-                // 如果已经是完整的 ID 匹配，跳过
-                if (rpIds.has(v)) continue;
-                // 处理旧的格式：可能是纯名称，或者 acl:名称
-                let nameToMatch = v;
-                if (v.startsWith('acl:')) {
-                    nameToMatch = v.substring(4);
-                }
-                // 如果是 geosite/geoip 前缀，跳过
-                if (nameToMatch.startsWith('geosite:') || nameToMatch.startsWith('geoip:')) continue;
-                // 尝试按名称匹配
-                const byName = ruleProviders.find(p => p.name === nameToMatch);
-                if (byName) selectedIds.add(byName.id);
-            }
-            if (selectedIds.size > 0) {
-                setForm(prev => ({
-                    ...prev,
-                    selectedRuleProviderIds: new Set([...prev.selectedRuleProviderIds, ...selectedIds]),
-                }));
-            }
-        }
-    }, [open, ruleProviders, editingPolicy?.id]);
-
-    // 处理内置规则集的选中状态（当 builtinRulesets 加载后进行名称匹配补充）
-    useEffect(() => {
-        if (open && builtinRulesets.length > 0 && editingPolicy) {
-            const rs = (editingPolicy as any).ruleSetBuildIn ?? (editingPolicy as any).rule_set_build_in ?? [];
-            const brIds = new Set(builtinRulesets.map(p => p.id));
-            const selectedBuiltinIds = new Set<string>();
-            for (const v of Array.isArray(rs) ? rs : []) {
-                if (typeof v !== 'string') continue;
-                // 如果已经是完整的 ID 匹配，跳过
-                if (brIds.has(v)) continue;
-                // 处理旧的格式：可能是 acl:名称
-                if (v.startsWith('acl:')) {
-                    const nameToMatch = v.substring(4);
-                    // 尝试按名称匹配
-                    const byName = builtinRulesets.find(p => p.name === nameToMatch);
-                    if (byName) selectedBuiltinIds.add(byName.id);
-                }
-            }
-            if (selectedBuiltinIds.size > 0) {
-                setForm(prev => ({
-                    ...prev,
-                    selectedBuiltinRuleSetIds: new Set([...prev.selectedBuiltinRuleSetIds, ...selectedBuiltinIds]),
-                }));
-            }
-        }
-    }, [open, builtinRulesets, editingPolicy?.id]);
-
-    const unavailableAclRefs = useMemo(() => {
-        if (!editingPolicy || !open) return [];
-        const missing: string[] = [];
-        
-        // 检查 ruleSetAcl 中的不可用项（自定义规则集）
-        const ruleSetAcl = (editingPolicy as any).ruleSetAcl ?? [];
-        const providerIds = new Set(ruleProviders.map(p => p.id));
-        for (const v of ruleSetAcl) {
-            if (typeof v !== 'string') continue;
-            if (!providerIds.has(v)) {
-                missing.push(v);
-            }
-        }
-        
-        return missing;
-    }, [editingPolicy, ruleProviders, open]);
-
-    const otherRuleSets = useMemo(() => {
-        if (!editingPolicy) return [];
-        const rs = (editingPolicy as any).ruleSetBuildIn ?? (editingPolicy as any).rule_set_build_in ?? [];
-        return (Array.isArray(rs) ? rs : []).filter((v: string) => v.startsWith('geosite:') || v.startsWith('geoip:'));
-    }, [editingPolicy]);
-
-    const onFormChange = (updates: Partial<PolicyEditFormState>) => {
-        setForm(prev => ({ ...prev, ...updates }));
-    };
-
-    const handleSave = async () => {
-        if (!form.name.trim()) return;
-        try {
-            let policyData: Record<string, unknown>;
-            if (form.policyType === 'raw') {
-                let parsedRawData: unknown = null;
-                if (form.rawDataContent.trim()) {
-                    try {
-                        parsedRawData = JSON.parse(form.rawDataContent);
-                    } catch {
-                        addNotification('JSON 格式错误，请检查输入', 'error');
-                        return;
-                    }
-                    if (typeof parsedRawData !== 'object' || parsedRawData === null || Array.isArray(parsedRawData)) {
-                        addNotification('JSON 内容必须是有效的对象格式', 'error');
-                        return;
-                    }
-                }
-                // outbound 合并进 raw_data，不单独写入数据库
-                const rawData = parsedRawData
-                    ? { ...(parsedRawData as Record<string, unknown>), outbound: form.outbound || 'selector_out' }
-                    : { outbound: form.outbound || 'selector_out' };
-                policyData = {
-                    type: 'raw',
-                    name: form.name.trim(),
-                    raw_data: rawData,
-                    order: editingPolicy?.order ?? policiesCount,
-                    
-                };
-            } else {
-                // 内置规则集（geosite:, geoip:, acl: 内置规则集）保存到 ruleSetBuildIn
-                const builtinAclParts = Array.from(form.selectedBuiltinRuleSetIds)
-                    .map(id => builtinRulesets.find(p => p.id === id))
-                    .filter((p): p is RuleProvider => !!p)
-                    .map(p => p.id);
-                // 去重：使用 Set 去除重复项，保持顺序
-                const ruleSetBuildInValue = [...new Set([...otherRuleSets.filter(Boolean), ...builtinAclParts])];
-                
-                // 自定义规则集（数据库规则集）保存到 ruleSetAcl
-                const ruleSetAclValue = Array.from(form.selectedRuleProviderIds)
-                    .map(id => ruleProviders.find(p => p.id === id))
-                    .filter((p): p is RuleProvider => !!p)
-                    .map(p => p.id);
-                
-                if (editingPolicy && unavailableAclRefs.length > 0) {
-                    addNotification(`已自动剔除 ${unavailableAclRefs.length} 个不可用规则集`, 'info');
-                }
-                policyData = {
-                    type: 'default',
-                    name: form.name.trim(),
-                    outbound: form.outbound,
-                    ruleSetBuildIn: ruleSetBuildInValue,
-                    ruleSetAcl: ruleSetAclValue.length ? ruleSetAclValue : undefined,
-                    package: undefined,
-                    processName: form.processNames.length ? form.processNames : undefined,
-                    order: editingPolicy?.order ?? policiesCount,
-                    domain: form.domain.length ? form.domain : undefined,
-                    domain_keyword: form.domainKeyword.length ? form.domainKeyword : undefined,
-                    domain_suffix: form.domainSuffix.length ? form.domainSuffix : undefined,
-                    ip_cidr: form.ipCidr.length ? form.ipCidr : undefined,
-                    source_ip_cidr: form.sourceIpCidr.length ? form.sourceIpCidr : undefined,
-                    port: (() => {
-                        const nums = form.port.map(s => parseInt(s.trim())).filter(n => !isNaN(n));
-                        return nums.length ? nums : undefined;
-                    })(),
-                    
-                };
-            }
-            if (!editingPolicy) policyData.enabled = true;
-            
-            // 保存策略并获取policy_id
-            let policyId: string;
-            if (editingPolicy) {
-                await window.ipcRenderer.db.updatePolicy(editingPolicy.id, policyData);
-                policyId = editingPolicy.id;
-            } else {
-                const newPolicyId = await window.ipcRenderer.db.addPolicy(policyData);
-                policyId = newPolicyId;
-            }
-            
-            // 保存preferredOutbounds到profile_policy（使用policy_id）
-            try {
-                const selectedProfileResult = await window.ipcRenderer.core.getSelectedProfile();
-                const currentProfileId = selectedProfileResult?.profile?.id;
-                if (currentProfileId) {
-                    await window.ipcRenderer.db.setProfilePolicy(currentProfileId, policyId, form.preferredOutbounds);
-                }
-            } catch (profileErr) {
-                console.error('Failed to save profile policy:', profileErr);
-                // 不阻止主要保存流程，仅记录错误
-            }
-            
-            onClose();
-            onSaved();
-            addNotification(editingPolicy ? '策略已更新' : '策略已添加');
-        } catch (err: unknown) {
-            console.error('Failed to save policy:', err);
-            addNotification(`保存失败: ${(err as Error).message}`, 'error');
-        }
-    };
-
-    const openMultiLineEdit = (title: string, currentValue: string[], setter: (value: string[]) => void) => {
-        setMultiLineTitle(title);
-        setMultiLineValue(currentValue.join('\n'));
-        setMultiLineField({ setter });
-        setShowMultiLineModal(true);
-    };
-
-    const confirmMultiLineEdit = () => {
-        if (multiLineField) {
-            const arr = multiLineValue.split('\n').map(s => s.trim()).filter(Boolean);
-            multiLineField.setter(arr);
-        }
-        setShowMultiLineModal(false);
-    };
 
     return (
-        <>
-            <PolicyEditModal
-                open={open}
-                editingPolicy={editingPolicy}
-                policiesCount={policiesCount}
-                form={form}
-                ruleProviders={ruleProviders}
-                builtinRulesets={builtinRulesets}
-                availableOutbounds={availableOutbounds}
-                unavailableAclRefs={unavailableAclRefs}
-                showRuleSetModal={showRuleSetModal}
-                showBuiltinRuleSetModal={showBuiltinRuleSetModal}
-                showPreferredOutboundModal={showPreferredOutboundModal}
-                onClose={onClose}
-                onFormChange={onFormChange}
-                setShowRuleSetModal={setShowRuleSetModal}
-                setShowBuiltinRuleSetModal={setShowBuiltinRuleSetModal}
-                setShowPreferredOutboundModal={setShowPreferredOutboundModal}
-                onSave={handleSave}
-                onOpenMultiLineEdit={openMultiLineEdit}
-            />
-            <PolicyMultiLineModal
-                open={showMultiLineModal}
-                title={multiLineTitle}
-                value={multiLineValue}
-                onValueChange={setMultiLineValue}
-                onConfirm={confirmMultiLineEdit}
-                onClose={() => setShowMultiLineModal(false)}
-            />
-        </>
+        <PolicyEditModalBaseContainer<PolicyEditFormState, BasePolicy>
+            open={open}
+            editingPolicy={editingPolicy as unknown as BasePolicy | null}
+            policiesCount={policiesCount}
+            onClose={onClose}
+            onSaved={onSaved}
+            addNotification={addNotification}
+            getPolicyRuleSet={(policy) => getPolicyRuleSet(policy as unknown as Policy)}
+            getInitialFormState={getInitialFormState}
+            buildPolicyData={(params) => buildPolicyData({ ...params, addNotification })}
+            savePolicy={async ({ editingPolicy, policyData, form }) => {
+                const policy = editingPolicy as unknown as Policy | null;
+                let policyId: string;
+                if (policy) {
+                    await window.ipcRenderer.db.updatePolicy(policy.id, policyData);
+                    policyId = policy.id;
+                } else {
+                    policyId = await window.ipcRenderer.db.addPolicy(policyData);
+                }
+
+                // 保存preferredOutbounds到profile_policy
+                try {
+                    const selectedProfileResult = await window.ipcRenderer.core.getSelectedProfile();
+                    const currentProfileId = selectedProfileResult?.profile?.id;
+                    if (currentProfileId) {
+                        await window.ipcRenderer.db.setProfilePolicy(currentProfileId, policyId, form.preferredOutbounds);
+                    }
+                } catch (profileErr) {
+                    console.error('Failed to save profile policy:', profileErr);
+                }
+            }}
+            renderModal={({
+                open,
+                editingPolicy,
+                form,
+                ruleSetGroups,
+                unavailableAclRefs,
+                ruleSetAdvancedConflict,
+                showRuleSetModal,
+                showRuleFieldsEditorModal,
+                onClose,
+                onFormChange,
+                setShowRuleSetModal,
+                setShowRuleFieldsEditorModal,
+                onSave,
+            }) => {
+                // 额外处理 availableOutbounds 和 preferredOutbounds
+                const [availableOutbounds, setAvailableOutbounds] = React.useState<Array<{ tag: string; type: string; all?: string[] }>>([]);
+                const [showPreferredOutboundModal, setShowPreferredOutboundModal] = React.useState(false);
+
+                const policy = editingPolicy as unknown as Policy | null;
+
+                React.useEffect(() => {
+                    if (open) {
+                        window.ipcRenderer.core.getAvailableOutbounds().then((data) => {
+                            setAvailableOutbounds((data as Array<{ tag: string; type: string; all?: string[] }>) || []);
+                        });
+                        // 加载 preferredOutbounds
+                        if (policy) {
+                            window.ipcRenderer.core.getSelectedProfile().then((selectedProfileResult: any) => {
+                                const currentProfileId = selectedProfileResult?.profile?.id;
+                                if (currentProfileId) {
+                                    window.ipcRenderer.db.getProfilePolicyByPolicyId(currentProfileId, policy.id).then((profilePolicy: any) => {
+                                        if (profilePolicy?.preferred_outbounds) {
+                                            onFormChange({ preferredOutbounds: profilePolicy.preferred_outbounds });
+                                        }
+                                    });
+                                }
+                            });
+                        }
+                    }
+                }, [open, policy?.id, seed]);
+
+                const handleRemovePreferredOutbound = (idx: number) => {
+                    const newPreferred = form.preferredOutbounds.filter((_, i) => i !== idx);
+                    onFormChange({ preferredOutbounds: newPreferred });
+                };
+
+                // 订阅出站节点选择器 - 作为 extraFields 传入
+                const extraFields = availableOutbounds && availableOutbounds.length > 0 && (
+                    <>
+                        <div className="space-y-1.5">
+                            <label className="text-[12px] font-medium text-[var(--app-text-secondary)] pl-1">订阅出站节点</label>
+                            <div
+                                className={cn(
+                                    "relative flex flex-wrap items-center gap-1.5 min-h-[36px] px-3 py-2 pr-8 rounded-[10px] border bg-white transition-all cursor-pointer overflow-hidden",
+                                    "border-[rgba(39,44,54,0.12)]"
+                                )}
+                                onClick={() => setShowPreferredOutboundModal(true)}
+                            >
+                                {!form.preferredOutbounds || form.preferredOutbounds.length === 0 ? (
+                                    <span className="text-[13px] text-[var(--app-text-quaternary)]">请选择节点</span>
+                                ) : (
+                                    <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar flex-1">
+                                        {form.preferredOutbounds.map((tag, idx) => (
+                                            <span
+                                                key={`${tag}-${idx}`}
+                                                className="inline-flex shrink-0 items-center gap-1 px-2 py-0.5 rounded-[6px] text-[11px] bg-[var(--app-accent-soft)] text-[var(--app-text)] border border-[var(--app-accent-border)] max-w-[140px]"
+                                                onClick={e => e.stopPropagation()}
+                                            >
+                                                <span className="truncate">{tag}</span>
+                                                <button
+                                                    type="button"
+                                                    className="shrink-0 p-0.5 rounded hover:bg-[var(--app-stroke)] hover:text-[var(--app-text)] transition-colors"
+                                                    onClick={e => { e.stopPropagation(); handleRemovePreferredOutbound(idx); }}
+                                                    aria-label="删除"
+                                                >
+                                                    <X className="w-3 h-3" />
+                                                </button>
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
+                                <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--app-text-quaternary)] pointer-events-none" />
+                            </div>
+                            <p className="text-[11px] text-[var(--app-text-quaternary)] pl-1">选择订阅的出站节点后，将覆盖上面的默认出站</p>
+                        </div>
+                        
+                        {/* 订阅出站节点选择弹窗 */}
+                        <PolicyPreferredOutboundModal
+                            open={showPreferredOutboundModal}
+                            availableOutbounds={availableOutbounds}
+                            preferredOutbounds={form.preferredOutbounds}
+                            onConfirm={tags => onFormChange({ preferredOutbounds: tags })}
+                            onClose={() => setShowPreferredOutboundModal(false)}
+                        />
+                    </>
+                );
+
+                return (
+                    <PolicyEditModalBase
+                        open={open}
+                        title="策略"
+                        editingPolicy={policy}
+                        form={form}
+                        ruleSetGroups={ruleSetGroups}
+                        unavailableAclRefs={unavailableAclRefs}
+                        ruleSetAdvancedConflict={ruleSetAdvancedConflict}
+                        showRuleSetModal={showRuleSetModal}
+                        showRuleFieldsEditorModal={showRuleFieldsEditorModal}
+                        onClose={onClose}
+                        onFormChange={onFormChange}
+                        setShowRuleSetModal={setShowRuleSetModal}
+                        setShowRuleFieldsEditorModal={setShowRuleFieldsEditorModal}
+                        onSave={onSave}
+                        fieldConfig={POLICY_FIELD_CONFIG}
+                        extraFields={extraFields}
+                    />
+                );
+            }}
+        />
     );
 }

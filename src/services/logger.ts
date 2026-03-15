@@ -398,7 +398,7 @@ export function restoreConsole(): void {
 export function setupGlobalErrorHandler(): void {
     // 捕获同步错误
     window.addEventListener('error', (event: ErrorEvent) => {
-        const { message, filename, lineno, colno, error } = event;
+        const { message, filename, lineno, colno, error: eventError } = event;
         
         const errorDetails = {
             type: 'Uncaught Error',
@@ -406,7 +406,7 @@ export function setupGlobalErrorHandler(): void {
             filename,
             line: lineno,
             column: colno,
-            stack: error?.stack || 'No stack trace',
+            stack: eventError?.stack || 'No stack trace',
             url: window.location?.href,
             timestamp: new Date().toISOString(),
         };

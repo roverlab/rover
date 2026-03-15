@@ -111,11 +111,6 @@ export function PolicyListCard({
                 getPolicyOutbound(policy),
                 getOutboundLabel(getPolicyOutbound(policy)),
                 ...getPolicyRuleSets(policy),
-                ...(policy.domain ?? []),
-                ...(policy.domain_keyword ?? []),
-                ...(policy.domain_suffix ?? []),
-                ...(policy.processName ?? []),
-                ...(policy.package ?? []),
             ];
             return searchFields.some((value) => value.toLowerCase().includes(query));
         });

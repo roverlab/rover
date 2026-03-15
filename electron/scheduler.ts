@@ -14,7 +14,7 @@ import { createLogger } from './logger';
 import { getProfilesDir, getRulesetsDir } from './paths';
 import { downloadAndConvertRuleSet, getRuleProviderFileBaseName } from './ruleset-utils';
 import { validateProfileContent } from './validation';
-import { getSubscriptionUserAgent } from './subscription';
+import { getSubscriptionUserAgent, parseSubscriptionUserinfo } from './subscription';
 
 const log = createLogger('Scheduler');
 
@@ -95,6 +95,15 @@ async function updateProfile(profileId: string): Promise<boolean> {
 
         const filePath = saveProfileFile(profileId, content);
         dbUtils.updateProfileContent(profileId, filePath, new Date().toISOString());
+
+        // 从响应头提取订阅用户信息（流量、过期时间）并写入数据库
+        const userinfoHeader = response.headers['subscription-userinfo'];
+        const userinfo = parseSubscriptionUserinfo(userinfoHeader);
+        if (userinfo) {
+            dbUtils.updateProfileSubscriptionInfo(profileId, userinfo);
+            log.debug(`Profile ${profileId} userinfo: upload=${userinfo.upload} download=${userinfo.download} total=${userinfo.total} expire=${userinfo.expire}`);
+        }
+
         lastProfileUpdate.set(profileId, new Date());
 
         // 调用订阅更新钩子（用于通知前端刷新）

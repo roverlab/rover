@@ -39,24 +39,17 @@ export type PolicyType = 'default' | 'raw';
 
 /**
  * 策略配置
+ * ruleSet 与 logical_rule 分开存储，转 route 时合并
  */
 export interface Policy {
     /** 策略 ID */
     id: string;
-    /** 策略类型: default - 标准表单编辑, json - JSON 编辑 */
+    /** 策略类型: default - 标准表单编辑, raw - JSON 编辑 */
     type: PolicyType;
     /** 策略名称 */
     name: string;
     /** 出站代理/策略组 */
     outbound: string;
-    /** 内置规则集列表 (rule_set_build_in) - geosite:, geoip:, acl: 内置规则集 */
-    ruleSetBuildIn: string[];
-    /** 自定义规则集列表 - 数据库中的规则集 ID */
-    ruleSetAcl?: string[];
-    /** 包名列表 (Android) */
-    package?: string[];
-    /** 进程名列表 */
-    processName?: string[];
     /** 是否启用 */
     enabled: boolean;
     /** 排序顺序 */
@@ -65,27 +58,76 @@ export interface Policy {
     createdAt: string;
     /** 更新时间 */
     updatedAt: string;
-     /** 以下字段用于存储完整的 sing-box 路由规则信息，从 config.json 导入时保留 */
-    /** 域名 */
-    domain?: string[];
-    /** 域名关键词 */
-    domain_keyword?: string[];
-    /** 域名后缀 */
-    domain_suffix?: string[];
-    /** IP CIDR */
-    ip_cidr?: string[];
-    /** 源 IP CIDR */
-    source_ip_cidr?: string[];
-    /** 端口 */
-    port?: number[];
-    /** 协议 */
-    protocol?: string;
-    /** 网络 */
-    network?: 'tcp' | 'udp';
-    /** clash 模式 */
-    clash_mode?: string;
+    /** 规则集列表（单独存储，不与 logical_rule 重复） */
+    ruleSet?: string[];
+    /** 逻辑规则 (type: logical)，不含 rule_set，转 route 时与 ruleSet 合并 */
+    logical_rule?: SingboxLogicalRule;
     /** 原始类型策略的原始规则内容 */
     raw_data?: any;
+}
+
+/** 从规则中提取 rule_set（含 logical 规则顶层的 rule_set） */
+function extractRuleSetFromRule(r: SingboxRouteRule | SingboxLogicalRule): string[] {
+    const fromSelf = (r as SingboxRouteRule).rule_set ?? [];
+    if ('type' in r && r.type === 'logical') {
+        const fromChildren = (r as SingboxLogicalRule).rules.flatMap(extractRuleSetFromRule);
+        return [...fromSelf, ...fromChildren];
+    }
+    return fromSelf;
+}
+
+/** 判断规则是否仅含 rule_set（导出供迁移使用） */
+export function isRuleSetOnlyRule(r: SingboxRouteRule | SingboxLogicalRule): boolean {
+    if ('type' in r && r.type === 'logical') return false;
+    const sr = r as SingboxRouteRule;
+    const keys = Object.keys(sr).filter(k => k !== 'rule_set');
+    return keys.length === 0 && (sr.rule_set?.length ?? 0) > 0;
+}
+
+/** 策略或待保存的策略（无 id/createdAt/updatedAt） */
+export type PolicyInput = Policy | Omit<Policy, 'id' | 'createdAt' | 'updatedAt'>;
+
+/** 获取策略的规则集列表（优先 ruleSet，兼容 logical_rule 内 rule_set 的旧数据） */
+export function getPolicyRuleSet(policy: PolicyInput): string[] {
+    const p = policy as unknown as Record<string, unknown>;
+    if (Array.isArray(p.ruleSet) && p.ruleSet.length > 0) return p.ruleSet as string[];
+    const lr = policy.logical_rule;
+    if (lr) {
+        const fromLogical = extractRuleSetFromRule(lr).filter(Boolean);
+        if (fromLogical.length > 0) return fromLogical;
+    }
+    const buildIn = (p.ruleSetBuildIn ?? p.rule_set_build_in ?? []) as string[];
+    const acl = (p.ruleSetAcl ?? []) as string[];
+    return [...(Array.isArray(buildIn) ? buildIn : []), ...(Array.isArray(acl) ? acl : [])];
+}
+
+/** 从 logical_rule 提取可匹配字段（用于 isRuleFromPolicy） */
+function extractMatchableFromRule(r: SingboxRouteRule | SingboxLogicalRule, out: Record<string, unknown[]>) {
+    if ('type' in r && r.type === 'logical') {
+        (r as SingboxLogicalRule).rules.forEach(sub => extractMatchableFromRule(sub, out));
+        return;
+    }
+    const sr = r as SingboxRouteRule;
+    const keys = ['rule_set', 'domain', 'domain_keyword', 'domain_suffix', 'ip_cidr', 'source_ip_cidr', 'port', 'package_name', 'process_name'] as const;
+    for (const k of keys) {
+        const v = sr[k];
+        if (Array.isArray(v) && v.length) {
+            if (!out[k]) out[k] = [];
+            out[k].push(...v.map(String));
+        }
+    }
+}
+
+/** 获取策略的可匹配字段（从 logical_rule 提取） */
+export function getPolicyMatchableFields(policy: PolicyInput): Record<string, unknown[]> {
+    const out: Record<string, unknown[]> = {};
+    const lr = policy.logical_rule;
+    if (lr) extractMatchableFromRule(lr, out);
+    if (!out.rule_set?.length) {
+        const rs = getPolicyRuleSet(policy);
+        if (rs.length) out.rule_set = rs;
+    }
+    return out;
 }
 
 /**
@@ -118,7 +160,8 @@ export interface CnJson {
 }
 
 /**
- * sing-box 路由规则格式（不包含出站字段，出站由策略单独管理）
+ * sing-box 路由规则格式（不包含 outbound，出站由策略单独管理）
+ * 对应 Headless Rule 规范：https://sing-box.sagernet.org/configuration/rule-set/headless-rule/
  */
 export interface SingboxRouteRule {
     /** 规则集引用 */
@@ -129,16 +172,56 @@ export interface SingboxRouteRule {
     domain_keyword?: string[];
     /** 域名后缀 */
     domain_suffix?: string[];
+    /** 域名正则 */
+    domain_regex?: string[];
     /** IP CIDR */
     ip_cidr?: string[];
     /** 源 IP CIDR */
     source_ip_cidr?: string[];
     /** 端口 */
     port?: number[];
+    /** 端口范围 */
+    port_range?: string[];
+    /** 源端口 */
+    source_port?: number[];
+    /** 源端口范围 */
+    source_port_range?: string[];
     /** 进程名 */
     process_name?: string[];
+    /** 进程路径 */
+    process_path?: string[];
+    /** 进程路径正则 */
+    process_path_regex?: string[];
     /** 包名 (Android) */
     package_name?: string[];
+    /** DNS 查询类型 */
+    query_type?: (string | number)[];
+    /** 网络协议 tcp/udp */
+    network?: string[];
+    /** 网络类型 wifi/cellular/ethernet/other */
+    network_type?: string[];
+    /** 默认接口地址 */
+    default_interface_address?: string[];
+    /** WiFi SSID */
+    wifi_ssid?: string[];
+    /** WiFi BSSID */
+    wifi_bssid?: string[];
+    /** 网络计费 */
+    network_is_expensive?: boolean;
+    /** 低数据模式 */
+    network_is_constrained?: boolean;
+    /** 取反匹配 */
+    invert?: boolean;
+    /** 网络接口地址 */
+    network_interface_address?: Record<string, string[]>;
+}
+
+/** sing-box 逻辑规则 (type: logical) */
+export interface SingboxLogicalRule {
+    type: 'logical';
+    mode: 'and' | 'or';
+    invert?: boolean;
+    rules: SingboxRouteRule[];
 }
 
 /**
@@ -146,6 +229,11 @@ export interface SingboxRouteRule {
  */
 export interface SingboxRouteRuleWithOutbound extends SingboxRouteRule {
     /** 出站 */
+    outbound: string;
+}
+
+/** 带 outbound 的逻辑规则（用于 route.rules） */
+export interface SingboxLogicalRuleWithOutbound extends SingboxLogicalRule {
     outbound: string;
 }
 
@@ -203,6 +291,7 @@ export function parseRuleSetValue(value: string): RuleSetItem {
 
 /**
  * 将策略转换为 sing-box 路由规则（带 outbound）
+ * 直接使用 logical_rule，ruleSet 合并到 { type: "logical", mode: "and", rules: [] } 中
  * 对于 action 类型的规则（如 sniff, hijack-dns, resolve），不强制添加 outbound
  */
 export function policyToSingboxRule(policy: Policy): SingboxRouteRuleWithOutbound {
@@ -221,59 +310,52 @@ export function policyToSingboxRule(policy: Policy): SingboxRouteRuleWithOutboun
         };
     }
 
-    const rule: SingboxRouteRuleWithOutbound = {
-        outbound: policy.outbound
-    };
+    const ruleSets = getPolicyRuleSet(policy);
+    const logicalRule = policy.logical_rule;
+    const hasRuleSet = ruleSets.length > 0;
+    const hasLogicalRules = logicalRule && logicalRule.rules?.length > 0;
 
-    // 处理 rule_set：合并 ruleSetBuildIn 和 ruleSetAcl
-    const ruleSets: string[] = [];
-    
-    // 处理 ruleSetBuildIn（内置规则集：geosite:xxx, geoip:xxx, acl:xxx）
-    if (policy.ruleSetBuildIn && policy.ruleSetBuildIn.length > 0) {
-        // 内置规则集直接使用原始值作为 tag
-        ruleSets.push(...policy.ruleSetBuildIn);
+    // 仅 ruleSet：扁平规则，不嵌套
+    if (hasRuleSet && !hasLogicalRules) {
+        return { rule_set: ruleSets, outbound: policy.outbound };
     }
-    
-    // 处理 ruleSetAcl（自定义规则集，数据库规则集 ID）
-    if (policy.ruleSetAcl && policy.ruleSetAcl.length > 0) {
-        ruleSets.push(...policy.ruleSetAcl);
+    // 仅 logical_rule：若只有一条简单规则则扁平输出，否则保留 logical
+    if (!hasRuleSet && hasLogicalRules) {
+        const rules = logicalRule!.rules;
+        if (rules.length === 1 && !('type' in rules[0] && (rules[0] as any).type === 'logical')) {
+            return { ...(rules[0] as SingboxRouteRule), outbound: policy.outbound };
+        }
+        return {
+            type: 'logical',
+            mode: logicalRule!.mode ?? 'or',
+            invert: logicalRule!.invert,
+            rules,
+            outbound: policy.outbound,
+        } as SingboxRouteRuleWithOutbound & { type: 'logical'; mode: 'or'; rules: (SingboxRouteRule | SingboxLogicalRule)[] };
     }
-    
-    if (ruleSets.length > 0) {
-        rule.rule_set = ruleSets;
-    }
-
-    // 处理 package (Android)
-    if (policy.package && policy.package.length > 0) {
-        rule.package_name = policy.package;
-    }
-
-    // 处理 processName
-    if (policy.processName && policy.processName.length > 0) {
-        rule.process_name = policy.processName;
-    }
-
-    // 处理从 config.json 导入时保留的完整字段
-    if (policy.domain && policy.domain.length > 0) {
-        rule.domain = policy.domain;
-    }
-    if (policy.domain_keyword && policy.domain_keyword.length > 0) {
-        rule.domain_keyword = policy.domain_keyword;
-    }
-    if (policy.domain_suffix && policy.domain_suffix.length > 0) {
-        rule.domain_suffix = policy.domain_suffix;
-    }
-    if (policy.ip_cidr && policy.ip_cidr.length > 0) {
-        rule.ip_cidr = policy.ip_cidr;
-    }
-    if (policy.source_ip_cidr && policy.source_ip_cidr.length > 0) {
-        rule.source_ip_cidr = policy.source_ip_cidr;
-    }
-    if (policy.port && policy.port.length > 0) {
-        rule.port = policy.port;
+    // 两者都有：rule_set 放外层，与 logical 同级（rule_set AND logical_rule）
+    if (hasRuleSet && hasLogicalRules) {
+        const rulesWithoutRuleSet = logicalRule!.rules.filter(r => !isRuleSetOnlyRule(r));
+        if (rulesWithoutRuleSet.length === 0) {
+            return { rule_set: ruleSets, outbound: policy.outbound };
+        }
+        const logicalPart: SingboxLogicalRule = {
+            type: 'logical',
+            mode: logicalRule!.mode ?? 'and',
+            ...(logicalRule!.invert && { invert: logicalRule!.invert }),
+            rules: rulesWithoutRuleSet,
+        };
+        return {
+            rule_set: ruleSets,
+            type: 'logical',
+            mode: 'and',
+            rules: [logicalPart],
+            outbound: policy.outbound,
+        } as SingboxRouteRuleWithOutbound & { rule_set: string[]; type: 'logical'; mode: 'and'; rules: (SingboxRouteRule | SingboxLogicalRule)[] };
     }
 
-    return rule;
+    // 两者都空：仅含 outbound
+    return { outbound: policy.outbound };
 }
 
 /** 规则集提供者（用于解析 acl 类型） */
@@ -296,14 +378,16 @@ export interface RuleProviderForConfig {
  * @param ruleProviders 规则集提供者（用于 acl:xxx 类型，需在 database 中配置）
  * @returns 规则数组和规则集定义（对应 route.rules 和 route.rule_set）
  */
+export type SingboxRouteRuleItem = SingboxRouteRuleWithOutbound | SingboxLogicalRuleWithOutbound;
+
 export function policiesToSingboxConfig(
     policies: Policy[],
     ruleProviders?: RuleProviderForConfig[]
 ): {
-    rules: SingboxRouteRuleWithOutbound[];
+    rules: SingboxRouteRuleItem[];
     ruleSets: SingboxRuleSet[];
 } {
-    const rules: SingboxRouteRuleWithOutbound[] = [];
+    const rules: SingboxRouteRuleItem[] = [];
     const ruleSetMap = new Map<string, SingboxRuleSet>();
     const enabledProviders = (ruleProviders || []).filter(p => p.enabled !== false);
 
@@ -316,24 +400,8 @@ export function policiesToSingboxConfig(
         const rule = policyToSingboxRule(policy);
         rules.push(rule);
 
-        // 收集规则集定义：合并 ruleSetBuildIn 和 ruleSetAcl
-        const itemsToCollect: string[] = [];
-        
-        // 从 ruleSetBuildIn 收集（内置规则集）
-        if (policy.ruleSetBuildIn?.length) {
-            itemsToCollect.push(...policy.ruleSetBuildIn);
-        }
-        
-        // 从 ruleSetAcl 收集（自定义规则集，直接使用 ID，不加前缀）
-        // parseRuleSetValue 会将无前缀的值默认解析为 acl 类型
-        if (policy.ruleSetAcl?.length) {
-            itemsToCollect.push(...policy.ruleSetAcl);
-        }
-        
-        // 如果都没有，从 rule.rule_set 收集（raw 类型策略）
-        if (itemsToCollect.length === 0 && rule.rule_set?.length) {
-            itemsToCollect.push(...rule.rule_set);
-        }
+        // 从 rule 中收集规则集定义（logical_rule 或扁平 rule 的 rule_set）
+        const itemsToCollect = extractRuleSetFromRule(rule as SingboxRouteRule | SingboxLogicalRuleWithOutbound);
         for (const item of itemsToCollect) {
                 // 有 : 分隔符的是内置规则集（geosite:xxx, geoip:xxx, acl:xxx）
                 // 没有 : 分隔符的是自定义规则集（纯 ID）
@@ -388,10 +456,7 @@ const PRESET_OUTBOUND_MAP: Record<string, string> = {
 export function cnJsonRuleToPolicy(rule: CnJsonRule, order: number): Omit<Policy, 'id' | 'createdAt' | 'updatedAt'> {
     // 如果存在 raw_data，则使用 raw 类型策略
     if (rule.raw_data) {
-        // 检查是否为 action 类型的规则（如 sniff, hijack-dns, resolve）
         const isActionRule = 'action' in (rule.raw_data as Record<string, unknown>);
-        
-        // 只有非 action 类型规则才需要 outbound 字段
         if (isActionRule) {
             return {
                 type: 'raw',
@@ -399,92 +464,105 @@ export function cnJsonRuleToPolicy(rule: CnJsonRule, order: number): Omit<Policy
                 raw_data: rule.raw_data,
                 enabled: true,
                 order,
-                outbound: '',
-                ruleSetBuildIn: []
+                outbound: ''
             };
         }
-        
-        // 对于需要 outbound 的规则，合并 outbound 到 raw_data
         const outbound = PRESET_OUTBOUND_MAP[rule.outbound ?? ''] ?? rule.outbound ?? 'selector_out';
-        const rawData = { ...rule.raw_data, outbound: outbound };
+        const rawData = { ...rule.raw_data, outbound };
         return {
             type: 'raw',
             name: rule.name,
             raw_data: rawData,
             enabled: true,
             order,
-            outbound: '',
-            ruleSetBuildIn: []
+            outbound: ''
         };
     }
-    
+
     const outbound = PRESET_OUTBOUND_MAP[rule.outbound ?? ''] ?? rule.outbound ?? 'selector_out';
+    const subRules: SingboxRouteRule[] = [];
+    const hasPackage = rule.package?.length;
+    const hasProcess = rule.processName?.length;
+    if (hasPackage || hasProcess) {
+        const r: SingboxRouteRule = {};
+        if (hasPackage) r.package_name = rule.package;
+        if (hasProcess) r.process_name = rule.processName;
+        subRules.push(r);
+    }
     return {
         type: 'default',
         name: rule.name,
         outbound,
-        ruleSetBuildIn: rule.rule_set_build_in || [],
-        package: rule.package,
-        processName: rule.processName,
         enabled: true,
-        order
+        order,
+        ruleSet: rule.rule_set_build_in?.length ? rule.rule_set_build_in : undefined,
+        logical_rule: subRules.length > 0
+            ? { type: 'logical', mode: 'and', rules: subRules }
+            : undefined
     };
 }
 
 /**
  * 从 sing-box route rule (config.json) 转换为策略
- * 保留所有规则字段，以便后续完整转换回 routeRules
+ * ruleSet 单独存，logical_rule 不含 rule_set
  */
 export function configRouteRuleToPolicy(
-    rule: SingboxRouteRuleWithOutbound, 
+    rule: SingboxRouteRuleItem, 
     order: number,
     defaultName?: string
 ): Omit<Policy, 'id' | 'createdAt' | 'updatedAt'> {
-    // 生成规则名称：优先使用传入的名称，否则根据规则内容生成（route.rules 不支持 tag）
+    const outbound = (rule as SingboxRouteRuleWithOutbound).outbound || 'direct_out';
+
+    // 逻辑规则：提取 rule_set 到 ruleSet，logical_rule 不含 rule_set
+    if ((rule as any).type === 'logical') {
+        const lr = rule as SingboxLogicalRuleWithOutbound;
+        const ruleSets = extractRuleSetFromRule(lr);
+        const rulesWithoutRuleSet = lr.rules.filter(r => !isRuleSetOnlyRule(r));
+        return {
+            type: 'default',
+            name: defaultName || `逻辑规则 ${order + 1}`,
+            outbound,
+            enabled: true,
+            order,
+            ruleSet: ruleSets.length > 0 ? ruleSets : undefined,
+            logical_rule: rulesWithoutRuleSet.length > 0
+                ? { type: 'logical', mode: lr.mode, invert: lr.invert, rules: rulesWithoutRuleSet }
+                : undefined,
+        };
+    }
+
+    // 扁平规则：ruleSet 单独存，logical_rule 不含 rule_set
+    const fr = rule as SingboxRouteRuleWithOutbound;
+    const ruleSets = fr.rule_set ?? [];
+    const cleanRule: SingboxRouteRule = { ...fr };
+    delete (cleanRule as any).outbound;
+    delete (cleanRule as any).rule_set;
+    if ((cleanRule as any).package_name) delete (cleanRule as any).package_name;
+    if ((cleanRule as any).process_name) delete (cleanRule as any).process_name;
+    const hasOtherFields = Object.keys(cleanRule).some(k => {
+        const v = (cleanRule as any)[k];
+        return v !== undefined && v !== null && (Array.isArray(v) ? v.length > 0 : true);
+    });
+
     let name = defaultName || '';
     if (!name) {
         const parts: string[] = [];
-        if (rule.rule_set && rule.rule_set.length > 0) {
-            parts.push(rule.rule_set.slice(0, 2).join(', '));
-        }
-        if (rule.domain && rule.domain.length > 0) {
-            parts.push(`域名: ${rule.domain.length}`);
-        }
-        if (rule.domain_keyword && rule.domain_keyword.length > 0) {
-            parts.push(`关键词: ${rule.domain_keyword.length}`);
-        }
-        if (rule.ip_cidr && rule.ip_cidr.length > 0) {
-            parts.push(`IP: ${rule.ip_cidr.length}`);
-        }
+        if (ruleSets.length > 0) parts.push(ruleSets.slice(0, 2).join(', '));
+        if (cleanRule.domain?.length) parts.push(`域名: ${cleanRule.domain.length}`);
+        if (cleanRule.domain_keyword?.length) parts.push(`关键词: ${cleanRule.domain_keyword.length}`);
+        if (cleanRule.ip_cidr?.length) parts.push(`IP: ${cleanRule.ip_cidr.length}`);
         name = parts.length > 0 ? parts.slice(0, 2).join(' | ') : `规则 ${order + 1}`;
     }
 
     return {
         type: 'default',
         name,
-        outbound: rule.outbound || 'direct_out',
-        // rule_set 需要反向解析为 ruleSetBuildIn 格式
-        ruleSetBuildIn: parseRuleSetToBuildIn(rule.rule_set || []),
-        // 标准字段
-        package: rule.package_name,
-        processName: rule.process_name,
+        outbound,
         enabled: true,
         order,
-        // 保留完整的 sing-box 规则字段
-        domain: rule.domain,
-        domain_keyword: rule.domain_keyword,
-        domain_suffix: rule.domain_suffix,
-        ip_cidr: rule.ip_cidr,
-        source_ip_cidr: rule.source_ip_cidr,
-        port: rule.port,
+        ruleSet: ruleSets.length > 0 ? ruleSets : undefined,
+        logical_rule: hasOtherFields ? { type: 'logical', mode: 'or' as const, rules: [cleanRule] } : undefined,
     };
-}
-
-/**
- * 将 sing-box rule_set 数组直接使用（新格式不再需要转换）
- */
-function parseRuleSetToBuildIn(ruleSets: string[]): string[] {
-    return ruleSets;
 }
 
 /**

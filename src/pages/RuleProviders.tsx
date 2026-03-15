@@ -4,14 +4,58 @@ import { Button } from '../components/ui/Button';
 import { Switch } from '../components/ui/Switch';
 import { Input, Select } from '../components/ui/Field';
 import { cn } from '../components/Sidebar';
-import { Plus, Trash2, Edit2, X, RefreshCw, Layers, MoreVertical, Eye, Copy, Search, Settings } from 'lucide-react';
+import { Plus, Trash2, Edit2, X, RefreshCw, Layers, MoreVertical, Eye, Copy, Search, Settings, Code2 } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import type { RuleProvider, RuleProviderType } from '../types/rule-providers';
+import type { RuleProvider, RuleProviderType, LocalRuleSetData, LocalRule } from '../types/rule-providers';
+import { RuleFieldsEditorModal } from './Policies/components/RuleFieldsEditorModal';
+import { RULE_FIELD_CONFIG } from './Policies/utils/ruleFieldConfig';
+import type { RuleTreeNode, LogicGroup } from './Policies/types/ruleFields';
+import { getDefaultRuleTreeNode } from './Policies/utils/ruleFieldsUtils';
+import { singboxLogicalToRuleTreeNodeRoot, ruleTreeNodeToSingboxLogical } from './Policies/utils/ruleTreeNodeConversion';
+import type { SingboxLogicalRule, SingboxRouteRule } from '../types/policy';
 import { useNotificationState, NotificationList, useConfirm } from '../components/ui/Notification';
 import { Modal } from '../components/ui/Modal';
 import { formatRelativeTime } from '../shared/date-utils';
 import { getDisplayErrorMessage } from '../shared/error-utils';
+
+/** 将 LocalRule[] 转换为 RuleTreeNode */
+function localRulesToRuleTreeNode(rules: LocalRule[]): RuleTreeNode {
+    if (!rules || rules.length === 0) {
+        return getDefaultRuleTreeNode();
+    }
+    // LocalRule 结构和 SingboxRouteRule 兼容
+    const logicalRule: SingboxLogicalRule = {
+        type: 'logical',
+        mode: 'or', // 多条规则之间是 OR 关系
+        rules: rules as unknown as SingboxRouteRule[],
+    };
+    return singboxLogicalToRuleTreeNodeRoot(logicalRule);
+}
+
+/** 将 RuleTreeNode 转换为 LocalRule[] */
+function ruleTreeNodeToLocalRules(node: RuleTreeNode): LocalRule[] {
+    const result = ruleTreeNodeToSingboxLogical(node);
+    if (!result || !result.rules || result.rules.length === 0) {
+        return [];
+    }
+    const localRules: LocalRule[] = [];
+    function extractRules(lr: SingboxLogicalRule) {
+        for (const rule of lr.rules) {
+            if ('type' in rule && rule.type === 'logical') {
+                localRules.push(rule as unknown as LocalRule);
+            } else {
+                localRules.push(rule as unknown as LocalRule);
+            }
+        }
+    }
+    if (result.mode === 'or') {
+        extractRules(result);
+    } else {
+        localRules.push(result as unknown as LocalRule);
+    }
+    return localRules;
+}
 
 interface RuleProvidersProps {
     /** 页面是否处于激活状态，用于进入时重新加载 */
@@ -40,6 +84,9 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
     const [showSettingsModal, setShowSettingsModal] = useState(false);
     const [ruleProviderUpdateInterval, setRuleProviderUpdateInterval] = useState(86400);
     const settingsIntervalInputRef = useRef<HTMLInputElement | null>(null);
+    const [showRuleEditor, setShowRuleEditor] = useState(false);
+    const [ruleEditorForm, setRuleEditorForm] = useState<{ ruleGroupsTree: RuleTreeNode | null }>({ ruleGroupsTree: null });
+    const [editingLocalProviderId, setEditingLocalProviderId] = useState<string | null>(null);
 
     // Notification state
     const { notifications, addNotification, removeNotification } = useNotificationState();
@@ -111,6 +158,7 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
         setName('');
         setUrl('');
         setType('clash');
+        setRuleEditorForm({ ruleGroupsTree: null });
         setShowModal(true);
     };
 
@@ -122,7 +170,82 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
         setShowModal(true);
     };
 
+    // 打开本地规则集编辑器（编辑已有规则集）
+    const handleOpenRuleEditor = (provider: RuleProvider) => {
+        const rules = provider.raw_data?.rules || [];
+        const treeNode = localRulesToRuleTreeNode(rules);
+        setRuleEditorForm({ ruleGroupsTree: treeNode });
+        setEditingLocalProviderId(provider.id);
+        setShowRuleEditor(true);
+    };
+
+    // 打开高级规则编辑器（新建时使用草稿）
+    const handleOpenRuleEditorForNew = () => {
+        const draft = ruleEditorForm.ruleGroupsTree ?? getDefaultRuleTreeNode();
+        setRuleEditorForm({ ruleGroupsTree: draft });
+        setEditingLocalProviderId(null); // null 表示草稿模式
+        setShowRuleEditor(true);
+    };
+
+    // 保存本地规则集（编辑已有）或关闭弹窗（新建草稿）
+    const handleSaveRuleEditor = async () => {
+        if (editingLocalProviderId && ruleEditorForm.ruleGroupsTree) {
+            const localRules = ruleTreeNodeToLocalRules(ruleEditorForm.ruleGroupsTree);
+            const data: LocalRuleSetData = {
+                version: 3,
+                rules: localRules,
+            };
+            try {
+                await window.ipcRenderer.core.saveLocalRuleProvider(editingLocalProviderId, data);
+                setShowRuleEditor(false);
+                setEditingLocalProviderId(null);
+                loadProviders();
+                addNotification('规则集已保存');
+            } catch (err: any) {
+                addNotification(`保存失败: ${err?.message || '未知错误'}`, 'error');
+            }
+        } else {
+            // 草稿模式：仅关闭弹窗，规则已通过 onFormChange 更新到 ruleEditorForm
+            setShowRuleEditor(false);
+            setEditingLocalProviderId(null);
+        }
+    };
+
     const handleSave = async () => {
+        // 本地类型：只需要名称
+        if (type === 'local') {
+            if (!name.trim()) return;
+            try {
+                if (editingProvider) {
+                    await window.ipcRenderer.db.updateRuleProvider(editingProvider.id, {
+                        name: name.trim(),
+                    });
+                } else {
+                    const providerId = await window.ipcRenderer.core.addLocalRuleProvider({
+                        name: name.trim(),
+                        enabled: true
+                    });
+                    // 新建时若有草稿规则，一并保存
+                    if (ruleEditorForm.ruleGroupsTree) {
+                        const localRules = ruleTreeNodeToLocalRules(ruleEditorForm.ruleGroupsTree);
+                        if (localRules.length > 0) {
+                            const data: LocalRuleSetData = {
+                                version: 3,
+                                rules: localRules,
+                            };
+                            await window.ipcRenderer.core.saveLocalRuleProvider(providerId, data);
+                        }
+                    }
+                }
+                setShowModal(false);
+                loadProviders();
+                addNotification('规则集已保存');
+            } catch (err: any) {
+                addNotification(`操作失败: ${err?.message || '未知错误'}`, 'error');
+            }
+            return;
+        }
+
         if (!name.trim() || !url.trim()) return;
 
         try {
@@ -610,6 +733,7 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
                                                 </td>
                                                 <td className="py-2 px-3 text-right">
                                                     <div className="flex items-center justify-end gap-0.5">
+                                                        {provider.type !== 'local' && (
                                                         <Button
                                                             variant="ghost"
                                                             size="icon"
@@ -620,6 +744,7 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
                                                         >
                                                             <RefreshCw className={cn("w-3.5 h-3.5", downloadingId === provider.id && "animate-spin")} />
                                                         </Button>
+                                                        )}
                                                         <Button
                                                             variant="ghost"
                                                             size="icon"
@@ -669,6 +794,18 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
                                         <Edit2 className="w-3.5 h-3.5 mr-2" />
                                         编辑
                                     </button>
+                                    {provider.type === 'local' && (
+                                        <button
+                                            className="flex items-center px-3 py-1.5 text-[12px] text-[var(--app-text-secondary)] hover:bg-[var(--app-bg-secondary)] hover:text-[var(--app-text)] transition-colors text-left w-full"
+                                            onClick={() => {
+                                                setOpenDropdownId(null);
+                                                handleOpenRuleEditor(provider);
+                                            }}
+                                        >
+                                            <Code2 className="w-3.5 h-3.5 mr-2" />
+                                            高级规则编辑
+                                        </button>
+                                    )}
                                     <div className="mx-2 my-1 border-t border-[rgba(39,44,54,0.06)]" />
                                     <button
                                         className="flex items-center px-3 py-1.5 text-[12px] text-red-500 hover:bg-red-50 transition-colors text-left"
@@ -844,9 +981,11 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
                                     >
                                         <option value="clash">Clash</option>
                                         <option value="singbox">Singbox</option>
+                                        <option value="local">本地</option>
                                     </Select>
                                 </div>
 
+                                {type !== 'local' && (
                                 <div className="space-y-1.5">
                                     <label className="text-[12px] font-medium text-[var(--app-text-secondary)] pl-1">URL (仅支持 HTTP(S))</label>
                                     <Input
@@ -855,6 +994,25 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
                                         placeholder="https://raw.githubusercontent.com/.../BilibiliHMT.list"
                                     />
                                 </div>
+                                )}
+                                {type === 'local' && (
+                                <div className="space-y-2">
+                                    <label className="text-[12px] font-medium text-[var(--app-text-secondary)] pl-1">规则内容</label>
+                                    <Button
+                                        variant="secondary"
+                                        size="sm"
+                                        onClick={() => editingProvider ? handleOpenRuleEditor(editingProvider) : handleOpenRuleEditorForNew()}
+                                    >
+                                        <Code2 className="w-3.5 h-3.5 mr-1" />
+                                        高级规则编辑
+                                    </Button>
+                                    {!editingProvider && (
+                                        <p className="text-[11px] text-[var(--app-text-tertiary)]">
+                                            可先编辑规则再保存，支持域名、IP、端口等多种匹配规则。
+                                        </p>
+                                    )}
+                                </div>
+                                )}
                             </div>
 
                             <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/30">
@@ -862,7 +1020,7 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
                                 <Button
                                     variant="primary"
                                     onClick={handleSave}
-                                    disabled={!name.trim() || !url.trim()}
+                                    disabled={!name.trim() || (type !== 'local' && !url.trim())}
                                 >
                                     保存
                                 </Button>
@@ -874,6 +1032,21 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
                 document.body
             )}
 
+            {/* 规则编辑器（用于本地类型规则集） */}
+            <RuleFieldsEditorModal
+                open={showRuleEditor}
+                onClose={() => {
+                    setShowRuleEditor(false);
+                    setEditingLocalProviderId(null);
+                }}
+                onConfirm={handleSaveRuleEditor}
+                form={ruleEditorForm}
+                onFormChange={(changes) => {
+                    setRuleEditorForm(prev => ({ ...prev, ...changes }));
+                }}
+                formConfig={RULE_FIELD_CONFIG}
+                title="编辑本地规则集"
+            />
         </div>
     );
 }

@@ -12,8 +12,9 @@ loadDotenv();
 
 /** @type {import('@rspack/core').Configuration} */
 export default {
+   cache: false,
   target: 'web',
-  experiments: { css: true },
+  experiments: { css: true ,cache: {type: 'memory'}},
   entry: './src/main.tsx',
   output: {
     path: path.join(__dirname, 'dist'),

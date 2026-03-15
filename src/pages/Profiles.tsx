@@ -19,6 +19,14 @@ function formatInterval(seconds: number | undefined): string {
   return `${Math.round(seconds / 86400)} 天`;
 }
 
+/** 订阅用户信息（从 Subscription-Userinfo 响应头解析） */
+interface SubscriptionUserinfo {
+  upload: number;
+  download: number;
+  total: number;
+  expire: number;
+}
+
 interface Profile {
   id: string;
   name: string;
@@ -29,6 +37,29 @@ interface Profile {
   last_update: string;
   /** 更新间隔（秒），0 或 undefined 表示不自动更新 */
   updateInterval?: number;
+  /** 订阅用户信息（流量、过期时间） */
+  subscriptionUserinfo?: SubscriptionUserinfo;
+}
+
+/** 格式化字节为可读字符串 */
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes < 1024 ** 4) return `${(bytes / (1024 ** 3)).toFixed(1)} GB`;
+  return `${(bytes / (1024 ** 4)).toFixed(1)} TB`;
+}
+
+/** 格式化过期时间戳（Unix 秒），0 表示长期有效 */
+function formatExpire(expire: number): string {
+  if (!expire) return '长期有效';
+  const date = new Date(expire * 1000);
+  if (isNaN(date.getTime())) return '—';
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+
+  return `${y}-${m}-${d}`;;
 }
 
 export function Profiles() {
@@ -396,8 +427,20 @@ export function Profiles() {
                   )}
                 </div>
 
-                <div className="text-[11px] text-[var(--app-text-quaternary)] truncate mb-auto line-clamp-2">
-                  {profile.url || 'Local File'}
+                <div className="mt-1 min-h-[2rem] flex flex-col justify-center gap-1">
+                  {profile.subscriptionUserinfo ? (
+                    <>
+                      <div className="h-1.5 w-full rounded-full bg-[var(--app-bg-secondary)] overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-[var(--app-accent)] transition-all"
+                          style={{ width: `${Math.min(100, profile.subscriptionUserinfo.total > 0 ? ((profile.subscriptionUserinfo.upload + profile.subscriptionUserinfo.download) / profile.subscriptionUserinfo.total) * 100 : 0)}%` }}
+                        />
+                      </div>
+                      <div className="text-[10px] text-[var(--app-text-tertiary)] truncate w-full" title={`已用 ${formatBytes(profile.subscriptionUserinfo.upload + profile.subscriptionUserinfo.download)} / 总 ${formatBytes(profile.subscriptionUserinfo.total)} · 到期 ${formatExpire(profile.subscriptionUserinfo.expire)}`}>
+                        已用 {formatBytes(profile.subscriptionUserinfo.upload + profile.subscriptionUserinfo.download)} / 总 {formatBytes(profile.subscriptionUserinfo.total)} ·  {formatExpire(profile.subscriptionUserinfo.expire)}
+                      </div>
+                    </>
+                  ) : null}
                 </div>
 
                 <div className="flex items-center justify-between mt-3">

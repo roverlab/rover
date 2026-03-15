@@ -1,12 +1,6 @@
 {
     "rules": [
       {
-        "name": "🔍 流量嗅探",
-        "raw_data": {
-          "action": "sniff"
-        }
-      },
-      {
         "rule_set_build_in": ["clash:applications"],
         "outbound": "direct",
         "name": "📝 直连应用"
@@ -47,16 +41,16 @@
         "name": "📝 直连域名"
       },
       {
-        "rule_set_build_in": ["clash:lancidr"],
-        "outbound": "direct",
-        "name": "🏠 局域网 IP"
-      },
-      {
         "name": "🔍 未匹配域名DNS解析",
         "raw_data": {
           "action": "resolve",
           "server": "dns_direct_out"
         }
+      },
+      {
+        "rule_set_build_in": ["clash:lancidr"],
+        "outbound": "direct",
+        "name": "🏠 局域网 IP"
       },
       {
         "rule_set_build_in": ["clash:cncidr"],

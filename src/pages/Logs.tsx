@@ -1,100 +1,227 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Trash2, Pause, Play, Activity, Search } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { Trash2, Pause, Play, Activity, Search, MoreVertical, FileX2 } from 'lucide-react';
 import { cn } from '../components/Sidebar';
 import { Button } from '../components/ui/Button';
 import { Input, Select } from '../components/ui/Field';
 import { Badge, Card } from '../components/ui/Surface';
-import { useApi } from '../contexts/ApiContext';
-import { getWsUrl } from '../services/api';
+import { useConfirm } from '../components/ui/Notification';
 
 interface LogEntry {
   id: number;
   time: string;
   level: 'info' | 'warning' | 'error' | 'debug';
   message: string;
+  /** 配置解析错误时的友好提示 */
+  configHint?: string;
 }
 
 interface LogsProps {
   isActive?: boolean;
 }
 
+const POLL_INTERVAL_MS = 1500;
+const MAX_DISPLAY_LOGS = 500;
+
+/** 移除 ANSI 转义序列，支持常见格式 */
+function stripAnsi(str: string): string {
+  if (typeof str !== 'string') return '';
+  return str
+    .replace(/\x1b\[[0-9;]*m/g, '')           // 颜色/样式
+    .replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '')   // 光标控制等
+    .replace(/\x1b\]8;;[^\x07]*\x07/g, '')   // OSC 8 超链接
+    .replace(/\x1b\][^\x07\x1b]*[\x07\x1b]?/g, '');  // 其他 OSC
+}
+
+/** 从配置解析错误消息中提取友好提示 */
+function parseConfigErrorHint(message: string): string | null {
+  if (!message || typeof message !== 'string') return null;
+  const m = message;
+  // decode config at path: field: json: unknown field "xxx"
+  const unknownField = m.match(/unknown field ["']([^"']+)["']/i);
+  const pathMatch = m.match(/(?:route\.rules\[\d+\]\.|route\.|dns\.)[\w.\[\]]*/);
+  if (unknownField) {
+    const field = unknownField[1];
+    const path = pathMatch ? pathMatch[0] : '配置';
+    if (field === 'rule_set') {
+      return `route.rules 中的 rule_set 字段需要 sing-box 1.8.0+，请升级内核或检查策略规则（${path}）`;
+    }
+    return `配置解析失败：${path} 包含不支持的字段 "${field}"`;
+  }
+  if (m.includes('decode config') || m.includes('decode error')) {
+    return '配置解析失败，请检查 config.json 格式或前往「策略」页修正规则';
+  }
+  return null;
+}
+
+const MAX_MESSAGE_LENGTH = 4096;
+
+function parseLogLine(line: string): { level: LogEntry['level']; message: string; time: string; configHint?: string } {
+  if (line == null || typeof line !== 'string') return { level: 'info', message: '', time: '—' };
+  const trimmed = line.trim();
+  if (!trimmed) return { level: 'info', message: '', time: '—' };
+
+  let clean: string;
+  try {
+    clean = stripAnsi(trimmed);
+    // 移除不可打印字符，保留换行和常见符号
+    clean = clean.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '');
+  } catch {
+    return { level: 'info', message: trimmed.slice(0, 200), time: '—' };
+  }
+
+  // EXIT 行
+  if (clean.startsWith('EXIT:')) {
+    return { level: 'info', message: clean, time: '—' };
+  }
+
+  // 带时间戳: +0800 2026-03-14 20:36:17 ERROR [id duration] message
+  const timestampMatch = clean.match(/^(\+\d{4}\s+\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s+(.+)$/);
+  let timeStr = '—';
+  let rest = clean;
+  if (timestampMatch) {
+    const [, ts, after] = timestampMatch;
+    timeStr = (ts || '').replace(/^\+\d{4}\s+/, ''); // 去掉时区
+    rest = after ?? rest;
+  }
+
+  // 解析级别: FATAL|ERROR|WARN|INFO|DEBUG|TRACE|PANIC，可能带 [0000] 或 [id duration]
+  const levelMatch = rest.match(/^(FATAL|ERROR|WARN|INFO|DEBUG|TRACE|PANIC)(?:\[\d+\])?\s+(?:\[\d+\s+[\d.]+(?:ms|s)\]\s+)?(.*)$/);
+  let level: LogEntry['level'] = 'info';
+  let message = rest;
+  if (levelMatch) {
+    const rawLevel = (levelMatch[1] || '').toLowerCase();
+    level = rawLevel === 'warn' ? 'warning'
+      : rawLevel === 'fatal' || rawLevel === 'panic' ? 'error'
+      : (rawLevel === 'info' || rawLevel === 'warning' || rawLevel === 'error' || rawLevel === 'debug' ? rawLevel : 'info');
+    message = (levelMatch[2] ?? rest).trim() || rest;
+  }
+
+  // 超长消息截断
+  if (message.length > MAX_MESSAGE_LENGTH) {
+    message = message.slice(0, MAX_MESSAGE_LENGTH) + '…';
+  }
+
+  const configHint = (level === 'error' && (message.includes('decode config') || message.includes('unknown field')))
+    ? parseConfigErrorHint(message)
+    : undefined;
+
+  return { level, message, time: timeStr, configHint };
+}
+
 export function Logs({ isActive = true }: LogsProps) {
-  const { apiUrl, apiSecret } = useApi();
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [isPaused, setIsPaused] = useState(false);
-  const [isConnected, setIsConnected] = useState(false);
   const [levelFilter, setLevelFilter] = useState<string>('all');
   const [searchText, setSearchText] = useState('');
-  const logsEndRef = useRef<HTMLDivElement>(null);
-  const wsRef = useRef<WebSocket | null>(null);
+  const recordedLineCountRef = useRef(0);
   const idCounter = useRef(0);
+  const [initialRecorded, setInitialRecorded] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const moreButtonRef = useRef<HTMLButtonElement>(null);
+  const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0 });
+  const { confirm, ConfirmDialog } = useConfirm();
 
   useEffect(() => {
-    // 只有页面激活时才建立 WebSocket 连接
     if (!isActive) {
+      setInitialRecorded(false);
       return;
     }
 
-    const connectWs = () => {
+    const loadInitial = async () => {
       try {
-        const wsUrl = getWsUrl(apiUrl, '/logs?level=info', apiSecret);
-        const ws = new WebSocket(wsUrl);
-
-        ws.onopen = () => {
-          setIsConnected(true);
-        };
-
-        ws.onmessage = (event) => {
-          if (isPaused) return;
-          try {
-            const data = JSON.parse(event.data);
-            const newLog: LogEntry = {
-              id: idCounter.current++,
-              time: new Date().toLocaleTimeString('en-US', { hour12: false }),
-              level: data.type || 'info',
-              message: data.payload || ''
-            };
-
-            setLogs(prev => {
-              const newLogs = [...prev, newLog];
-              if (newLogs.length > 500) return newLogs.slice(newLogs.length - 500);
-              return newLogs;
-            });
-          } catch (e) {
-            console.error('Failed to parse log message', e);
-          }
-        };
-
-        ws.onerror = () => {
-          setIsConnected(false);
-        };
-
-        ws.onclose = () => {
-          setIsConnected(false);
-          setTimeout(connectWs, 5000);
-        };
-
-        wsRef.current = ws;
-      } catch (err: any) {
-        setIsConnected(false);
+        const { totalLines } = await window.ipcRenderer.singbox.readLog();
+        recordedLineCountRef.current = totalLines;
+      } catch {
+        recordedLineCountRef.current = 0;
       }
+      setInitialRecorded(true);
     };
 
-    connectWs();
-
-    return () => {
-      if (wsRef.current) {
-        wsRef.current.close();
-        wsRef.current = null;
-      }
-    };
-  }, [apiUrl, apiSecret, isPaused, isActive]);
+    loadInitial();
+  }, [isActive]);
 
   useEffect(() => {
-    // 不再自动滚动，因为最新日志在上面
-  }, [logs, isPaused]);
+    if (!isActive || isPaused || !initialRecorded) return;
+
+    const poll = async () => {
+      try {
+        const { lines, totalLines } = await window.ipcRenderer.singbox.readLog({
+          fromLine: recordedLineCountRef.current
+        });
+        if (lines.length > 0) {
+          const newEntries: LogEntry[] = lines
+            .filter((l) => l != null && String(l).trim().length > 0)
+            .map((l) => {
+              const parsed = parseLogLine(String(l));
+              return {
+                id: idCounter.current++,
+                time: parsed.time,
+                level: parsed.level,
+                message: parsed.message,
+                configHint: parsed.configHint
+              };
+            });
+          recordedLineCountRef.current = totalLines;
+          setLogs((prev) => {
+            const next = [...prev, ...newEntries];
+            if (next.length > MAX_DISPLAY_LOGS) return next.slice(next.length - MAX_DISPLAY_LOGS);
+            return next;
+          });
+        } else if (totalLines > recordedLineCountRef.current) {
+          recordedLineCountRef.current = totalLines;
+        }
+      } catch {
+        // 忽略读取错误
+      }
+    };
+
+    const timer = setInterval(poll, POLL_INTERVAL_MS);
+    poll();
+
+    return () => clearInterval(timer);
+  }, [isActive, isPaused, initialRecorded]);
 
   const clearLogs = () => setLogs([]);
+
+  const handleOpenMore = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const btn = moreButtonRef.current;
+    if (btn) {
+      const rect = btn.getBoundingClientRect();
+      setDropdownPos({ top: rect.bottom + 4, left: rect.right - 140 });
+    }
+    setMoreOpen((v) => !v);
+  };
+
+  const handleClearKernelLog = async () => {
+    setMoreOpen(false);
+    const ok = await confirm({
+      title: '清理内核日志',
+      message: '确定要清空 sing-box 内核日志文件吗？',
+      confirmText: '确定',
+      cancelText: '取消'
+    });
+    if (!ok) return;
+    try {
+      const res = await window.ipcRenderer.singbox.clearLog();
+      if (res.success) {
+        setLogs([]);
+        recordedLineCountRef.current = 0;
+        setInitialRecorded(false);
+        setTimeout(() => setInitialRecorded(true), 0);
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  useEffect(() => {
+    if (!moreOpen) return;
+    const onOutside = () => setMoreOpen(false);
+    document.addEventListener('click', onOutside);
+    return () => document.removeEventListener('click', onOutside);
+  }, [moreOpen]);
 
   const getLevelColor = (level: string) => {
     switch (level.toLowerCase()) {
@@ -167,13 +294,41 @@ export function Logs({ isActive = true }: LogsProps) {
           >
             <Trash2 className="w-4 h-4" />
           </Button>
+          <div className="relative">
+            <Button
+              ref={moreButtonRef}
+              onClick={handleOpenMore}
+              variant="ghost"
+              size="icon"
+              title="更多"
+            >
+              <MoreVertical className="w-4 h-4" />
+            </Button>
+            {moreOpen &&
+              createPortal(
+                <div
+                  className="fixed bg-[var(--app-bg)] border border-[var(--app-divider)] rounded-lg shadow-lg py-1.5 w-36 z-[200]"
+                  style={{ top: dropdownPos.top, left: dropdownPos.left }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <button
+                    className="flex items-center px-3 py-1.5 text-[12px] text-[var(--app-text-secondary)] hover:bg-[var(--app-bg-secondary)] hover:text-[var(--app-text)] transition-colors text-left w-full"
+                    onClick={handleClearKernelLog}
+                  >
+                    <FileX2 className="w-3.5 h-3.5 mr-2" />
+                    清理内核日志
+                  </button>
+                </div>,
+                document.body
+              )}
+          </div>
         </div>
       </div>
 
       <div className="page-content">
       <Card className="flex-1 overflow-hidden">
         <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--app-divider)]">
-          <div className="text-[13px] font-medium text-[var(--app-text-secondary)]">实时日志流</div>
+          <div className="text-[13px] font-medium text-[var(--app-text-secondary)]">内核日志列表</div>
           <Badge tone={isPaused ? 'warning' : 'success'}>{isPaused ? '已暂停' : '实时'}</Badge>
         </div>
         <div className="flex-1 overflow-auto">
@@ -197,7 +352,14 @@ export function Logs({ isActive = true }: LogsProps) {
                   </span>
                 </td>
                 <td className="px-5 py-2.5 text-[var(--app-text-secondary)] break-all font-mono text-[11px]">
-                  {log.message}
+                  <div>
+                    {log.message}
+                    {log.configHint && (
+                      <p className="mt-1 text-[11px] text-[var(--app-warning)] bg-[var(--app-warning-soft)] px-2 py-1 rounded">
+                        💡 {log.configHint}
+                      </p>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}
@@ -205,20 +367,16 @@ export function Logs({ isActive = true }: LogsProps) {
               <tr>
                 <td colSpan={3} className="px-5 py-10 text-center text-[var(--app-text-quaternary)]">
                   <Activity className="w-6 h-6 mx-auto mb-2 text-[var(--app-text-quaternary)]" />
-                  <p className="text-[13px]">
-                    {!isConnected
-                      ? '正在连接...'
-                      : '暂无日志（请确保内核已启动，并在设置中启用日志级别）'}
-                  </p>
+                  <p className="text-[13px]">暂无日志</p>
                 </td>
               </tr>
             )}
           </tbody>
         </table>
-          <div ref={logsEndRef} />
         </div>
       </Card>
       </div>
+      <ConfirmDialog />
     </div>
   );
 }

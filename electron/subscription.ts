@@ -15,8 +15,42 @@ import { downloadAndConvertRuleSet } from './ruleset-utils';
 import path from 'node:path';
 import fs from 'node:fs';
 import type { RuleProvider as ClashRuleProvider } from '../src/types/clash';
+import type { SubscriptionUserinfo } from './db';
 
 const DEFAULT_SUBSCRIPTION_USER_AGENT = 'clash-verge/v2.4.2';
+
+/**
+ * 从 Subscription-Userinfo 响应头解析订阅用户信息
+ * 格式: upload=5476036115025; download=5476036115025; total=26388279066624; expire=4102329600
+ * expire 可为空，表示无期限
+ */
+export function parseSubscriptionUserinfo(headerValue: string | undefined): SubscriptionUserinfo | null {
+    if (!headerValue?.trim()) return null;
+    const result: Record<string, number> = {};
+    for (const part of headerValue.split(';')) {
+        const eqIdx = part.trim().indexOf('=');
+        if (eqIdx < 0) continue;
+        const key = part.trim().slice(0, eqIdx).trim().toLowerCase();
+        const val = part.trim().slice(eqIdx + 1).trim();
+        if (!key) continue;
+        // expire 允许为空（表示无期限），其他字段必须有有效数值
+        if (val) {
+            const num = parseInt(val, 10);
+            if (!isNaN(num)) result[key] = num;
+        } else if (key === 'expire') {
+            result.expire = 0; // 空值表示无期限
+        }
+    }
+    if (result.upload != null && result.download != null && result.total != null) {
+        return {
+            upload: result.upload,
+            download: result.download,
+            total: result.total,
+            expire: result.expire ?? 0
+        };
+    }
+    return null;
+}
 
 /** 规则集解析和下载结果 */
 export interface RuleProviderParseResult {
@@ -66,6 +100,11 @@ export function parseRuleProviders(content: string): Record<string, ClashRulePro
     }
 }
 
+/** 订阅规则集 ID 写入数据库时：将冒号替换为连字符，避免存储含冒号的 ID */
+function sanitizeRuleProviderIdForDb(id: string): string {
+    return (id || '').replace(/:/g, '-');
+}
+
 /**
  * 从订阅配置中解析并下载 rule-providers
  * @param content 配置文件内容
@@ -99,8 +138,8 @@ export async function parseAndDownloadRuleProviders(
         }
 
         try {
-            // 使用订阅配置中的 key（name）作为 id
-            const providerId = name;
+            // 使用订阅配置中的 key（name）作为 id，写入数据库时冒号替换为连字符
+            const providerId = sanitizeRuleProviderIdForDb(name);
             
             // 根据文件扩展名判断类型
             const url = provider.url.toLowerCase();
@@ -222,8 +261,9 @@ export async function parseAndDownloadRuleProvidersWithConcurrency(
             continue;
         }
 
-        // 检查是否应该跳过下载
-        if (shouldSkipDownload(name, profileId)) {
+        // 检查是否应该跳过下载（使用写入 DB 的 id 格式）
+        const providerId = sanitizeRuleProviderIdForDb(name);
+        if (shouldSkipDownload(providerId, profileId)) {
             skippedProviders.push(name);
             continue;
         }
@@ -246,8 +286,8 @@ export async function parseAndDownloadRuleProvidersWithConcurrency(
         
         const batchPromises = batch.map(async ({name, provider}) => {
             try {
-                // 使用订阅配置中的 key（name）作为 id
-                const providerId = name;
+                // 使用订阅配置中的 key（name）作为 id，写入数据库时冒号替换为连字符
+                const providerId = sanitizeRuleProviderIdForDb(name);
                 
                 // 根据文件扩展名判断类型
                 const url = provider.url.toLowerCase();
@@ -402,6 +442,14 @@ export async function downloadProfile(profileId: string): Promise<string> {
 
         dbUtils.updateProfileContent(profileId, filePath, new Date().toISOString());
 
+        // 从响应头提取订阅用户信息（流量、过期时间）并写入数据库
+        const userinfoHeader = response.headers['subscription-userinfo'];
+        const userinfo = parseSubscriptionUserinfo(userinfoHeader);
+        if (userinfo) {
+            dbUtils.updateProfileSubscriptionInfo(profileId, userinfo);
+            console.log(`[Subscription] Profile ${profileId} userinfo: upload=${userinfo.upload} download=${userinfo.download} total=${userinfo.total} expire=${userinfo.expire}`);
+        }
+
         // 解析并下载 rule-providers（同步执行，等待所有下载完成）
         console.log(`[RuleProviders] Starting rule providers download for profile ${profileId}...`);
         const downloadResults = await parseAndDownloadRuleProvidersWithConcurrency(content, profileId, 10);
@@ -467,6 +515,14 @@ export async function addSubscriptionProfile(url: string): Promise<string> {
         url: url.trim(),
         path: filePath
     }, profileId);
+
+    // 从响应头提取订阅用户信息（流量、过期时间）并写入数据库
+    const userinfoHeader = response.headers['subscription-userinfo'];
+    const userinfo = parseSubscriptionUserinfo(userinfoHeader);
+    if (userinfo) {
+        dbUtils.updateProfileSubscriptionInfo(profileId, userinfo);
+        console.log(`[Subscription] New profile ${profileId} userinfo: upload=${userinfo.upload} download=${userinfo.download} total=${userinfo.total} expire=${userinfo.expire}`);
+    }
 
     // 解析并下载 rule-providers（同步执行，等待所有下载完成）
     console.log(`[RuleProviders] Starting rule providers download for new profile ${profileId}...`);
