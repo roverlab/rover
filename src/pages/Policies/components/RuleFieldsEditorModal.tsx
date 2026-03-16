@@ -90,10 +90,10 @@ export function RuleFieldsEditorModal({
     const groupCount = countRuleTreeNodes(node);
     const jsonPreview = ruleTreeNodeToSingboxLogical(node);
 
-    return open
-        ? createPortal(
-            <AnimatePresence>
-                <div className="fixed inset-0 z-[500] flex items-center justify-center p-4">
+    return createPortal(
+        <AnimatePresence>
+            {open && (
+                <div className="fixed inset-0 z-[500] flex items-center justify-center overflow-y-auto p-4">
                     <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
@@ -105,19 +105,14 @@ export function RuleFieldsEditorModal({
                         initial={{ opacity: 0, scale: 0.95, y: 10 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                        className="relative z-10 w-full max-w-4xl max-h-[85vh] flex flex-col bg-white border border-[rgba(39,44,54,0.08)] rounded-[20px] shadow-[var(--shadow-elevated)] overflow-hidden"
+                        className="relative z-10 my-4 w-full max-w-4xl max-h-[90vh] flex flex-col bg-white border border-[rgba(39,44,54,0.08)] rounded-[20px] shadow-[var(--shadow-elevated)] overflow-hidden"
                         onClick={e => e.stopPropagation()}
                     >
                         {/* Header */}
                         <div className="flex shrink-0 items-center justify-between px-6 py-4 border-b border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/50">
-                            <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-[10px] bg-[var(--app-accent-soft)] flex items-center justify-center text-[var(--app-accent-strong)] font-bold text-sm">
-                                    规
-                                </div>
-                                <h2 className="text-[15px] font-semibold text-[var(--app-text)]">
-                                    {title}
-                                </h2>
-                            </div>
+                            <h2 className="text-[15px] font-semibold text-[var(--app-text)]">
+                                {title}
+                            </h2>
                             <div className="flex items-center gap-2">
                                 <button
                                     type="button"
@@ -131,7 +126,7 @@ export function RuleFieldsEditorModal({
                         </div>
 
                         {/* Content: Editor + Preview */}
-                        <div className="flex-1 flex min-h-0">
+                        <div className="flex-1 flex min-h-0 overflow-hidden">
                             <div className="flex-1 p-6 overflow-y-auto bg-[var(--app-bg)]/30">
                                 <NativeStyleRuleEditor
                                     node={node}
@@ -143,7 +138,7 @@ export function RuleFieldsEditorModal({
                                 />
                             </div>
 
-                            <aside className="w-[320px] shrink-0 border-l border-[var(--app-stroke)] flex flex-col bg-[var(--app-panel-soft)]/50">
+                            <aside className="w-[320px] shrink-0 border-l border-[var(--app-stroke)] flex flex-col bg-[var(--app-panel-soft)]/50 min-h-0">
                                 <div className="px-4 py-2 border-b border-[var(--app-divider)] flex items-center justify-between gap-2">
                                     <span className="text-[10px] font-mono text-[var(--app-text-quaternary)] uppercase tracking-wider">
                                         Preview
@@ -184,10 +179,10 @@ export function RuleFieldsEditorModal({
                         </div>
                     </motion.div>
                 </div>
-            </AnimatePresence>,
-            document.body
-        )
-        : null;
+            )}
+        </AnimatePresence>,
+        document.body
+    );
 }
 
 // --- 路径操作 ---

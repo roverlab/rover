@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import type { RuleSetGroupItem } from './PolicyAllRuleSetModal';
 import type { PolicyEditFormStateBase } from './PolicyEditModalBase';
 import type { RuleTreeNode } from './types/ruleFields';
+import type { SingboxLogicalRule } from '../../types/policy';
 import {
     ruleTreeNodeToSingboxLogical,
     singboxLogicalToRuleTreeNodeRoot,
@@ -26,7 +27,7 @@ export interface BasePolicy {
     order?: number;
     enabled?: boolean;
     raw_data?: Record<string, unknown>;
-    logical_rule?: { type: string; mode: string; rules: unknown[] };
+    logical_rule?: SingboxLogicalRule;
     ruleSet?: string[];
     /** 允许额外字段（如 outbound、server 等） */
     [key: string]: unknown;
@@ -78,15 +79,8 @@ export interface PolicyEditModalBaseContainerProps<T extends PolicyEditFormState
         setShowRuleSetModal: (v: boolean) => void;
         setShowRuleFieldsEditorModal: (v: boolean) => void;
         onSave: () => void;
+        addNotification: (message: string, type?: 'success' | 'error' | 'info') => void;
     }) => React.ReactNode;
-}
-
-/** 仅含 rule_set/package_name/process_name 的规则由 UI 单独管理，不放入规则树 */
-const RULE_TREE_EXCLUDED_KEYS = new Set(['rule_set', 'package_name', 'process_name']);
-
-function isRuleOnlyMeta(r: Record<string, unknown>): boolean {
-    const keys = Object.keys(r).filter(k => !RULE_TREE_EXCLUDED_KEYS.has(k));
-    return keys.length === 0;
 }
 
 /** 创建空的规则树节点 */
@@ -94,21 +88,16 @@ export function makeEmptyRuleTreeNode(): RuleTreeNode {
     return { id: crypto.randomUUID(), type: 'all', rules: [{ id: crypto.randomUUID(), type: 'domain', value: '' }] };
 }
 
-/** Policy 转为 RuleTreeNode，从 logical_rule 读取（排除 rule_set 等由 UI 单独管理的规则） */
-export function policyToRuleGroupsTree<P extends BasePolicy>(policy: P | null): RuleTreeNode {
+/** Policy 转为 RuleTreeNode，从 logical_rule 读取 */
+export function policyToRuleGroupsTree<P extends BasePolicy>(policy: P | null): RuleTreeNode | null {
     if (!policy || policy.type === 'raw') {
-        return makeEmptyRuleTreeNode();
+        return null;
     }
-    const lr = policy.logical_rule as { type: string; mode: string; rules: unknown[] } | undefined;
+    const lr = policy.logical_rule;
     if (!lr || !lr.rules?.length) {
-        return makeEmptyRuleTreeNode();
+        return null;
     }
-    const treeRules = lr.rules.filter(r => r && typeof r === 'object' && !isRuleOnlyMeta(r as Record<string, unknown>));
-    if (treeRules.length === 0) {
-        return makeEmptyRuleTreeNode();
-    }
-    const filteredLr = { ...lr, rules: treeRules };
-    return singboxLogicalToRuleTreeNodeRoot(filteredLr as any);
+    return singboxLogicalToRuleTreeNodeRoot(lr);
 }
 
 /** RuleTreeNode 转为 policy，所有规则数据直接存 logical_rule */
@@ -201,9 +190,10 @@ export function createBuildPolicyData<T extends PolicyEditFormStateBase>(
                     return null;
                 }
             }
+            // raw 类型：用户填写的 JSON 原样保留，不覆盖 server/outbound 等字段
             const fieldValue = (form as Record<string, unknown>)[fieldConfig.fieldName as string] || fieldConfig.defaultValue;
             const rawData = parsedRawData
-                ? { ...(parsedRawData as Record<string, unknown>), [fieldConfig.fieldName]: fieldValue }
+                ? (parsedRawData as Record<string, unknown>)
                 : { [fieldConfig.fieldName]: fieldValue };
             return {
                 type: 'raw',
@@ -364,7 +354,21 @@ export function PolicyEditModalBaseContainer<T extends PolicyEditFormStateBase, 
     }, [form.policyType, form.selectedRuleSetIds, form.ruleGroupsTree, customGroupIds, builtinIds]);
 
     const onFormChange = (updates: Partial<T>) => {
-        setForm(prev => ({ ...prev, ...updates }));
+        setForm(prev => {
+            const next = { ...prev, ...updates };
+            // 切换策略类型时清空另一类型的数据
+            if (updates.policyType !== undefined && updates.policyType !== prev.policyType) {
+                if (updates.policyType === 'raw') {
+                    next.selectedRuleSetIds = new Set();
+                    next.ruleGroupsTree = null;
+                } else {
+                    next.rawDataContent = '';
+                    // 从原始类型切换到标准类型时，重置高级规则树为 null（显示默认占位符）
+                    next.ruleGroupsTree = null;
+                }
+            }
+            return next;
+        });
     };
 
     const handleSave = async () => {
@@ -413,6 +417,7 @@ export function PolicyEditModalBaseContainer<T extends PolicyEditFormStateBase, 
                 setShowRuleSetModal,
                 setShowRuleFieldsEditorModal,
                 onSave: handleSave,
+                addNotification,
             })}
         </>
     );

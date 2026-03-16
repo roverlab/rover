@@ -19,8 +19,7 @@
       {
         "name": "🔍 未匹配域名DNS解析",
         "raw_data": {
-          "action": "resolve",
-          "server": "dns_direct_out"
+          "action": "resolve"
         }
       },
     {
@@ -47,5 +46,6 @@
       "outbound": "currentSelected",
       "name": "🌏 国外穿墙"
     }
-  ]
+  ],
+  "default_dns_server": "dns_direct_out"
 }

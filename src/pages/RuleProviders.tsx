@@ -4,11 +4,12 @@ import { Button } from '../components/ui/Button';
 import { Switch } from '../components/ui/Switch';
 import { Input, Select } from '../components/ui/Field';
 import { cn } from '../components/Sidebar';
-import { Plus, Trash2, Edit2, X, RefreshCw, Layers, MoreVertical, Eye, Copy, Search, Settings, Code2 } from 'lucide-react';
+import { Plus, Trash2, Edit2, X, RefreshCw, Layers, MoreVertical, Eye, Copy, Search, Settings, Code2, Cloud, Box } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { RuleProvider, RuleProviderType, LocalRuleSetData, LocalRule } from '../types/rule-providers';
 import { RuleFieldsEditorModal } from './Policies/components/RuleFieldsEditorModal';
+import { RuleTreeView } from './Policies/components/RuleTreeView';
 import { RULE_FIELD_CONFIG } from './Policies/utils/ruleFieldConfig';
 import type { RuleTreeNode, LogicGroup } from './Policies/types/ruleFields';
 import { getDefaultRuleTreeNode } from './Policies/utils/ruleFieldsUtils';
@@ -30,7 +31,7 @@ function localRulesToRuleTreeNode(rules: LocalRule[]): RuleTreeNode {
         mode: 'or', // 多条规则之间是 OR 关系
         rules: rules as unknown as SingboxRouteRule[],
     };
-    return singboxLogicalToRuleTreeNodeRoot(logicalRule);
+    return singboxLogicalToRuleTreeNodeRoot(logicalRule) ?? getDefaultRuleTreeNode();
 }
 
 /** 将 RuleTreeNode 转换为 LocalRule[] */
@@ -167,6 +168,14 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
         setName(provider.name);
         setUrl(provider.url);
         setType(provider.type || 'clash');
+        // 本地类型：从 raw_data 初始化规则树，以便 RuleTreeView 首次打开时可见
+        if (provider.type === 'local') {
+            const rules = provider.raw_data?.rules || [];
+            const treeNode = localRulesToRuleTreeNode(rules);
+            setRuleEditorForm({ ruleGroupsTree: treeNode });
+        } else {
+            setRuleEditorForm({ ruleGroupsTree: null });
+        }
         setShowModal(true);
     };
 
@@ -212,29 +221,56 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
     };
 
     const handleSave = async () => {
-        // 本地类型：只需要名称
+        // 本地类型：只需要名称，但必须有规则内容
         if (type === 'local') {
             if (!name.trim()) return;
+
+            // 检查是否有规则内容
+            const localRules = ruleEditorForm.ruleGroupsTree
+                ? ruleTreeNodeToLocalRules(ruleEditorForm.ruleGroupsTree)
+                : [];
+
+            // 对于新建的本地规则集，必须有规则内容
+            if (!editingProvider && localRules.length === 0) {
+                addNotification('本地规则集必须包含至少一条规则', 'error');
+                return;
+            }
+
+            // 对于编辑已有的本地规则集，检查现有规则是否为空
+            if (editingProvider) {
+                const existingRules = editingProvider.raw_data?.rules || [];
+                const hasRules = localRules.length > 0 || existingRules.length > 0;
+                if (!hasRules) {
+                    addNotification('本地规则集必须包含至少一条规则', 'error');
+                    return;
+                }
+            }
+
             try {
                 if (editingProvider) {
                     await window.ipcRenderer.db.updateRuleProvider(editingProvider.id, {
                         name: name.trim(),
                     });
+                    // 如果有新规则，保存规则数据
+                    if (localRules.length > 0) {
+                        const data: LocalRuleSetData = {
+                            version: 3,
+                            rules: localRules,
+                        };
+                        await window.ipcRenderer.core.saveLocalRuleProvider(editingProvider.id, data);
+                    }
                 } else {
                     const providerId = await window.ipcRenderer.core.addLocalRuleProvider({
                         name: name.trim(),
                         enabled: true
                     });
-                    // 新建时若有草稿规则，一并保存
-                    if (ruleEditorForm.ruleGroupsTree) {
-                        const localRules = ruleTreeNodeToLocalRules(ruleEditorForm.ruleGroupsTree);
-                        if (localRules.length > 0) {
-                            const data: LocalRuleSetData = {
-                                version: 3,
-                                rules: localRules,
-                            };
-                            await window.ipcRenderer.core.saveLocalRuleProvider(providerId, data);
-                        }
+                    // 新建时保存规则数据
+                    if (localRules.length > 0) {
+                        const data: LocalRuleSetData = {
+                            version: 3,
+                            rules: localRules,
+                        };
+                        await window.ipcRenderer.core.saveLocalRuleProvider(providerId, data);
                     }
                 }
                 setShowModal(false);
@@ -361,7 +397,7 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
             }
             loadProviders();
             // 触发配置生成
-            await window.ipcRenderer.core.generateConfig();
+            window.ipcRenderer.core.generateConfig();
         } catch (err: any) {
             console.error('Failed to refresh selected rule providers:', err);
             addNotification(`更新失败: ${err.message}`, 'error');
@@ -442,7 +478,7 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
             }
             loadProviders();
             // 触发配置生成
-            await window.ipcRenderer.core.generateConfig();
+            window.ipcRenderer.core.generateConfig();
         } catch (err: any) {
             addNotification(`操作失败: ${err?.message || '未知错误'}`, 'error');
         }
@@ -462,7 +498,7 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
             }
             loadProviders();
             // 触发配置生成
-            await window.ipcRenderer.core.generateConfig();
+            window.ipcRenderer.core.generateConfig();
         } catch (err: any) {
             addNotification(`操作失败: ${err?.message || '未知错误'}`, 'error');
         }
@@ -487,7 +523,7 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
             setSelectedProviderIds(new Set());
             loadProviders();
             // 触发配置生成
-            await window.ipcRenderer.core.generateConfig();
+            window.ipcRenderer.core.generateConfig();
         } catch (err: any) {
             addNotification(`删除失败: ${getDisplayErrorMessage(err)}`, 'error');
         }
@@ -503,7 +539,7 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
             addNotification('规则集已删除');
             loadProviders();
             // 触发配置生成
-            await window.ipcRenderer.core.generateConfig();
+            window.ipcRenderer.core.generateConfig();
         } catch (err: any) {
             addNotification(`删除失败: ${getDisplayErrorMessage(err)}`, 'error');
             console.error('Failed to delete rule provider:', err);
@@ -945,7 +981,7 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
                             initial={{ opacity: 0, scale: 0.95, y: 10 }}
                             animate={{ opacity: 1, scale: 1, y: 0 }}
                             exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                            className="relative z-10 w-full max-w-lg flex flex-col bg-white border border-[rgba(39,44,54,0.08)] rounded-[20px] shadow-[var(--shadow-elevated)] overflow-hidden"
+                            className="relative z-10 w-full max-w-lg max-h-[90vh] flex flex-col bg-white border border-[rgba(39,44,54,0.08)] rounded-[20px] shadow-[var(--shadow-elevated)] overflow-hidden"
                             style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
                             onClick={e => e.stopPropagation()}
                         >
@@ -963,7 +999,76 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
                                 </button>
                             </div>
 
-                            <div className="flex-1 p-6 space-y-4">
+                            <div className="flex-1 min-h-0 p-6 space-y-4 overflow-y-auto">
+                                <div className="space-y-1.5">
+                                    <label className="text-[12px] font-medium text-[var(--app-text-secondary)] pl-1">类型</label>
+                                    <div className="flex flex-wrap gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => setType('clash')}
+                                            className={cn(
+                                                "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] border transition-all cursor-pointer",
+                                                type === 'clash'
+                                                    ? "border-[var(--app-accent-border)] bg-[var(--app-accent-soft)]"
+                                                    : "border-[var(--app-stroke)] bg-white hover:bg-[var(--app-hover)]"
+                                            )}
+                                        >
+                                            <Cloud className={cn(
+                                                "w-3.5 h-3.5",
+                                                type === 'clash' ? "text-[var(--app-accent)]" : "text-[var(--app-text-tertiary)]"
+                                            )} />
+                                            <span className={cn(
+                                                "text-[12px] font-medium",
+                                                type === 'clash' ? "text-[var(--app-text)]" : "text-[var(--app-text-secondary)]"
+                                            )}>
+                                                Clash
+                                            </span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setType('singbox')}
+                                            className={cn(
+                                                "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] border transition-all cursor-pointer",
+                                                type === 'singbox'
+                                                    ? "border-[var(--app-accent-border)] bg-[var(--app-accent-soft)]"
+                                                    : "border-[var(--app-stroke)] bg-white hover:bg-[var(--app-hover)]"
+                                            )}
+                                        >
+                                            <Layers className={cn(
+                                                "w-3.5 h-3.5",
+                                                type === 'singbox' ? "text-[var(--app-accent)]" : "text-[var(--app-text-tertiary)]"
+                                            )} />
+                                            <span className={cn(
+                                                "text-[12px] font-medium",
+                                                type === 'singbox' ? "text-[var(--app-text)]" : "text-[var(--app-text-secondary)]"
+                                            )}>
+                                                Singbox
+                                            </span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setType('local')}
+                                            className={cn(
+                                                "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] border transition-all cursor-pointer",
+                                                type === 'local'
+                                                    ? "border-[var(--app-accent-border)] bg-[var(--app-accent-soft)]"
+                                                    : "border-[var(--app-stroke)] bg-white hover:bg-[var(--app-hover)]"
+                                            )}
+                                        >
+                                            <Box className={cn(
+                                                "w-3.5 h-3.5",
+                                                type === 'local' ? "text-[var(--app-accent)]" : "text-[var(--app-text-tertiary)]"
+                                            )} />
+                                            <span className={cn(
+                                                "text-[12px] font-medium",
+                                                type === 'local' ? "text-[var(--app-text)]" : "text-[var(--app-text-secondary)]"
+                                            )}>
+                                                本地
+                                            </span>
+                                        </button>
+                                    </div>
+                                </div>
+
                                 <div className="space-y-1.5">
                                     <label className="text-[12px] font-medium text-[var(--app-text-secondary)] pl-1">名称</label>
                                     <Input
@@ -971,18 +1076,6 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
                                         onChange={e => setName(e.target.value)}
                                         placeholder="例如：BilibiliHMT"
                                     />
-                                </div>
-
-                                <div className="space-y-1.5">
-                                    <label className="text-[12px] font-medium text-[var(--app-text-secondary)] pl-1">类型</label>
-                                    <Select
-                                        value={type}
-                                        onChange={e => setType(e.target.value as RuleProviderType)}
-                                    >
-                                        <option value="clash">Clash</option>
-                                        <option value="singbox">Singbox</option>
-                                        <option value="local">本地</option>
-                                    </Select>
                                 </div>
 
                                 {type !== 'local' && (
@@ -996,21 +1089,22 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
                                 </div>
                                 )}
                                 {type === 'local' && (
-                                <div className="space-y-2">
-                                    <label className="text-[12px] font-medium text-[var(--app-text-secondary)] pl-1">规则内容</label>
-                                    <Button
-                                        variant="secondary"
-                                        size="sm"
-                                        onClick={() => editingProvider ? handleOpenRuleEditor(editingProvider) : handleOpenRuleEditorForNew()}
-                                    >
-                                        <Code2 className="w-3.5 h-3.5 mr-1" />
-                                        高级规则编辑
-                                    </Button>
-                                    {!editingProvider && (
-                                        <p className="text-[11px] text-[var(--app-text-tertiary)]">
-                                            可先编辑规则再保存，支持域名、IP、端口等多种匹配规则。
-                                        </p>
-                                    )}
+                                <div className="space-y-1.5">
+                                    <div className="flex items-center justify-between gap-2 pl-1">
+                                        <label className="text-[12px] font-medium text-[var(--app-text-secondary)]">规则内容</label>
+                                        <button
+                                            type="button"
+                                            onClick={() => editingProvider ? handleOpenRuleEditor(editingProvider) : handleOpenRuleEditorForNew()}
+                                            className="px-3 py-1.5 rounded-[8px] border border-[rgba(39,44,54,0.12)] bg-white hover:bg-[var(--app-hover)] transition-colors text-[12px] text-[var(--app-text)]"
+                                        >
+                                            打开规则编辑器
+                                        </button>
+                                    </div>
+                                    <RuleTreeView
+                                        node={ruleEditorForm.ruleGroupsTree ?? null}
+                                        formConfig={RULE_FIELD_CONFIG}
+                                    />
+                                    <p className="text-[11px] text-[var(--app-text-quaternary)] pl-1">点击打开规则编辑器，支持域名、IP、端口等多种匹配规则</p>
                                 </div>
                                 )}
                             </div>
@@ -1020,7 +1114,7 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
                                 <Button
                                     variant="primary"
                                     onClick={handleSave}
-                                    disabled={!name.trim() || (type !== 'local' && !url.trim())}
+                                    disabled={!name.trim() || (type !== 'local' && !url.trim()) || (type === 'local' && !editingProvider && !ruleEditorForm.ruleGroupsTree)}
                                 >
                                     保存
                                 </Button>

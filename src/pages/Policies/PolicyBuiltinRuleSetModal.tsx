@@ -32,7 +32,7 @@ function getGroupKey(id: string): string {
 // 分组显示名称映射
 const GROUP_DISPLAY_NAMES: Record<string, string> = {
     'clash': 'Clash 规则',
-    'acl': 'ACL 规则',
+    'acl': 'ACL4SSR 组',
     'geoip': 'GeoIP 规则',
     'geosite': 'GeoSite 规则',
     'singbox': 'SingBox 规则',
@@ -198,7 +198,11 @@ export function PolicyBuiltinRuleSetModal({
                                                 <Check className="w-3 h-3 text-white" />
                                             )}
                                         </div>
-                                        <span className="text-[13px] text-[var(--app-text)]">{provider.name}</span>
+                                        <span className="text-[13px] text-[var(--app-text)]">
+                                        <span className="text-[var(--app-text-tertiary)]">{GROUP_DISPLAY_NAMES[getGroupKey(provider.id)] || getGroupKey(provider.id).toUpperCase()}</span>
+                                        <span className="text-[var(--app-text-quaternary)] mx-1">/</span>
+                                        {provider.name}
+                                    </span>
                                         {!provider.enabled && (
                                             <span className="text-[10px] text-[var(--app-text-quaternary)]">(已禁用)</span>
                                         )}

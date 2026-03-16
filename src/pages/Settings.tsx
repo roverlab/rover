@@ -39,6 +39,9 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
   // 启动时自动打开内核（默认 true）
   const [autoStartProxy, setAutoStartProxy] = useState(true);
 
+  // IPv6 开关（默认 false）
+  const [ipv6, setIpv6] = useState(false);
+
   // Build info
   const [appVersion, setAppVersion] = useState('v1.0.0');
   const [singboxVersion, setSingboxVersion] = useState('sing-box 1.8.0');
@@ -68,6 +71,7 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
       const overrideRulesVal = allSettings['override-rules'] || 'false';
       const subscriptionUserAgentVal = allSettings['subscription-user-agent'] || '';
       const autoStartProxyVal = allSettings['auto-start-proxy'] ?? 'true';
+      const ipv6Val = allSettings['ipv6'] ?? 'false';
 
       setPort(parseInt(portVal, 10) || 7890);
       setAllowLan(lanVal === 'true');
@@ -77,6 +81,7 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
       setOverrideRules(overrideRulesVal === 'true');
       setSubscriptionUserAgent(subscriptionUserAgentVal);
       setAutoStartProxy(autoStartProxyVal === 'true');
+      setIpv6(ipv6Val === 'true');
 
       // Hosts 配置（数组存储）
       const hostsVal = allSettings['hosts-override'] || '[]';
@@ -203,12 +208,13 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
       if (key === 'api-secret') setApiSecret(value);
       if (key === 'subscription-user-agent') setSubscriptionUserAgent(value);
       if (key === 'auto-start-proxy') setAutoStartProxy(value);
+      if (key === 'ipv6') setIpv6(value);
 
       // 订阅 User-Agent 和启动自动打开内核 不影响 config.json，无需重新生成
       if (key === 'subscription-user-agent' || key === 'auto-start-proxy') return;
 
       // Regenerate config.json（写入时若内核运行中会自动重启）
-      await window.ipcRenderer.core.generateConfig();
+      window.ipcRenderer.core.generateConfig();
     } catch (err) {
       console.error('Failed to update config', err);
     }
@@ -225,7 +231,7 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
   };
 
   const regenerateConfigIfNeeded = async () => {
-    await window.ipcRenderer.core.generateConfig();
+    window.ipcRenderer.core.generateConfig();
   };
 
   // 保存 Hosts 配置（数组存储，原样保存不修改内容，解析时再处理）
@@ -472,6 +478,17 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
                         console.error('Failed to save override-rules', e);
                       }
                     }}
+                  />
+                </ListRow>
+
+                <ListRow>
+                  <div>
+                    <div className="list-row-title">IPv6</div>
+                    <div className="list-row-description">Enable IPv6 support</div>
+                  </div>
+                  <Switch
+                    checked={ipv6}
+                    onCheckedChange={(v) => handleUpdateConfig('ipv6', v)}
                   />
                 </ListRow>
 

@@ -20,33 +20,11 @@ import {
 } from './config-file';
 import * as scheduler from './scheduler';
 import { RuleProvider } from '../src/types/rule-providers';
+import { getCachedIsAdmin } from './admin-cache';
 
-/** 检测当前进程是否以管理员权限运行 */
-function checkIsAdmin(): boolean {
-    if (process.platform !== 'win32') return true;
-    try {
-        // 方法1: 使用 Windows API 检查当前进程令牌
-        const script = `
-            $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
-            $principal = New-Object Security.Principal.WindowsPrincipal($identity)
-            $isAdmin = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-            if ($isAdmin) { exit 0 } else { exit 1 }
-        `;
-        execSync('powershell.exe -Command ' + script, {
-            encoding: 'utf8',
-            windowsHide: true,
-            timeout: 5000
-        });
-        return true;
-    } catch {
-        // PowerShell 失败，尝试 net session 检测
-        try {
-            execSync('net session', { stdio: 'ignore', windowsHide: true });
-            return true;
-        } catch {
-            return false;
-        }
-    }
+/** 检测当前进程是否以管理员权限运行（使用启动时缓存的值） */
+export function checkIsAdmin(): boolean {
+    return getCachedIsAdmin();
 }
 
 export function getPolicyReferencedRuleProviderRefs(policy: any): string[] {
@@ -331,10 +309,24 @@ function isDefaultDnsRuleFormat(rule: Record<string, unknown>): boolean {
     return ruleKeys.every(k => DNS_DEFAULT_ONLY_KEYS.has(k));
 }
 
-/** 将模板 dns.rules 中的单条规则转换为 DnsPolicy 输入：rule_set+server(+name) 当作 default，其余当作 raw */
-function templateDnsRuleToDnsPolicy(rule: Record<string, unknown>, order: number): Omit<import('../src/types/dns-policy').DnsPolicy, 'id' | 'createdAt' | 'updatedAt'> {
-    const server = String(rule.server ?? 'local');
+/** 将模板 dns.rules 中的单条规则转换为 DnsPolicy 输入：仅支持 default 格式（rule_set+server）或显式 raw_data 格式，不自动识别/生成 raw */
+function templateDnsRuleToDnsPolicy(rule: Record<string, unknown>, order: number): Omit<import('../src/types/dns-policy').DnsPolicy, 'id' | 'createdAt' | 'updatedAt'> | null {
+    // 1. 显式 raw_data 格式：仅当模板包含 name + raw_data 时使用 raw 类型
+    if (rule.raw_data && typeof rule.raw_data === 'object') {
+        const rawData = rule.raw_data as Record<string, unknown>;
+        const server = String(rawData.server ?? rule.server ?? 'local');
+        return {
+            type: 'raw',
+            name: getRuleName(rule, `DNS 规则 ${order + 1}`),
+            server,
+            enabled: true,
+            order,
+            raw_data: rawData,
+        };
+    }
+    // 2. default 格式：rule_set + server
     if (isDefaultDnsRuleFormat(rule)) {
+        const server = String(rule.server ?? 'local');
         const ruleSet = rule.rule_set;
         const ruleSetArr = Array.isArray(ruleSet) ? ruleSet : typeof ruleSet === 'string' ? [ruleSet] : [];
         const builtIn = ruleSetArr.filter((v: unknown) => typeof v === 'string' && (v.startsWith('geosite:') || v.startsWith('geoip:')));
@@ -350,15 +342,8 @@ function templateDnsRuleToDnsPolicy(rule: Record<string, unknown>, order: number
             ruleSetAcl: acl.length > 0 ? acl : undefined,
         };
     }
-    const { server: _s, name: _n, ...rawData } = rule;
-    return {
-        type: 'raw',
-        name: getRuleName(rule, `DNS 规则 ${order + 1}`),
-        server,
-        enabled: true,
-        order,
-        raw_data: rawData,
-    };
+    // 3. 其他格式：不导入，不自动生成 raw
+    return null;
 }
 
 /** 注册规则集相关 IPC 处理器 */
@@ -413,9 +398,9 @@ export function registerRuleProviderIpcHandlers(
                     dbUtils.clearDnsPolicies();
                     for (let i = 0; i < rules.length; i++) {
                         const r = rules[i];
-                        if (r && typeof r === 'object' && r.server) {
+                        if (r && typeof r === 'object' && (r.server || r.raw_data)) {
                             const policy = templateDnsRuleToDnsPolicy(r as Record<string, unknown>, i);
-                            dbUtils.addDnsPolicy(policy);
+                            if (policy) dbUtils.addDnsPolicy(policy);
                         }
                     }
                     dbUtils.cleanupProfileDnsPolicies();
@@ -448,24 +433,54 @@ export function registerRuleProviderIpcHandlers(
                 }
             }
 
-            // 处理 tun 字段：如果没有 tun 字段，默认当作 false（关闭 TUN）
+            // 处理 tun 字段：只有当模板中明确有 tun 字段时才修改数据库设置
+            // 如果模板没有 tun 字段，保持用户当前设置不变
             let tunSet = false;
             let tunNeedsAdmin = false;
-            const tunValue = typeof data.tun === 'boolean' ? data.tun : false;
-            try {
-                // 检查是否有管理员权限
-                const hasAdmin = checkIsAdmin();
-
-                if (hasAdmin) {
-                    // 有管理员权限，直接修改数据库
-                    dbUtils.setSetting('dashboard-tun-mode', tunValue ? 'true' : 'false');
+            let tunValue: boolean | undefined;
+            
+            // 只有当模板中明确有 tun 字段且为 true 时才处理
+            if (data.tun === true) {
+                tunValue = true;
+                try {
+                    // 写入数据库不需要管理员权限，直接设置
+                    // TUN 模式生效时才需要管理员权限（在 Dashboard 中处理）
+                    dbUtils.setSetting('dashboard-tun-mode', 'true');
                     tunSet = true;
-                } else {
-                    // 没有管理员权限，标记需要提示用户
-                    tunNeedsAdmin = true;
+                    // 检查是否有管理员权限，用于前端提示
+                    tunNeedsAdmin = !checkIsAdmin();
+                } catch (e) {
+                    console.error('Failed to process tun setting from template:', e);
                 }
-            } catch (e) {
-                console.error('Failed to process tun setting from template:', e);
+            }
+            // 如果模板中 tun 为 false，也更新数据库关闭 TUN 模式
+            else if (data.tun === false) {
+                tunValue = false;
+                try {
+                    dbUtils.setSetting('dashboard-tun-mode', 'false');
+                    tunSet = true;
+                } catch (e) {
+                    console.error('Failed to process tun setting from template:', e);
+                }
+            }
+            // 如果模板中没有 tun 字段，不做任何处理，保持用户当前设置
+
+            // 处理 default_dns_server 字段：如果有，将对应的 DNS 服务器设为默认
+            let defaultDnsServerSet = false;
+            if (typeof data.default_dns_server === 'string' && data.default_dns_server.trim()) {
+                try {
+                    const serverId = data.default_dns_server.trim();
+                    const success = dbUtils.setDefaultDnsServer(serverId);
+                    if (success) {
+                        defaultDnsServerSet = true;
+                    } else {
+                        // 找不到对应的服务器，清除现有的默认值
+                        console.warn(`Default DNS server "${serverId}" not found, clearing default`);
+                        dbUtils.clearDefaultDnsServer();
+                    }
+                } catch (e) {
+                    console.error('Failed to set default DNS server from template:', e);
+                }
             }
 
             // 配置生成由前端在导入成功后触发
@@ -479,7 +494,8 @@ export function registerRuleProviderIpcHandlers(
                 tunSet,
                 tunNeedsAdmin,
                 tunValue,
-                message: `成功导入 ${addedCount} 条策略${dnsSet ? '，已应用DNS配置' : ''}${finalOutboundSet ? '，已设置兜底出站' : ''}${tunSet ? '，已设置TUN模式' : ''}`
+                defaultDnsServerSet,
+                message: `成功导入 ${addedCount} 条策略${dnsSet ? '，已应用DNS配置' : ''}${finalOutboundSet ? '，已设置兜底出站' : ''}${tunSet ? '，已设置TUN模式' : ''}${defaultDnsServerSet ? '，已设置默认DNS服务器' : ''}`
             };
         } catch (e) {
             console.error('Failed to import template completely:', templatePath, e);

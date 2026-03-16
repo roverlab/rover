@@ -132,7 +132,8 @@ export function DnsPolicies({ isActive = true }: DnsPoliciesProps) {
         const orders = nextPolicies.map((p, index) => ({ id: p.id, order: index }));
         try {
             await window.ipcRenderer.db.updateDnsPoliciesOrder(orders);
-            await window.ipcRenderer.core.generateConfig();
+            // 异步生成配置，不阻塞UI
+            window.ipcRenderer.core.generateConfig().catch(console.error);
         } catch (err: unknown) {
             console.error('Failed to update order:', err);
             addNotification('批量排序失败，已恢复原顺序', 'error');
@@ -145,7 +146,8 @@ export function DnsPolicies({ isActive = true }: DnsPoliciesProps) {
         const ids = Array.from(selectedIds);
         try {
             await Promise.all(ids.map(id => window.ipcRenderer.db.updateDnsPolicy(id, { enabled: true })));
-            await window.ipcRenderer.core.generateConfig();
+            // 异步生成配置，不阻塞UI
+            window.ipcRenderer.core.generateConfig().catch(console.error);
             addNotification(`已启用 ${ids.length} 条策略`);
             loadPolicies();
         } catch (err: unknown) {
@@ -158,7 +160,8 @@ export function DnsPolicies({ isActive = true }: DnsPoliciesProps) {
         const ids = Array.from(selectedIds);
         try {
             await Promise.all(ids.map(id => window.ipcRenderer.db.updateDnsPolicy(id, { enabled: false })));
-            await window.ipcRenderer.core.generateConfig();
+            // 异步生成配置，不阻塞UI
+            window.ipcRenderer.core.generateConfig().catch(console.error);
             addNotification(`已禁用 ${ids.length} 条策略`);
             loadPolicies();
         } catch (err: unknown) {
@@ -180,7 +183,8 @@ export function DnsPolicies({ isActive = true }: DnsPoliciesProps) {
         setBatchDeleteIds(new Set());
         try {
             await Promise.all(ids.map(id => window.ipcRenderer.db.deleteDnsPolicy(id as string)));
-            await window.ipcRenderer.core.generateConfig();
+            // 异步生成配置，不阻塞UI
+            window.ipcRenderer.core.generateConfig().catch(console.error);
             addNotification(`已删除 ${count} 条策略`);
             loadPolicies();
         } catch (err: unknown) {
@@ -193,7 +197,8 @@ export function DnsPolicies({ isActive = true }: DnsPoliciesProps) {
         const ids = Array.from(selectedIds);
         try {
             await Promise.all(ids.map(id => window.ipcRenderer.db.deleteDnsPolicy(id as string)));
-            await window.ipcRenderer.core.generateConfig();
+            // 异步生成配置，不阻塞UI
+            window.ipcRenderer.core.generateConfig().catch(console.error);
             addNotification('策略已删除');
             loadPolicies();
         } catch (err: unknown) {

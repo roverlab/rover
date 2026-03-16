@@ -31,7 +31,7 @@ const THEMES = {
 } as const;
 
 interface RuleTreeViewProps {
-    node: RuleTreeNode;
+    node?: RuleTreeNode | null;
     formConfig?: RuleFieldConfig[];
 }
 
@@ -106,6 +106,13 @@ function RuleTreeNodeView({
  * 基于嵌套逻辑流模板，展示 all/any/not 与叶子规则的层级关系
  */
 export function RuleTreeView({ node, formConfig }: RuleTreeViewProps) {
+    if (!node) {
+        return (
+            <div className="flex items-center justify-center py-6 px-4 rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/50 text-[var(--app-text-tertiary)]">
+                <span className="text-[13px]">暂无规则</span>
+            </div>
+        );
+    }
     return (
         <div className="space-y-4">
             <RuleTreeNodeView node={node} formConfig={formConfig} />

@@ -181,12 +181,11 @@ export function Dashboard({ isActive }: DashboardProps) {
     const [uptime, setUptime] = useState<string>('');
     const [networkInfo, setNetworkInfo] = useState<{ ip: string; country: string; countryCode: string } | null>(null);
     const [networkCheckFailed, setNetworkCheckFailed] = useState(false); // 网络检测失败
-    const [localIp, setLocalIp] = useState("127.0.0.1");
     const [isLoaded, setIsLoaded] = useState(false);
     const [settingsLoaded, setSettingsLoaded] = useState(false); // 设置是否已从数据库加载
     const [showNetworkTip, setShowNetworkTip] = useState(false); // 是否显示网络检测提示
-    const [dashboardSettingsLoaded, setDashboardSettingsLoaded] = useState(false); // 看板设置是否已从数据库加载
     const [isAdmin, setIsAdmin] = useState(false); // 是否有管理员权限
+    const [tunModeInitialized, setTunModeInitialized] = useState(false); // tunMode 是否已初始化完成（数据库+权限检查）
 
     useEffect(() => {
         const timer = setTimeout(() => setIsLoaded(true), 150);
@@ -320,7 +319,8 @@ export function Dashboard({ isActive }: DashboardProps) {
         loadSettings();
     }, []);
 
-    // 从数据库加载看板设置（mode、systemProxy、tunMode）
+    // 从数据库加载看板设置（mode、systemProxy）
+    // 注意：tunMode 的加载放在单独的 useEffect 中，与权限检查一起处理
     const loadDashboardSettings = useCallback(async () => {
         try {
             const allSettings = await window.ipcRenderer.db.getAllSettings();
@@ -342,22 +342,55 @@ export function Dashboard({ isActive }: DashboardProps) {
                 window.ipcRenderer.core.setSystemProxy(enabled);
             }
 
-            // 读取 tunMode（虚拟网卡）
-            const savedTunMode = allSettings['dashboard-tun-mode'];
-            if (savedTunMode !== undefined) {
-                const enabled = savedTunMode === 'true';
-                setTunMode(enabled);
-                tunModeDisplayRef.current = enabled;
-                console.log('[Dashboard] 已从数据库加载 tunMode:', enabled);
-            }
-
-            setDashboardSettingsLoaded(true);
             console.log('[Dashboard] 看板设置已从数据库加载');
         } catch (e) {
             console.error('[Dashboard] 加载看板设置失败:', e);
-            setDashboardSettingsLoaded(true); // 即使失败也标记为已加载
         }
     }, []);
+
+    // 加载 tunMode（检查数据库值和管理员权限，确保显示的是最终结果）
+    const loadTunMode = useCallback(async () => {
+        try {
+            // 并行获取数据库值和权限状态
+            const [allSettings, admin] = await Promise.all([
+                window.ipcRenderer.db.getAllSettings(),
+                window.ipcRenderer.core.isAdmin()
+            ]);
+
+            console.log('[Dashboard] 管理员权限检查结果:', admin);
+            setIsAdmin(admin);
+
+            // 读取 tunMode（虚拟网卡）
+            const savedTunMode = allSettings['dashboard-tun-mode'];
+            const dbTunMode = savedTunMode === 'true';
+            
+            // 最终显示值：有权限则显示数据库值，无权限则显示关闭
+            const finalTunMode = admin ? dbTunMode : false;
+            setTunMode(finalTunMode);
+            tunModeDisplayRef.current = finalTunMode;
+            
+            console.log('[Dashboard] tunMode 加载完成 - 数据库值:', dbTunMode, '管理员权限:', admin, '最终显示:', finalTunMode);
+        } catch (e) {
+            console.error('[Dashboard] 加载 tunMode 失败:', e);
+            setIsAdmin(false);
+            setTunMode(false);
+            tunModeDisplayRef.current = false;
+        } finally {
+            setTunModeInitialized(true);
+        }
+    }, []);
+
+    // 初始化加载 tunMode
+    useEffect(() => {
+        loadTunMode();
+    }, []);
+
+    // 每次页面激活时刷新 tunMode 显示
+    useEffect(() => {
+        if (isActive) {
+            loadTunMode();
+        }
+    }, [isActive, loadTunMode]);
 
     // 初始化加载
     useEffect(() => {
@@ -505,41 +538,13 @@ export function Dashboard({ isActive }: DashboardProps) {
         }
     };
 
-    // 检查管理员权限，并在非管理员权限下自动关闭 TUN 模式
-    useEffect(() => {
-        const checkAdmin = async () => {
-            try {
-                const admin = await window.ipcRenderer.core.isAdmin();
-                console.log('[Dashboard] 管理员权限检查结果:', admin);
-                setIsAdmin(admin);
-
-                // 非管理员权限下，如果 TUN 模式是开启的，需要自动关闭
-                if (!admin && tunMode) {
-                    console.log('[Dashboard] 非管理员权限，自动关闭 TUN 模式');
-                    await window.ipcRenderer.db.setSetting('dashboard-tun-mode', 'false');
-                    setTunMode(false);
-                    tunModeDisplayRef.current = false;
-                    // 重新生成配置（不带 TUN）
-                    await window.ipcRenderer.core.generateConfig();
-                }
-            } catch (e) {
-                console.error('[Dashboard] 检查管理员权限失败:', e);
-                setIsAdmin(false);
-            }
-        };
-        // 等待 tunMode 从数据库加载完成后再检查
-        if (dashboardSettingsLoaded) {
-            checkAdmin();
-        }
-    }, [dashboardSettingsLoaded, tunMode]);
-
     const handleToggleTunMode = async (enable: boolean) => {
         if (tunLoading) return;
         
-        // 再次检查管理员权限（防止 UI 状态不同步）
-        if (!isAdmin) {
-            console.log('[Dashboard] 无管理员权限，禁止切换 TUN 模式');
-            addNotification('需要管理员权限才能使用 TUN 模式', 'error');
+        // 开启 TUN 模式时需要检查管理员权限
+        if (enable && !isAdmin) {
+            console.log('[Dashboard] 无管理员权限，禁止开启 TUN 模式');
+            addNotification('请以管理员身份运行程序后开启 TUN 模式', 'error');
             return;
         }
 
@@ -553,7 +558,7 @@ export function Dashboard({ isActive }: DashboardProps) {
             console.log('[Dashboard] 虚拟网卡状态已保存到数据库:', enable);
 
             // 3. 写入 config.json（TUN 配置在 mergeSettingsIntoConfig 中生效，写入时若内核运行中会自动重启）
-            await window.ipcRenderer.core.generateConfig();
+            window.ipcRenderer.core.generateConfig();
             // 4. 操作完成后才更新 Switch 显示状态
             setTunMode(enable);
             tunModeDisplayRef.current = enable;
@@ -598,7 +603,7 @@ export function Dashboard({ isActive }: DashboardProps) {
             console.log('[Dashboard] 出站模式已保存到数据库:', newMode);
 
             // 2. 触发重新生成配置文件（配置生成时会读取 dashboard-mode，写入时若内核运行中会自动重启）
-            await window.ipcRenderer.core.generateConfig();
+            window.ipcRenderer.core.generateConfig();
             console.log('[Dashboard] 配置文件已重新生成');
 
             // 更新本地状态
@@ -758,18 +763,18 @@ export function Dashboard({ isActive }: DashboardProps) {
                                         <span>虚拟网卡</span>
                                     </div>
                                     <p className="text-[12px] text-[var(--app-text-quaternary)] mt-2">
-                                        {!isAdmin 
-                                            ? '需要以管理员身份运行程序才能使用 TUN 模式。'
-                                            : 'TUN 模式需要管理员权限才能正常工作。'}
+                                        TUN 模式需要管理员权限才能正常工作。
                                     </p>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                    {tunLoading && <Loader2 className="w-4 h-4 animate-spin text-[var(--app-text-quaternary)]" />}
-                                    <Switch
-                                        checked={tunLoading ? tunModeDisplayRef.current : tunMode}
-                                        onCheckedChange={handleToggleTunMode}
-                                        disabled={tunLoading || !isAdmin}
-                                    />
+                                    {(!tunModeInitialized || tunLoading) && <Loader2 className="w-4 h-4 animate-spin text-[var(--app-text-quaternary)]" />}
+                                    {tunModeInitialized && (
+                                        <Switch
+                                            checked={tunLoading ? tunModeDisplayRef.current : tunMode}
+                                            onCheckedChange={handleToggleTunMode}
+                                            disabled={tunLoading}
+                                        />
+                                    )}
                                 </div>
                             </div>
                         </Card>

@@ -16,31 +16,11 @@ process.on('warning', (warning) => {
 
 import { app, BrowserWindow, ipcMain, shell, dialog } from 'electron';
 import { execSync } from 'node:child_process';
+import { setCachedIsAdmin, getCachedIsAdmin } from './admin-cache';
 
 // UAC 以管理员运行后白屏：Chromium 沙箱与提升权限冲突，需禁用沙箱
 // 见 https://github.com/electron/electron/issues/49167
-if (process.platform === 'win32') {
-    // 使用 whoami 检查管理员权限，比 net session 更可靠
-    // S-1-5-32-544 是 Windows 内置管理员组的 SID
-    let isAdmin = false;
-    try {
-        const output = execSync('whoami /groups', { encoding: 'utf8', windowsHide: true });
-        isAdmin = output.includes('S-1-5-32-544');
-    } catch {
-        // whoami 失败时，尝试 net session 作为备选
-        try {
-            execSync('net session', { stdio: 'ignore', windowsHide: true });
-            isAdmin = true;
-        } catch {
-            isAdmin = false;
-        }
-    }
-    
-    if (isAdmin) {
-        app.commandLine.appendSwitch('no-sandbox');
-        app.commandLine.appendSwitch('disable-gpu-sandbox');
-    }
-}
+// 注意：管理员权限检测移到 app.whenReady() 中进行，以便使用日志系统
 
 import path from 'node:path';
 import fs from 'node:fs';
@@ -324,31 +304,23 @@ ipcMain.handle('db:addRuleProvidersBatch', (_, providers) => {
 // IPC Handlers for Policies
 ipcMain.handle('db:getPolicies', () => dbUtils.getPolicies());
 ipcMain.handle('db:getPolicyById', (_, id) => dbUtils.getPolicyById(id));
-ipcMain.handle('db:addPolicy', async (_, policy) => {
-    const id = dbUtils.addPolicy(policy);
-    await regenerateConfigIfOverrideRulesEnabled('policy added', sendToRenderer, log);
-    return id;
+ipcMain.handle('db:addPolicy', (_, policy) => {
+    return dbUtils.addPolicy(policy);
 });
-ipcMain.handle('db:updatePolicy', async (_, id, updates) => {
+ipcMain.handle('db:updatePolicy', (_, id, updates) => {
     dbUtils.updatePolicy(id, updates);
-    await regenerateConfigIfOverrideRulesEnabled('policy updated', sendToRenderer, log);
 });
-ipcMain.handle('db:deletePolicy', async (_, id) => {
+ipcMain.handle('db:deletePolicy', (_, id) => {
     dbUtils.deletePolicy(id);
-    await regenerateConfigIfOverrideRulesEnabled('policy deleted', sendToRenderer, log);
 });
-ipcMain.handle('db:addPoliciesBatch', async (_, policies, clearFirst?: boolean) => {
-    const added = dbUtils.addPoliciesBatch(policies, clearFirst);
-    await regenerateConfigIfOverrideRulesEnabled('policy batch imported', sendToRenderer, log);
-    return added;
+ipcMain.handle('db:addPoliciesBatch', (_, policies, clearFirst?: boolean) => {
+    return dbUtils.addPoliciesBatch(policies, clearFirst);
 });
-ipcMain.handle('db:updatePoliciesOrder', async (_, orders) => {
+ipcMain.handle('db:updatePoliciesOrder', (_, orders) => {
     dbUtils.updatePoliciesOrder(orders);
-    await regenerateConfigIfOverrideRulesEnabled('policy order updated', sendToRenderer, log);
 });
-ipcMain.handle('db:clearPolicies', async () => {
+ipcMain.handle('db:clearPolicies', () => {
     dbUtils.clearPolicies();
-    await regenerateConfigIfOverrideRulesEnabled('policies cleared', sendToRenderer, log);
 });
 // Profile Policies
 ipcMain.handle('db:getProfilePolicies', () => dbUtils.getProfilePolicies());
@@ -375,10 +347,9 @@ ipcMain.handle('db:getDnsServerRefs', (_, tag: string) => dbUtils.getDnsServerRe
 ipcMain.handle('db:addDnsServer', (_, server: any) => dbUtils.addDnsServer(server));
 ipcMain.handle('db:updateDnsServer', (_, id: string, updates: any) => dbUtils.updateDnsServer(id, updates));
 ipcMain.handle('db:deleteDnsServer', (_, id: string) => dbUtils.deleteDnsServer(id));
-ipcMain.handle('db:clearRuleProviders', async () => {
+ipcMain.handle('db:clearRuleProviders', () => {
     dbUtils.clearRuleProviders();
     scheduler.initSchedulers();
-    await regenerateConfigIfOverrideRulesEnabled('rule providers cleared', sendToRenderer, log);
 });
 
 ipcMain.handle('core:getPresetRulesets', () => loadPresetRulesets());
@@ -386,9 +357,7 @@ ipcMain.handle('core:getBuiltinRulesets', () => loadBuiltinRulesets());
 ipcMain.handle('core:getAllRuleSetsGrouped', () => getAllRuleSetsGrouped());
 
 ipcMain.handle('core:addRuleProvidersFromPreset', async (_, aclIds: string[]) => {
-    return addRuleProvidersFromPresetFn(aclIds, () =>
-        regenerateConfigIfOverrideRulesEnabled('preset rulesets imported or overwritten', sendToRenderer, log)
-    );
+    return addRuleProvidersFromPresetFn(aclIds, () => Promise.resolve(true));
 });
 
 // 预设导入（覆盖模式）：后台清空所有策略和规则集，再导入预设规则集和策略
@@ -415,7 +384,6 @@ ipcMain.handle('core:importPresetWithOverwrite', async (_, arg: { policies: any[
         scheduler.initSchedulers();
     }
     const addedCount = dbUtils.addPoliciesBatch(policies);
-    await regenerateConfigIfOverrideRulesEnabled('preset imported with overwrite', sendToRenderer, log);
     return { addedCount };
 });
 
@@ -1051,9 +1019,73 @@ app.whenReady().then(async () => {
     log.info(`操作系统: ${process.platform} ${process.arch}`);
     log.info(`用户数据目录: ${getDataDir()}`);
 
+    // 检测管理员权限（在日志系统初始化后进行）
+    // 注意：S-1-5-32-544 只表示用户属于管理员组，不代表进程有管理员权限
+    // 正确做法是检查完整性级别：S-1-16-12288 = 高完整性（管理员权限已提升）
+    let isAdminResult = false;
+    if (process.platform === 'win32') {
+        try {
+            const output = execSync('whoami /groups', { encoding: 'utf8', windowsHide: true });
+            // S-1-16-12288 是高完整性级别的 SID，表示进程有管理员权限
+            const hasHighIntegrity = output.includes('S-1-16-12288');
+            log.info(`[权限检测] whoami 输出包含 S-1-16-12288 (高完整性): ${hasHighIntegrity}`);
+            isAdminResult = hasHighIntegrity;
+        } catch (e: any) {
+            log.warn(`[权限检测] whoami 失败: ${e?.message}, 尝试 net session`);
+            try {
+                execSync('net session', { stdio: 'ignore', windowsHide: true });
+                isAdminResult = true;
+                log.info('[权限检测] net session 检测: 有管理员权限');
+            } catch {
+                isAdminResult = false;
+                log.info('[权限检测] net session 检测: 无管理员权限');
+            }
+        }
+    }
+    setCachedIsAdmin(isAdminResult);
+    log.info(`[权限检测] 检测结果已缓存: ${isAdminResult ? '有管理员权限' : '无管理员权限'}`);
+
     // 清理无效的 profile.policies / profile.dnsPolicies 条目
     dbUtils.cleanupProfilePolicies();
     dbUtils.cleanupProfileDnsPolicies();
+
+    // 检查 TUN 模式设置与管理员权限是否匹配
+    // 需要综合对比：上次生成配置时的 TUN 状态、数据库设置、当前管理员权限
+    const tunModeSetting = dbUtils.getSetting('dashboard-tun-mode');
+    const tunModeEnabled = tunModeSetting === 'true';
+    const isAdmin = getCachedIsAdmin();
+    
+    // 从数据库读取上次生成配置时记录的 TUN 状态
+    const lastConfigTunModeSetting = dbUtils.getSetting('last-config-tun-mode');
+    const lastConfigTunMode = lastConfigTunModeSetting === 'true';
+    const lastConfigTunModeValid = lastConfigTunModeSetting === 'true' || lastConfigTunModeSetting === 'false';
+    
+    log.info(`[启动检测] TUN模式设置: ${tunModeEnabled}, 管理员权限: ${isAdmin}, 上次配置TUN: ${lastConfigTunModeValid ? lastConfigTunMode : '未记录'}`);
+    
+    // 判断是否需要重新生成配置
+    // 场景1: 数据库开启 TUN，但配置中没有 TUN，且当前有管理员权限 -> 需要重新生成（添加 TUN）
+    // 场景2: 配置中有 TUN，但当前没有管理员权限 -> 需要重新生成（移除 TUN）
+    const needRegenerate = 
+        (tunModeEnabled && isAdmin && lastConfigTunModeValid && lastConfigTunMode === false) ||
+        (lastConfigTunModeValid && lastConfigTunMode === true && !isAdmin);
+    
+    if (needRegenerate) {
+        const reason = (lastConfigTunMode === true && !isAdmin) 
+            ? '配置中有TUN但当前无管理员权限' 
+            : '数据库开启TUN且当前有管理员权限，但配置中没有TUN';
+        log.warn(`[启动检测] 需要重新生成配置文件，原因: ${reason}`);
+        const selectedProfile = dbUtils.getSelectedProfile();
+        if (selectedProfile) {
+            try {
+                await generateConfigFile(selectedProfile.id, sendToRenderer);
+                log.info('[启动检测] 配置文件已重新生成');
+            } catch (err: any) {
+                log.error(`[启动检测] 重新生成配置失败: ${err?.message || err}`);
+            }
+        }
+    } else {
+        log.info(`[启动检测] 配置无需重新生成`);
+    }
 
     createWindow();
 

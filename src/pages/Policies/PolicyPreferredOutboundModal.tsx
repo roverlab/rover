@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '../../components/ui/Button';
@@ -16,21 +16,35 @@ interface PolicyPreferredOutboundModalProps {
 }
 
 /**
- * 订阅优先选择节点 - 全屏选择弹窗（与自定义规则集全屏按钮通用风格）
+ * 订阅优先选择节点 - 完整修复版
+ * 解决了高度塌陷、点击丢失元素以及 CSS 变量对齐问题
  */
 export function PolicyPreferredOutboundModal({
     open,
-    availableOutbounds,
-    preferredOutbounds,
+    availableOutbounds = [],
+    preferredOutbounds = [],
     onConfirm,
     onClose,
 }: PolicyPreferredOutboundModalProps) {
-    const toggleOutbound = (tag: string) => {
-        if (preferredOutbounds.includes(tag)) {
-            onConfirm(preferredOutbounds.filter(t => t !== tag));
-        } else {
-            onConfirm([...preferredOutbounds, tag]);
+    // 1. 使用本地状态，避免每次点击都触发父组件重绘导致弹窗卸载
+    const [localSelected, setLocalSelected] = useState<string[]>([]);
+
+    // 2. 每次打开弹窗时，从 props 同步初始选中的值
+    useEffect(() => {
+        if (open) {
+            setLocalSelected(preferredOutbounds);
         }
+    }, [open, preferredOutbounds]);
+
+    const toggleOutbound = (tag: string) => {
+        setLocalSelected(prev =>
+            prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
+        );
+    };
+
+    const handleConfirm = () => {
+        onConfirm(localSelected); // 只有点确定才提交最终结果
+        onClose();
     };
 
     if (!open) return null;
@@ -38,6 +52,7 @@ export function PolicyPreferredOutboundModal({
     return createPortal(
         <AnimatePresence>
             <div className="fixed inset-0 z-[250] flex items-center justify-center p-4">
+                {/* 背景遮罩 */}
                 <motion.div
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
@@ -45,68 +60,72 @@ export function PolicyPreferredOutboundModal({
                     className="absolute inset-0 z-0 bg-black/40 backdrop-blur-sm"
                     onClick={onClose}
                 />
+
+                {/* 弹窗主体 */}
                 <motion.div
                     initial={{ opacity: 0, scale: 0.95, y: 10 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                    className="relative z-10 w-full max-w-2xl flex flex-col bg-white border border-[rgba(39,44,54,0.08)] rounded-[20px] shadow-[var(--shadow-elevated)] overflow-hidden"
-                    style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+                    className="relative z-10 w-full max-w-2xl flex flex-col bg-white border border-[var(--app-stroke)] rounded-[20px] shadow-[var(--shadow-window)] overflow-hidden"
+                    style={{ 
+                        minHeight: '320px', // 设定最小高度，解决节点少时的塌陷感
+                        maxHeight: '85vh',  // 限制弹窗整体最大高度
+                        WebkitAppRegion: 'no-drag' 
+                    } as React.CSSProperties}
                     onClick={e => e.stopPropagation()}
                 >
-                    <div className="flex shrink-0 items-center justify-between px-6 py-4 border-b border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/50">
+                    {/* Header - 固定高度 */}
+                    <div className="flex shrink-0 items-center justify-between px-6 py-4 border-b border-[var(--app-divider)] bg-[var(--app-sidebar)]/50">
                         <h2 className="text-[15px] font-semibold text-[var(--app-text)]">选择优先节点</h2>
                         <button
                             type="button"
                             onClick={onClose}
                             className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[var(--app-text-tertiary)] hover:bg-[var(--app-hover)] hover:text-[var(--app-text)] transition-colors -mr-2"
-                            aria-label="关闭"
                         >
                             <X className="w-4 h-4" />
                         </button>
                     </div>
 
-                    <div className="flex-1 p-6 max-h-[60vh] overflow-y-auto">
+                    {/* Content - 滚动区域 */}
+                    <div className="flex-1 p-6 overflow-y-auto min-h-0 bg-white">
                         <div className="flex flex-wrap gap-2">
-                            {availableOutbounds.map(ob => (
-                                <label
-                                    key={ob.tag}
-                                    className={cn(
-                                        "inline-flex items-center gap-1.5 px-3 py-2 rounded-[10px] cursor-pointer hover:bg-[var(--app-hover)] transition-colors border shrink-0",
-                                        preferredOutbounds.includes(ob.tag)
-                                            ? "border-[var(--app-accent-border)] bg-[var(--app-accent-soft-card)]"
-                                            : "border-[var(--app-stroke)] bg-white"
-                                    )}
-                                >
-                                    <div className={cn(
-                                        "w-4 h-4 rounded-[4px] border flex items-center justify-center shrink-0 transition-colors",
-                                        preferredOutbounds.includes(ob.tag)
-                                            ? "border-[var(--app-accent)] bg-[var(--app-accent)]"
-                                            : "border-[var(--app-stroke-strong)]"
-                                    )}>
-                                        {preferredOutbounds.includes(ob.tag) && (
-                                            <Check className="w-3 h-3 text-white" />
+                            {availableOutbounds.map(ob => {
+                                const active = localSelected.includes(ob.tag);
+                                return (
+                                    <div
+                                        key={ob.tag}
+                                        onClick={() => toggleOutbound(ob.tag)}
+                                        className={cn(
+                                            "inline-flex items-center gap-1.5 px-3 py-2 rounded-[10px] cursor-pointer transition-all border shrink-0",
+                                            active
+                                                ? "border-[var(--app-accent)] bg-[var(--app-accent-soft-card)]"
+                                                : "border-[var(--app-stroke)] bg-white hover:bg-[var(--app-hover)]"
                                         )}
+                                    >
+                                        <div className={cn(
+                                            "w-4 h-4 rounded-[4px] border flex items-center justify-center shrink-0 transition-colors",
+                                            active
+                                                ? "border-[var(--app-accent)] bg-[var(--app-accent)]"
+                                                : "border-[var(--app-stroke-strong)]"
+                                        )}>
+                                            {active && <Check className="w-3 h-3 text-white" />}
+                                        </div>
+                                        <span className="text-[13px] text-[var(--app-text)]">{ob.tag}</span>
+                                        <span className="text-[10px] text-[var(--app-text-quaternary)]">({ob.type})</span>
                                     </div>
-                                    <span className="text-[13px] text-[var(--app-text)] truncate">{ob.tag}</span>
-                                    <span className="text-[10px] text-[var(--app-text-quaternary)]">({ob.type})</span>
-                                    <input
-                                        type="checkbox"
-                                        className="sr-only"
-                                        checked={preferredOutbounds.includes(ob.tag)}
-                                        onChange={() => toggleOutbound(ob.tag)}
-                                    />
-                                </label>
-                            ))}
+                                );
+                            })}
                         </div>
                     </div>
 
-                    <div className="flex items-center justify-between px-6 py-4 border-t border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/30">
+                    {/* Footer - 固定高度 */}
+                    <div className="flex shrink-0 items-center justify-between px-6 py-4 border-t border-[var(--app-divider)] bg-[var(--app-sidebar)]/30">
                         <span className="text-[12px] text-[var(--app-text-quaternary)]">
-                            已选择 {preferredOutbounds.length} 个节点，按顺序优先连接
+                            已选择 {localSelected.length} 个节点，按顺序优先连接
                         </span>
                         <div className="flex gap-2">
                             <Button variant="ghost" onClick={onClose}>取消</Button>
-                            <Button variant="primary" onClick={onClose}>确定</Button>
+                            <Button variant="primary" onClick={handleConfirm}>确定</Button>
                         </div>
                     </div>
                 </motion.div>

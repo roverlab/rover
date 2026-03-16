@@ -131,10 +131,10 @@ function singboxLogicalToRuleTreeNode(lr: SingboxLogicalRule): RuleTreeNode {
     return { id: crypto.randomUUID(), type, rules };
 }
 
-/** SingboxLogicalRule 转为 RuleTreeNode（入口） */
-export function singboxLogicalToRuleTreeNodeRoot(lr: SingboxLogicalRule | undefined): RuleTreeNode {
+/** SingboxLogicalRule 转为 RuleTreeNode（入口），无数据时返回 null */
+export function singboxLogicalToRuleTreeNodeRoot(lr: SingboxLogicalRule | undefined): RuleTreeNode | null {
     if (!lr || !lr.rules?.length) {
-        return { id: crypto.randomUUID(), type: 'all', rules: [{ id: crypto.randomUUID(), type: 'domain', value: '' }] };
+        return null;
     }
     return singboxLogicalToRuleTreeNode(lr);
 }

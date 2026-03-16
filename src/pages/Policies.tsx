@@ -120,6 +120,8 @@ export function Policies() {
         const orders = nextPolicies.map((p, index) => ({ id: p.id, order: index }));
         try {
             await window.ipcRenderer.db.updatePoliciesOrder(orders);
+            // 异步生成配置，不阻塞UI
+            window.ipcRenderer.core.generateConfig().catch(console.error);
         } catch (err: unknown) {
             console.error('Failed to update order:', err);
             addNotification('批量排序失败，已恢复原顺序', 'error');
@@ -134,8 +136,8 @@ export function Policies() {
             await Promise.all(ids.map(id => window.ipcRenderer.db.updatePolicy(id, { enabled: true })));
             addNotification(`已启用 ${ids.length} 条策略`);
             loadPolicies();
-            // 不在此处调用 generateConfig：db.updatePolicy 已触发 regenerateConfigIfOverrideRulesEnabled（防抖），
-            // 主进程会自动重新生成配置并重启内核，避免重复重启
+            // 异步生成配置，不阻塞UI
+            window.ipcRenderer.core.generateConfig().catch(console.error);
         } catch (err: unknown) {
             addNotification(`批量启用失败: ${(err as Error)?.message || '未知错误'}`, 'error');
         }
@@ -148,8 +150,8 @@ export function Policies() {
             await Promise.all(ids.map(id => window.ipcRenderer.db.updatePolicy(id, { enabled: false })));
             addNotification(`已禁用 ${ids.length} 条策略`);
             loadPolicies();
-            // 不在此处调用 generateConfig：db.updatePolicy 已触发 regenerateConfigIfOverrideRulesEnabled（防抖），
-            // 主进程会自动重新生成配置并重启内核，避免重复重启
+            // 异步生成配置，不阻塞UI
+            window.ipcRenderer.core.generateConfig().catch(console.error);
         } catch (err: unknown) {
             addNotification(`批量禁用失败: ${(err as Error)?.message || '未知错误'}`, 'error');
         }
@@ -171,8 +173,8 @@ export function Policies() {
             await Promise.all(ids.map(id => window.ipcRenderer.db.deletePolicy(id as string)));
             addNotification(`已删除 ${count} 条策略`);
             loadPolicies();
-            // 不在此处调用 generateConfig：db.deletePolicy 已触发 regenerateConfigIfOverrideRulesEnabled（防抖），
-            // 主进程会自动重新生成配置并重启内核，避免重复重启
+            // 异步生成配置，不阻塞UI
+            window.ipcRenderer.core.generateConfig().catch(console.error);
         } catch (err: unknown) {
             addNotification(`批量删除失败: ${(err as Error)?.message || '未知错误'}`, 'error');
         }
@@ -186,8 +188,8 @@ export function Policies() {
             await Promise.all(ids.map(id => window.ipcRenderer.db.deletePolicy(id as string)));
             addNotification('策略已删除');
             loadPolicies();
-            // 不在此处调用 generateConfig：db.deletePolicy 已触发 regenerateConfigIfOverrideRulesEnabled（防抖），
-            // 主进程会自动重新生成配置并重启内核，避免重复重启
+            // 异步生成配置，不阻塞UI
+            window.ipcRenderer.core.generateConfig().catch(console.error);
         } catch (err: unknown) {
             addNotification(`删除失败: ${(err as Error)?.message || '未知错误'}`, 'error');
         }

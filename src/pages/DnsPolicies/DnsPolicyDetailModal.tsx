@@ -80,14 +80,16 @@ export function DnsPolicyDetailModal({
                                         {detailPolicy.type === 'raw' ? '原始' : '标准'}
                                     </p>
                                 </div>
-                                <div className="bg-[var(--app-bg-secondary)] rounded-[10px] p-3">
-                                    <p className="text-[11px] text-[var(--app-text-quaternary)] mb-1">DNS服务器</p>
-                                    <p className="text-[13px] text-[var(--app-text)] font-medium">
-                                        <Badge tone={getServerTone(getPolicyServer(detailPolicy) ?? '')}>
-                                            {getServerLabel(getPolicyServer(detailPolicy))}
-                                        </Badge>
-                                    </p>
-                                </div>
+                                {getPolicyServer(detailPolicy) && (
+                                    <div className="bg-[var(--app-bg-secondary)] rounded-[10px] p-3">
+                                        <p className="text-[11px] text-[var(--app-text-quaternary)] mb-1">DNS服务器</p>
+                                        <p className="text-[13px] text-[var(--app-text)] font-medium">
+                                            <Badge tone={getServerTone(getPolicyServer(detailPolicy) ?? '')}>
+                                                {getServerLabel(getPolicyServer(detailPolicy))}
+                                            </Badge>
+                                        </p>
+                                    </div>
+                                )}
                                 <div className="bg-[var(--app-bg-secondary)] rounded-[10px] p-3">
                                     <p className="text-[11px] text-[var(--app-text-quaternary)] mb-1">状态</p>
                                     <p className="text-[13px] text-[var(--app-text)] font-medium">

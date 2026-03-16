@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Trash2, Pause, Play, Activity, Search, MoreVertical, FileX2 } from 'lucide-react';
+import { Trash2, Pause, Play, Activity, Search, MoreVertical, FileX2, X } from 'lucide-react';
 import { cn } from '../components/Sidebar';
 import { Button } from '../components/ui/Button';
 import { Input, Select } from '../components/ui/Field';
@@ -262,10 +262,18 @@ export function Logs({ isActive = true }: LogsProps) {
             <Input
               type="text"
               placeholder="搜索消息..."
-              className="pl-9 text-[12px]"
+              className="pl-9 text-[12px] pr-8"
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
             />
+            {searchText && (
+              <button
+                onClick={() => setSearchText('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded-full hover:bg-[var(--app-hover)] text-[var(--app-text-quaternary)] hover:text-[var(--app-text-secondary)] transition-colors"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            )}
           </div>
           <Select
             value={levelFilter}

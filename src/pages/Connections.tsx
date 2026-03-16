@@ -145,20 +145,19 @@ export function Connections({ isActive = true }: ConnectionsProps) {
             <Input
               type="text"
               placeholder="搜索..."
-              className="pl-9 text-[12px] w-full min-w-0"
+              className="pl-9 text-[12px] w-full min-w-0 pr-8"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
+            {search && (
+              <button
+                onClick={() => setSearch('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded-full hover:bg-[var(--app-hover)] text-[var(--app-text-quaternary)] hover:text-[var(--app-text-secondary)] transition-colors"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            )}
           </div>
-          <Button
-            onClick={handleCloseAll}
-            variant="secondary"
-            size="icon"
-            title="关闭全部"
-            className="shrink-0"
-          >
-            <X className="w-4 h-4" />
-          </Button>
         </div>
       </div>
 
@@ -166,6 +165,16 @@ export function Connections({ isActive = true }: ConnectionsProps) {
       <Card className="flex-1 overflow-hidden min-w-0 flex flex-col min-h-0">
         <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--app-divider)] shrink-0">
           <div className="text-[13px] font-medium text-[var(--app-text-secondary)]">实时连接列表</div>
+          <Button
+            onClick={handleCloseAll}
+            variant="secondary"
+            size="sm"
+            title="关闭全部连接"
+            className="h-7 px-2.5 text-[11px] gap-1"
+          >
+            <X className="w-3 h-3" />
+            全部关闭
+          </Button>
         </div>
         <div className="table-scroll-x flex-1 min-w-0 min-h-0">
           <table className="data-table text-[12px] min-w-[700px]">

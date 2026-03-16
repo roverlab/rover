@@ -112,7 +112,7 @@ export function PolicyListCard({
                 getOutboundLabel(getPolicyOutbound(policy)),
                 ...getPolicyRuleSets(policy),
             ];
-            return searchFields.some((value) => value.toLowerCase().includes(query));
+            return searchFields.some((value) => value?.toLowerCase().includes(query));
         });
     }, [policies, searchQuery, selectedPolicyIds, statusFilter]);
 

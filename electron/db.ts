@@ -63,7 +63,7 @@ export interface ProfileDnsPolicy {
     preferred_server: string | null;
 }
 
-/** DNS 服务器表（单独存储，不存 dns-config 原字段） */
+/** DNS 服务器表 */
 export interface DnsServer {
     id: string;
     tag: string;
@@ -320,6 +320,41 @@ export function updateDnsServer(id: string, updates: Partial<DnsServer>): void {
 export function deleteDnsServer(id: string): void {
     withDb((data) => {
         data.dnsServers = (data.dnsServers ?? []).filter((s) => s.id !== id);
+    });
+}
+
+/**
+ * 设置默认 DNS 服务器（将指定服务器的 is_default 设为 true，其他全部设为 false）
+ * @param serverId DNS 服务器的 id（即 tag）
+ * @returns 是否设置成功
+ */
+export function setDefaultDnsServer(serverId: string): boolean {
+    return withDb((data) => {
+        const dnsServers = data.dnsServers ?? [];
+        const targetServer = dnsServers.find((s) => s.id === serverId || s.tag === serverId);
+        if (!targetServer) return false;
+
+        // 将所有服务器的 is_default 设为 false
+        for (const s of dnsServers) {
+            s.is_default = false;
+        }
+        // 将目标服务器的 is_default 设为 true
+        targetServer.is_default = true;
+        data.dnsServers = dnsServers;
+        return true;
+    });
+}
+
+/**
+ * 清除默认 DNS 服务器（将所有服务器的 is_default 设为 false）
+ */
+export function clearDefaultDnsServer(): void {
+    withDb((data) => {
+        const dnsServers = data.dnsServers ?? [];
+        for (const s of dnsServers) {
+            s.is_default = false;
+        }
+        data.dnsServers = dnsServers;
     });
 }
 

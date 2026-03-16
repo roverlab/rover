@@ -27,6 +27,7 @@ export function PolicyImportModalContainer({
     const [configRules, setConfigRules] = useState<SingboxRouteRuleWithOutbound[]>([]);
     const [selectedRules, setSelectedRules] = useState<Set<number>>(new Set());
     const [importing, setImporting] = useState(false);
+    const [importingTemplatePath, setImportingTemplatePath] = useState<string | null>(null);
     const [importResult, setImportResult] = useState<{ success: number; skipped: number } | null>(null);
     const [ruleProviders, setRuleProviders] = useState<RuleProvider[]>([]);
     const { confirm, ConfirmDialog } = useConfirm();
@@ -68,6 +69,7 @@ export function PolicyImportModalContainer({
 
         try {
             setImporting(true);
+            setImportingTemplatePath(templatePath);
             setImportResult(null);
 
             // 使用新的统一导入API
@@ -76,6 +78,7 @@ export function PolicyImportModalContainer({
             if (!result.success) {
                 addNotification(result.message, 'error');
                 setImporting(false);
+                setImportingTemplatePath(null);
                 return;
             }
 
@@ -83,11 +86,11 @@ export function PolicyImportModalContainer({
 
             // 处理 TUN 模式需要管理员权限的情况（只有开启 TUN 时才提示）
             if (result.tunNeedsAdmin && result.tunValue === true) {
-                addNotification('TUN模式没有设置成功，请以管理员权限重启应用后在仪表盘打开', 'error');
+                addNotification('TUN模式没有启用成功，请以管理员权限重启应用后生效', 'error');
             }
 
-            // 前端触发配置生成
-            await window.ipcRenderer.core.generateConfig();
+            // 异步生成配置，不阻塞UI
+            window.ipcRenderer.core.generateConfig().catch(console.error);
 
             // 获取更新后的策略列表和兜底出站设置
             const updatedPolicies = await window.ipcRenderer.db.getPolicies() as Policy[];
@@ -98,6 +101,7 @@ export function PolicyImportModalContainer({
             addNotification(`导入失败: ${(err as Error).message}`, 'error');
         } finally {
             setImporting(false);
+            setImportingTemplatePath(null);
         }
     };
 
@@ -168,6 +172,7 @@ export function PolicyImportModalContainer({
                 }
             }
             const toAddOrOverwriteFromPreset = [...aclRefsInPolicies].filter(id => presetIds.has(id));
+            let presetRulesetChanged = false;
             if (toAddOrOverwriteFromPreset.length > 0) {
                 const result = await window.ipcRenderer.core.addRuleProvidersFromPreset(toAddOrOverwriteFromPreset);
                 const total = (result?.added ?? 0) + (result?.updated ?? 0);
@@ -176,13 +181,14 @@ export function PolicyImportModalContainer({
                     if ((result?.added ?? 0) > 0) parts.push(`添加 ${result.added} 个`);
                     if ((result?.updated ?? 0) > 0) parts.push(`重写 ${result.updated} 个`);
                     addNotification(`预设规则集：${parts.join('，')}`, 'info');
+                    presetRulesetChanged = true;
                 }
             }
             const addedCount = await window.ipcRenderer.db.addPoliciesBatch(policiesToImport, true);
             
-            // 策略导入成功后，触发 config.json 写入
-            if (addedCount > 0) {
-                await window.ipcRenderer.core.generateConfig();
+            // 策略导入成功后或规则集有变更时，异步生成配置
+            if (addedCount > 0 || presetRulesetChanged) {
+                window.ipcRenderer.core.generateConfig().catch(console.error);
             }
             
             addNotification(`成功导入 ${addedCount} 条策略`);
@@ -205,6 +211,7 @@ export function PolicyImportModalContainer({
                 configRules={configRules}
                 selectedRules={selectedRules}
                 importing={importing}
+                importingTemplatePath={importingTemplatePath}
                 importResult={importResult}
                 ruleProviders={ruleProviders}
                 onSelectTemplate={handleSelectTemplate}

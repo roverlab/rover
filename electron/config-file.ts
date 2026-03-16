@@ -19,7 +19,8 @@ import {
     getPolicyFinalOutbound,
     ensureLocalRuleSetFiles,
     isRuleProviderUsedByEnabledPolicies,
-    POLICY_FINAL_OUTBOUND_VALUES
+    POLICY_FINAL_OUTBOUND_VALUES,
+    checkIsAdmin
 } from './route-policy';
 import { policiesToSingboxConfig, getPolicyMatchableFields } from '../src/types/policy';
 import { dnsPoliciesToSingboxConfig } from '../src/types/dns-policy';
@@ -341,7 +342,11 @@ export function mergeSettingsIntoConfig(config: any, profileId?: string): Singbo
     const isAllowLan = settings['allow-lan'] === 'true';
     const mixedPort = parseInt(settings['mixed-port'], 10) || 7890;
     const logLevelSetting = settings['log-level'] || 'warn'
-    const tunModeEnabled = settings['dashboard-tun-mode'] === 'true';
+    const tunModeEnabled = settings['dashboard-tun-mode'] === 'true' && checkIsAdmin();
+
+    if (settings['dashboard-tun-mode'] === 'true' && !checkIsAdmin()) {
+        console.log('[Config] TUN mode disabled: no admin privilege');
+    }
 
     let apiUrl = settings['api-url'] || '127.0.0.1:9090';
     apiUrl = apiUrl.replace(/^https?:\/\//, '');
@@ -402,6 +407,14 @@ export function mergeSettingsIntoConfig(config: any, profileId?: string): Singbo
             config.dns.rules = rules;
         }
         console.log('[Config] Applied DNS config from dnsServers + dnsPolicies');
+    }
+
+    // IPv6 设置：如果禁用 IPv6，设置 dns.strategy = 'ipv4_only'
+    const ipv6Enabled = settings['ipv6'] === 'true';
+    if (!ipv6Enabled) {
+        if (!config.dns) config.dns = {};
+        config.dns.strategy = 'ipv4_only';
+        console.log('[Config] IPv6 disabled, set dns.strategy = ipv4_only');
     }
 
     // 高级配置 hosts-override 转为 dns 配置：单域名用 hosts 服务器，泛域名用 rule 的 predefined
@@ -473,12 +486,7 @@ export function appendExtraOutbounds(config: any): void {
     if (!existingTags.has('direct_out')) {
         extra.push({
             type: 'direct',
-            tag: 'direct_out',
-            domain_resolver: {
-                server: 'dns_direct_out',
-                rewrite_ttl: 43200,
-                strategy: 'ipv4_only'
-            }
+            tag: 'direct_out'
         });
     }
 
@@ -515,9 +523,13 @@ function ensureDnsDirectOutExists(config: any): void {
 /** 确保 route 默认值已设置（sing-box 要求及常用配置） */
 function ensureRouteDefaults(config: any): void {
     if (!config.route) return;
+    // 确保 dns.final 有值（与 route.default_domain_resolver.server 保持一致）
+    if (!config.dns) config.dns = { servers: [] };
+    if (!config.dns.final) {
+        config.dns.final = 'dns_direct_out';
+    }
     // 始终将 default_domain_resolver.server 与 dns.final 同步（默认 DNS 服务器）
-    const defaultResolverServer = config.dns?.final ?? 'dns_direct_out';
-    config.route.default_domain_resolver = { ...config.route.default_domain_resolver, server: defaultResolverServer };
+    config.route.default_domain_resolver = { ...config.route.default_domain_resolver, server: config.dns.final };
     if (config.route.auto_detect_interface === undefined) {
         config.route.auto_detect_interface = true;
     }
@@ -600,8 +612,13 @@ export async function generateConfigFile(
 
         await ensureLocalRuleSetFiles(mergedConfig);
         const configPath = getConfigPath();
+        
+        // 记录生成配置时的 TUN 模式状态到数据库（用于启动时判断是否需要重新生成）
+        const tunModeEnabled = settings['dashboard-tun-mode'] === 'true' && checkIsAdmin();
+        dbUtils.setSetting('last-config-tun-mode', tunModeEnabled ? 'true' : 'false');
+        
         fs.writeFileSync(configPath, JSON.stringify(mergedConfig, null, 2), 'utf8');
-        console.log(`Generated config.json for profile ${profileId}`);
+        console.log(`Generated config.json for profile ${profileId} (TUN: ${tunModeEnabled})`);
         await restartKernelIfRunning();
         return configPath;
     } finally {

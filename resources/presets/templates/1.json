@@ -43,8 +43,7 @@
       {
         "name": "🔍 未匹配域名DNS解析",
         "raw_data": {
-          "action": "resolve",
-          "server": "dns_direct_out"
+          "action": "resolve"
         }
       },
       {
@@ -57,5 +56,7 @@
         "outbound": "direct",
         "name": "🎯 中国大陆IP"
       }
-    ]
+    ],
+    "tun": false,
+    "default_dns_server": "dns_direct_out"
   }

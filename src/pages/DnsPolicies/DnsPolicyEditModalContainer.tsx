@@ -100,8 +100,8 @@ export function DnsPolicyEditModalContainer({
                     console.error('Failed to save profile dns policy:', profileErr);
                 }
 
-                // 生成配置
-                await window.ipcRenderer.core.generateConfig();
+                // 异步生成配置，不阻塞UI
+                window.ipcRenderer.core.generateConfig().catch(console.error);
             }}
             renderModal={({
                 open,
@@ -117,6 +117,7 @@ export function DnsPolicyEditModalContainer({
                 setShowRuleSetModal,
                 setShowRuleFieldsEditorModal,
                 onSave,
+                addNotification,
             }) => {
                 // DNS服务器列表
                 const [dnsServers, setDnsServers] = React.useState<Array<{ id: string; tag: string; type: string }>>([]);
@@ -196,6 +197,7 @@ export function DnsPolicyEditModalContainer({
                         setShowRuleSetModal={setShowRuleSetModal}
                         setShowRuleFieldsEditorModal={setShowRuleFieldsEditorModal}
                         onSave={onSave}
+                        addNotification={addNotification}
                         fieldConfig={dynamicFieldConfig}
                         ruleFieldConfig={DNS_RULE_FIELD_CONFIG}
                         ruleFieldsEditorTitle="规则编辑器"

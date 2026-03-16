@@ -16,6 +16,7 @@ interface PolicyImportModalProps {
     configRules: SingboxRouteRuleWithOutbound[];
     selectedRules: Set<number>;
     importing: boolean;
+    importingTemplatePath: string | null;
     importResult: { success: number; skipped: number } | null;
     ruleProviders?: RuleProvider[];
     onSelectTemplate: (path: string) => void;
@@ -32,6 +33,7 @@ export function PolicyImportModal({
     configRules,
     selectedRules,
     importing,
+    importingTemplatePath,
     importResult,
     ruleProviders = [],
     onSelectTemplate,
@@ -81,19 +83,31 @@ export function PolicyImportModal({
                                 {templates.length === 0 ? (
                                     <div className="text-center py-8 text-[var(--app-text-tertiary)]">暂无可用的预设模板</div>
                                 ) : (
-                                    templates.map((template, index) => (
-                                        <div
-                                            key={index}
-                                            className={cn(
-                                                "flex flex-col gap-1 p-4 rounded-[12px] border bg-white cursor-pointer transition-all",
-                                                importing ? "opacity-50 cursor-wait" : "border-[var(--app-stroke)] hover:bg-[var(--app-hover)] hover:border-[var(--app-accent-border)]"
-                                            )}
-                                            onClick={() => !importing && onSelectTemplate(template.path)}
-                                        >
-                                            <span className="text-[14px] font-medium text-[var(--app-text)]">{template.name}</span>
-                                            <span className="text-[12px] text-[var(--app-text-tertiary)] whitespace-pre-wrap">{template.description}</span>
-                                        </div>
-                                    ))
+                                    templates.map((template, index) => {
+                                        const isImportingThis = importingTemplatePath === template.path;
+                                        return (
+                                            <div
+                                                key={index}
+                                                className={cn(
+                                                    "relative flex flex-col gap-1 p-4 rounded-[12px] border bg-white cursor-pointer transition-all",
+                                                    importing && !isImportingThis ? "opacity-50 cursor-not-allowed" : "",
+                                                    isImportingThis ? "border-[var(--app-accent-border)] bg-[var(--app-accent-soft-card)] cursor-wait" : "border-[var(--app-stroke)] hover:bg-[var(--app-hover)] hover:border-[var(--app-accent-border)]"
+                                                )}
+                                                onClick={() => !importing && onSelectTemplate(template.path)}
+                                            >
+                                                {isImportingThis && (
+                                                    <div className="absolute inset-0 flex items-center justify-center bg-white/60 rounded-[12px]">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="animate-spin rounded-full h-5 w-5 border-2 border-[var(--app-accent)] border-t-transparent"></div>
+                                                            <span className="text-[13px] text-[var(--app-text-secondary)]">正在导入...</span>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                <span className="text-[14px] font-medium text-[var(--app-text)]">{template.name}</span>
+                                                <span className="text-[12px] text-[var(--app-text-tertiary)] whitespace-pre-wrap">{template.description}</span>
+                                            </div>
+                                        );
+                                    })
                                 )}
                             </div>
                         )}
@@ -189,12 +203,7 @@ export function PolicyImportModal({
                             </div>
                         )}
 
-                        {importing && !importResult && importSource === 'template' && (
-                            <div className="flex items-center justify-center py-8">
-                                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[var(--app-accent)]"></div>
-                                <span className="ml-3 text-[14px] text-[var(--app-text-secondary)]">正在导入...</span>
-                            </div>
-                        )}
+                        
                     </div>
 
                     <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/30">

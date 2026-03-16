@@ -100,7 +100,7 @@ export interface ElectronAPI {
             // Templates & Policies
             getTemplates(): Promise<Array<{ name: string; description: string; path: string }>>;
             getTemplatePolicies(templatePath: string): Promise<{ rules: any[]; dns?: any; rule_unmatched_outbound?: string }>;
-            importTemplateComplete(templatePath: string): Promise<{ success: boolean; message: string; addedCount: number; presetResult?: { added: number; updated: number }; dnsSet?: boolean; finalOutboundSet?: boolean; finalOutbound?: string; tunSet?: boolean; tunNeedsAdmin?: boolean; tunValue?: boolean }>;
+            importTemplateComplete(templatePath: string): Promise<{ success: boolean; message: string; addedCount: number; presetResult?: { added: number; updated: number }; dnsSet?: boolean; finalOutboundSet?: boolean; finalOutbound?: string; tunSet?: boolean; tunNeedsAdmin?: boolean; tunValue?: boolean; defaultDnsServerSet?: boolean }>;
             getPresetRulesets(): Promise<Array<{ id: string; name: string; url: string; type?: string; interval?: number; path?: string; enabled: boolean }>>;
             getBuiltinRulesets(): Promise<Array<{ id: string; name: string; url: string; type?: string; interval?: number; path?: string; enabled: boolean }>>;
             getAllRuleSetsGrouped(): Promise<Array<{ groupKey: string; displayName: string; items: Array<{ id: string; name: string; url: string; type?: string; path?: string; enabled: boolean }> }>>;

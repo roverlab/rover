@@ -139,7 +139,7 @@ export function Profiles() {
       refreshSeed();
 
       // Regenerate config.json when switching profiles（写入时若内核运行中会自动重启）
-      await window.ipcRenderer.core.generateConfig();
+      window.ipcRenderer.core.generateConfig();
     } catch (err: any) {
       console.error('Failed to select/switch profile', err);
       addNotification(`Failed to select: ${err.message}`, 'error');
@@ -159,7 +159,7 @@ export function Profiles() {
       
       // 如果更新的是当前激活的配置，需要重新生成 config.json（写入时若内核运行中会自动重启）
       if (isActiveProfile) {
-        await window.ipcRenderer.core.generateConfig();
+        window.ipcRenderer.core.generateConfig();
       }
       
       addNotification('Profile updated successfully');
@@ -183,7 +183,7 @@ export function Profiles() {
       if (hadNoProfiles && profileId) {
         await window.ipcRenderer.db.selectProfile(profileId);
         await loadProfiles();
-        await window.ipcRenderer.core.generateConfig();
+        window.ipcRenderer.core.generateConfig();
         refreshSeed(); // 触发代理、策略等页面刷新
       }
       addNotification('订阅已添加');
@@ -212,7 +212,7 @@ export function Profiles() {
         if (hadNoProfiles) {
           await window.ipcRenderer.db.selectProfile(profileId);
           await loadProfiles();
-          await window.ipcRenderer.core.generateConfig();
+          window.ipcRenderer.core.generateConfig();
         }
         addNotification('Local profile imported successfully');
       }
@@ -241,7 +241,7 @@ export function Profiles() {
       if (deletedWasSelected && remaining.length > 0) {
         const firstId = remaining[0].id;
         await window.ipcRenderer.db.selectProfile(firstId);
-        await window.ipcRenderer.core.generateConfig();
+        window.ipcRenderer.core.generateConfig();
       }
       if (deletedWasSelected) refreshSeed(); // 删除的是当前选中配置时，触发代理、策略等页面刷新
       await loadProfiles();

@@ -45,7 +45,7 @@ function ConfigLoaderOverlay() {
   }, []);
 
   return (
-    <div className={`absolute left-[227px] top-0 bottom-0 w-[3px] z-[999] transition-opacity duration-300 pointer-events-none overflow-hidden ${loading ? "opacity-100" : "opacity-0"}`}>
+    <div className={`absolute left-[227px] top-0 bottom-0 w-[3px] z-[1] transition-opacity duration-300 pointer-events-none overflow-hidden ${loading ? "opacity-100" : "opacity-0"}`}>
       <div className="w-full absolute inset-x-0 animate-scan-down h-[50%] bg-[var(--app-accent-strong)] shadow-[0_0_14px_var(--app-accent-strong)]" />
     </div>
   );

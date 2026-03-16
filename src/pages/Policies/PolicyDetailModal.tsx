@@ -314,7 +314,6 @@ export function PolicyDetailModal({
                             </div>
                         </div>
 
-                        {(detailPolicy.type !== 'raw' && (detailPolicy as any).logical_rule?.rules?.length > 0) && (
                             <div className="space-y-3">
                                 <h3 className="text-[13px] font-semibold text-[var(--app-text)] flex items-center gap-2">
                                     <span className="w-1 h-4 bg-indigo-500 rounded-full" />
@@ -325,7 +324,6 @@ export function PolicyDetailModal({
                                     formConfig={RULE_FIELD_CONFIG}
                                 />
                             </div>
-                        )}
                     </div>
 
                     <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/30">
