@@ -4,7 +4,7 @@ import { fetchConfigs, getWsUrl, checkApiAvailable } from '../services/api';
 import { Switch } from '../components/ui/Switch';
 import { Button } from '../components/ui/Button';
 import { Badge, Card } from '../components/ui/Surface';
-import { Activity, Shuffle, Network, GitBranch, Globe, Monitor, PieChart, Play, Pause, RefreshCw, Loader2, Wifi } from 'lucide-react';
+import { Activity, Shuffle, Network, GitBranch, Globe, Monitor, PieChart, Play, Pause, RefreshCw, Loader2, Wifi, AlertTriangle } from 'lucide-react';
 import { cn } from '../components/Sidebar';
 import * as FlagIcons from 'country-flag-icons/react/3x2';
 import { useNotificationState, NotificationList } from '../components/ui/Notification';
@@ -104,12 +104,18 @@ function useTrafficData(isRunning: boolean, apiUrl: string, apiSecret: string) {
     return { currentTraffic, totalTraffic, trafficHistory };
 }
 
-function formatBytes(bytes: number) {
-    if (bytes === 0) return '0 B';
+function formatBytes(bytes: number, sigFigs: number = 3) {
+    if (bytes === 0) return '0B';
     const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const sizes = ['B', 'K', 'M', 'G'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    const value = bytes / Math.pow(k, i);
+    // 根据有效数字计算小数位数
+    const magnitude = Math.floor(Math.log10(value)) + 1;
+    const decimals = Math.max(0, sigFigs - magnitude);
+    const formatted = value.toFixed(decimals);
+    // 移除末尾多余的 0 和小数点
+    return parseFloat(formatted).toString() + sizes[i];
 }
 
 interface DashboardProps {
@@ -184,8 +190,8 @@ export function Dashboard({ isActive }: DashboardProps) {
     const [isLoaded, setIsLoaded] = useState(false);
     const [settingsLoaded, setSettingsLoaded] = useState(false); // 设置是否已从数据库加载
     const [showNetworkTip, setShowNetworkTip] = useState(false); // 是否显示网络检测提示
-    const [isAdmin, setIsAdmin] = useState(false); // 是否有管理员权限
-    const [tunModeInitialized, setTunModeInitialized] = useState(false); // tunMode 是否已初始化完成（数据库+权限检查）
+    const [isServiceInstalled, setIsServiceInstalled] = useState(true); // RoverService 服务是否已安装（默认true避免闪烁）
+    const [tunModeInitialized, setTunModeInitialized] = useState(false); // tunMode 是否已从数据库加载完成
 
     useEffect(() => {
         const timer = setTimeout(() => setIsLoaded(true), 150);
@@ -212,17 +218,15 @@ export function Dashboard({ isActive }: DashboardProps) {
     const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
     // 优化版 API 检查：内核启动后立即开始检查，快速轮询直到成功或超时
-    const checkApiAfterDelay = async (timeoutMs: number = 5000, pollIntervalMs: number = 200): Promise<boolean> => {
+    // 单次请求 500ms 超时，减少 TUN 模式下的等待感
+    const checkApiAfterDelay = async (timeoutMs: number = 5000, pollIntervalMs: number = 150): Promise<boolean> => {
         if (!apiUrl) return false;
 
         const startTime = Date.now();
 
-        // 立即开始检查，无需等待
-        // 使用短超时（500ms）快速检查，避免长时间等待
         while (Date.now() - startTime < timeoutMs) {
             const ready = await checkApiAvailable(apiUrl, apiSecret, 500);
             if (ready) return true;
-            // 等待一小段时间后重试
             await wait(pollIntervalMs);
         }
 
@@ -310,7 +314,6 @@ export function Dashboard({ isActive }: DashboardProps) {
                     setApiSecret(secretVal);
                 }
                 setSettingsLoaded(true);
-                console.log('[Dashboard] 已从数据库加载 API 设置:', urlVal);
             } catch (e) {
                 console.error('[Dashboard] 加载设置失败:', e);
                 setSettingsLoaded(true); // 即使失败也标记为已加载
@@ -329,7 +332,6 @@ export function Dashboard({ isActive }: DashboardProps) {
             const savedMode = allSettings['dashboard-mode'];
             if (savedMode) {
                 setMode(savedMode);
-                console.log('[Dashboard] 已从数据库加载 mode:', savedMode);
             }
 
             // 读取 systemProxy（系统代理）- 以数据库为准
@@ -337,42 +339,37 @@ export function Dashboard({ isActive }: DashboardProps) {
             if (savedSystemProxy !== undefined) {
                 const enabled = savedSystemProxy === 'true';
                 setSystemProxy(enabled);
-                console.log('[Dashboard] 已从数据库加载 systemProxy:', enabled);
                 // 同步系统代理状态到数据库中保存的值
                 window.ipcRenderer.core.setSystemProxy(enabled);
             }
-
-            console.log('[Dashboard] 看板设置已从数据库加载');
         } catch (e) {
             console.error('[Dashboard] 加载看板设置失败:', e);
         }
     }, []);
 
-    // 加载 tunMode（检查数据库值和管理员权限，确保显示的是最终结果）
+    // 加载 tunMode（只读取数据库值，与服务安装状态无关）
     const loadTunMode = useCallback(async () => {
         try {
-            // 并行获取数据库值和权限状态
-            const [allSettings, admin] = await Promise.all([
+            // 并行获取数据库值和服务安装状态
+            const [allSettings, installed] = await Promise.all([
                 window.ipcRenderer.db.getAllSettings(),
-                window.ipcRenderer.core.isAdmin()
+                window.ipcRenderer.core.isServiceInstalled()
             ]);
 
-            console.log('[Dashboard] 管理员权限检查结果:', admin);
-            setIsAdmin(admin);
+            // 更新服务安装状态
+            setIsServiceInstalled(installed);
 
             // 读取 tunMode（虚拟网卡）
             const savedTunMode = allSettings['dashboard-tun-mode'];
             const dbTunMode = savedTunMode === 'true';
             
-            // 最终显示值：有权限则显示数据库值，无权限则显示关闭
-            const finalTunMode = admin ? dbTunMode : false;
-            setTunMode(finalTunMode);
-            tunModeDisplayRef.current = finalTunMode;
-            
-            console.log('[Dashboard] tunMode 加载完成 - 数据库值:', dbTunMode, '管理员权限:', admin, '最终显示:', finalTunMode);
+            // 显示值只和数据库有关
+            setTunMode(dbTunMode);
+            tunModeDisplayRef.current = dbTunMode;
+            console.log('[Dashboard] tunMode 加载完成 - 数据库值:', dbTunMode, '服务已安装:', installed);
+
         } catch (e) {
             console.error('[Dashboard] 加载 tunMode 失败:', e);
-            setIsAdmin(false);
             setTunMode(false);
             tunModeDisplayRef.current = false;
         } finally {
@@ -439,8 +436,10 @@ export function Dashboard({ isActive }: DashboardProps) {
         setCoreLoading(true);
         try {
             await window.ipcRenderer.core.stop();
-            // 直接更新状态，跳过外部 API 检查（刚停止的内核不可能还在运行）
-            await checkStatus(true);
+            // 乐观更新：后台已停止，立即更新 UI，不再等待 checkStatus
+            setIsRunning(false);
+            setStartTime(null);
+            checkStatus(true).catch(() => {}); // 后台同步，不阻塞
         } catch (err: any) {
             console.error('Failed to stop core', err);
             addNotification(`停止内核失败: ${getDisplayErrorMessage(err)}`, 'error');
@@ -460,12 +459,17 @@ export function Dashboard({ isActive }: DashboardProps) {
             const config = await window.ipcRenderer.core.getActiveConfig();
             if (config) {
                 await window.ipcRenderer.core.start();
-                // 立即开始轮询检查 API 是否可用，最多等待 5 秒
-                const ready = await checkApiAfterDelay(5000, 200);
-                if (!ready) {
-                    throw new Error('启动后 API 5 秒内未就绪，请检查配置或查看内核日志');
-                }
-                await checkStatus();
+                // 乐观更新：后台已启动，立即更新 UI，不阻塞在 API 轮询
+                const coreStartTime = await window.ipcRenderer.core.getStartTime();
+                setIsRunning(true);
+                setStartTime(coreStartTime || Date.now());
+                // 后台验证 API 就绪（快速轮询 150ms，超时 5s），失败则提示
+                checkApiAfterDelay(5000, 150).then((ready) => {
+                    if (!ready) {
+                        addNotification('API 可能尚未就绪，部分功能可能暂时不可用', 'warning');
+                    }
+                    checkStatus().catch(() => {});
+                }).catch(() => {});
             } else {
                 throw new Error('请先添加并启用订阅');
             }
@@ -486,16 +490,18 @@ export function Dashboard({ isActive }: DashboardProps) {
         setCoreLoading(true);
         try {
             await window.ipcRenderer.core.restart();
-            // 立即开始轮询检查 API 是否可用，最多等待 5 秒
-            const ready = await checkApiAfterDelay(5000, 200);
-            if (!ready) {
-                throw new Error('重启后 API 5 秒内未就绪，请检查配置或查看内核日志');
-            }
-            // 重启后显式重置 startTime，否则 3 秒轮询可能未在停止窗口触发，计时不会清零
+            // 乐观更新：后台已重启，立即更新 UI
             const newStartTime = await window.ipcRenderer.core.getStartTime();
+            setIsRunning(true);
             setStartTime(newStartTime || Date.now());
-            await checkStatus();
             addNotification('内核已重启', 'success');
+            // 后台验证 API 就绪
+            checkApiAfterDelay(5000, 150).then((ready) => {
+                if (!ready) {
+                    addNotification('API 可能尚未就绪，部分功能可能暂时不可用', 'warning');
+                }
+                checkStatus().catch(() => {});
+            }).catch(() => {});
         } catch (err: any) {
             console.error('Failed to restart core', err);
             addNotification(`重启内核失败: ${getDisplayErrorMessage(err)}`, 'error');
@@ -539,31 +545,65 @@ export function Dashboard({ isActive }: DashboardProps) {
     };
 
     const handleToggleTunMode = async (enable: boolean) => {
-        if (tunLoading) return;
-        
-        // 开启 TUN 模式时需要检查管理员权限
-        if (enable && !isAdmin) {
-            console.log('[Dashboard] 无管理员权限，禁止开启 TUN 模式');
-            addNotification('请以管理员身份运行程序后开启 TUN 模式', 'error');
-            return;
-        }
+        // 双重检查：tunLoading 状态 + 同步锁，防止重复触发
+        if (tunLoading || coreActionLockRef.current) return;
 
         // 1. 先冻结 Switch 显示（保持原状态），再显示 loading
         tunModeDisplayRef.current = tunMode;
         setTunLoading(true);
+        coreActionLockRef.current = true;
+
         try {
+            // 开启 TUN 模式时需要检查 RoverService 服务是否已安装
+            if (enable && !isServiceInstalled) {
+                console.log('[Dashboard] RoverService 服务未安装，开始自动安装...');
+                addNotification('正在安装 RoverService 服务，请稍候...', 'info');
+
+                // 自动安装服务
+                const installResult = await window.ipcRenderer.roverservice.install();
+                if (!installResult.success) {
+                    // 用户拒绝安装服务（取消 UAC 提示），不显示错误提示
+                    if (!installResult.isUserCanceled) {
+                        console.error('[Dashboard] RoverService 服务安装失败:', installResult.error);
+                        addNotification(`服务安装失败: ${installResult.error || '未知错误'}`, 'error');
+                    }
+                    setTunLoading(false);
+                    return;
+                }
+
+                console.log('[Dashboard] RoverService 服务安装成功');
+                addNotification('RoverService 服务安装成功', 'success');
+
+                // 更新服务安装状态
+                setIsServiceInstalled(true);
+
+                // 等待服务完全就绪（短暂延迟确保服务启动完成）
+                await wait(1000);
+            }
 
             // 2. 保存到本地数据库
             await window.ipcRenderer.db.setSetting('dashboard-tun-mode', enable ? 'true' : 'false');
             console.log('[Dashboard] 虚拟网卡状态已保存到数据库:', enable);
 
-            // 3. 写入 config.json（TUN 配置在 mergeSettingsIntoConfig 中生效，写入时若内核运行中会自动重启）
-            window.ipcRenderer.core.generateConfig();
-            // 4. 操作完成后才更新 Switch 显示状态
+            // 3. 写入 config.json（TUN 配置在 mergeSettingsIntoConfig 中生效）
+            await window.ipcRenderer.core.generateConfig();
+
+            // 4. 如果内核正在运行，需要重新启动以应用新的 TUN 配置
+            // 注意：resetController 已在 db:setSetting 的 handler 中调用，会停止旧进程
+            // 这里只需要启动新的进程即可
+            if (isRunning) {
+                console.log('[Dashboard] 内核正在运行，重新启动以应用 TUN 配置变更');
+                await window.ipcRenderer.core.start();
+                // 更新启动时间
+                const newStartTime = await window.ipcRenderer.core.getStartTime();
+                setStartTime(newStartTime || Date.now());
+            }
+
+            // 5. 操作完成后才更新 Switch 显示状态
             setTunMode(enable);
             tunModeDisplayRef.current = enable;
-            
-            // 5. 提供操作结果反馈
+
+            // 6. 提供操作结果反馈
             if (enable) {
                 addNotification('TUN 模式已开启，网络流量将通过虚拟网卡处理', 'success');
             } else {
@@ -574,6 +614,7 @@ export function Dashboard({ isActive }: DashboardProps) {
             addNotification(`虚拟网卡切换失败: ${getDisplayErrorMessage(err)}`, 'error');
         } finally {
             setTunLoading(false);
+            coreActionLockRef.current = false;
         }
     };
 
@@ -761,9 +802,17 @@ export function Dashboard({ isActive }: DashboardProps) {
                                             <Network className="w-3.5 h-3.5" />
                                         </span>
                                         <span>虚拟网卡</span>
+                                        {tunMode && !isServiceInstalled && (
+                                            <span className="ml-2 text-[var(--app-text-warning)]" title="服务未安装，请重新开启以安装服务">
+                                                <AlertTriangle className="w-3.5 h-3.5" />
+                                            </span>
+                                        )}
                                     </div>
                                     <p className="text-[12px] text-[var(--app-text-quaternary)] mt-2">
-                                        TUN 模式需要管理员权限才能正常工作。
+                                        {tunMode && !isServiceInstalled 
+                                            ? 'TUN 服务未安装，请重新开启以安装服务。'
+                                            : 'TUN 模式需要安装系统服务才能正常工作。'
+                                        }
                                     </p>
                                 </div>
                                 <div className="flex items-center gap-2">
@@ -920,13 +969,13 @@ export function Dashboard({ isActive }: DashboardProps) {
                                 </svg>
                             </div>
 
-                            <div className="flex flex-col gap-3 text-[11px] font-mono min-w-[110px]">
-                                <div className="flex items-center gap-2 text-[var(--app-text-quaternary)]">
-                                    <span className="w-3 h-[3px] rounded-full bg-[#55606f]" />
+                            <div className="flex flex-col gap-3 text-[11px] font-mono">
+                                <div className="flex items-center gap-2 whitespace-nowrap text-[var(--app-text-quaternary)]">
+                                    <span className="w-3 h-[3px] flex-shrink-0 rounded-full bg-[#55606f]" />
                                     <span>上传</span>
                                 </div>
-                                <div className="flex items-center gap-2 text-[var(--app-text-quaternary)]">
-                                    <span className="w-3 h-[3px] rounded-full bg-[#6f8a7a]" />
+                                <div className="flex items-center gap-2 whitespace-nowrap text-[var(--app-text-quaternary)]">
+                                    <span className="w-3 h-[3px] flex-shrink-0 rounded-full bg-[#6f8a7a]" />
                                     <span>下载</span>
                                 </div>
                             </div>

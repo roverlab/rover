@@ -138,7 +138,7 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
     server: '',
     server_port: 53,
     path: '',
-    detour: 'direct_out',
+    detour: '',
     enabled: true,
     is_default: false,
   });
@@ -196,6 +196,9 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
     const detourVal = form.detour?.trim();
     if (detourVal && DETOUR_OPTIONS.some((o) => o.value === detourVal)) {
       server.detour = detourVal;
+    } else {
+      // 显式设置为 undefined 以清除原有值
+      server.detour = undefined;
     }
     if (type === 'local' && form.prefer_go !== undefined) server.prefer_go = form.prefer_go;
     if (type === 'fakeip') {

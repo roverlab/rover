@@ -20,11 +20,11 @@ import {
 } from './config-file';
 import * as scheduler from './scheduler';
 import { RuleProvider } from '../src/types/rule-providers';
-import { getCachedIsAdmin } from './admin-cache';
+import { getCachedIsServiceInstalled } from './roverservice-cache';
 
-/** 检测当前进程是否以管理员权限运行（使用启动时缓存的值） */
-export function checkIsAdmin(): boolean {
-    return getCachedIsAdmin();
+/** 检测 RoverService 服务是否已安装（使用启动时缓存的值） */
+export function checkIsServiceInstalled(): boolean {
+    return getCachedIsServiceInstalled();
 }
 
 export function getPolicyReferencedRuleProviderRefs(policy: any): string[] {
@@ -446,9 +446,11 @@ export function registerRuleProviderIpcHandlers(
                     // 写入数据库不需要管理员权限，直接设置
                     // TUN 模式生效时才需要管理员权限（在 Dashboard 中处理）
                     dbUtils.setSetting('dashboard-tun-mode', 'true');
+                    // 重置控制器，下次启动时将使用 ServiceSingboxController
+                    await require('./singbox').resetController();
                     tunSet = true;
-                    // 检查是否有管理员权限，用于前端提示
-                    tunNeedsAdmin = !checkIsAdmin();
+// 检查 RoverService 服务是否已安装，用于前端提示
+tunNeedsAdmin = !checkIsServiceInstalled();
                 } catch (e) {
                     console.error('Failed to process tun setting from template:', e);
                 }
@@ -458,6 +460,8 @@ export function registerRuleProviderIpcHandlers(
                 tunValue = false;
                 try {
                     dbUtils.setSetting('dashboard-tun-mode', 'false');
+                    // 重置控制器，下次启动时将使用 LocalSingboxController
+                    await require('./singbox').resetController();
                     tunSet = true;
                 } catch (e) {
                     console.error('Failed to process tun setting from template:', e);

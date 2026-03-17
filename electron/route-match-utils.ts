@@ -9,7 +9,7 @@ import axios from 'axios';
 import { spawnSync } from 'node:child_process';
 import * as singbox from './singbox';
 import { decompileSrsToJson, isBuiltinRuleSet } from './ruleset-utils';
-import { getRulesetsDir, getGeoDir, getDataDir, getBuiltinRulesetsPath } from './paths';
+import { getRulesetsDir, getGeoDir, getDataDir } from './paths';
 
 /** sing-box 规则集 JSON 中的单条 headless rule */
 interface HeadlessRule {
@@ -156,7 +156,8 @@ function ipMatchesRuleSet(ip: string, rules: HeadlessRule[]): boolean {
 function getRuleSetFilePath(tag: string, ruleSets: RuleSetDef[], ruleProviders: { id: string; name: string; path?: string }[]): string | null {
     if(isBuiltinRuleSet(tag)){
             const rs = ruleSets.find(r => r.tag === tag);
-            return path.join(getBuiltinRulesetsPath(), rs.path);
+            // 使用用户数据目录下的规则集路径，确保与 config-file.ts 一致
+            return path.join(getRulesetsDir(), rs.path);
     }
     const provider = ruleProviders.find(p => p.id === tag );
      return path.join(getRulesetsDir(), provider.path);

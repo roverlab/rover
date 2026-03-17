@@ -9,7 +9,7 @@ import crypto from 'node:crypto';
 import yaml from 'js-yaml';
 import * as dbUtils from './db';
 import * as singbox from './singbox';
-import { getConfigPath, getProfilesDir, resolveDataPath, getBuiltinRulesetsPath } from './paths';
+import { getConfigPath, getProfilesDir, resolveDataPath, getRulesetsDir } from './paths';
 import { SingboxConfig, tunDefaultConfig } from '../src/types/singbox';
 import type { MihomoConfig } from '../src/types/clash';
 import { convertClashToSingbox, type ConvertOptions } from '../src/types/singbox';
@@ -18,9 +18,7 @@ import {
     buildProvidersForConfig,
     getPolicyFinalOutbound,
     ensureLocalRuleSetFiles,
-    isRuleProviderUsedByEnabledPolicies,
-    POLICY_FINAL_OUTBOUND_VALUES,
-    checkIsAdmin
+    POLICY_FINAL_OUTBOUND_VALUES
 } from './route-policy';
 import { policiesToSingboxConfig, getPolicyMatchableFields } from '../src/types/policy';
 import { dnsPoliciesToSingboxConfig } from '../src/types/dns-policy';
@@ -165,14 +163,18 @@ function buildAndAssignRuleSets(config: any): void {
     const providersForConfig = buildProvidersForConfig(ruleProviders);
     const providerMap = new Map(providersForConfig.map(p => [p.id, p]));
 
+    // 使用用户数据目录下的 rulesets 路径，确保 root 进程可以访问
+    const userRulesetsDir = getRulesetsDir();
+
     const ruleSets: any[] = [];
     for (const tag of refs) {
         const hasColon = tag.includes(':');
         if (hasColon) {
             const [type, name] = tag.split(':');
             const nameLower = (type === 'geoip' || type === 'geosite') ? name.toLowerCase() : name;
-            const relPath = `rulesets/${type}/${nameLower}.srs`;
-            const fullPath = path.join(getBuiltinRulesetsPath(), relPath);
+            const relPath = `${type}/${nameLower}.srs`;
+            // 使用用户数据目录下的路径，而不是内置资源路径
+            const fullPath = path.join(userRulesetsDir, relPath);
             ruleSets.push({ tag, type: 'local', format: 'binary', path: fullPath });
         } else {
             const provider = providerMap.get(tag);
@@ -342,11 +344,7 @@ export function mergeSettingsIntoConfig(config: any, profileId?: string): Singbo
     const isAllowLan = settings['allow-lan'] === 'true';
     const mixedPort = parseInt(settings['mixed-port'], 10) || 7890;
     const logLevelSetting = settings['log-level'] || 'warn'
-    const tunModeEnabled = settings['dashboard-tun-mode'] === 'true' && checkIsAdmin();
-
-    if (settings['dashboard-tun-mode'] === 'true' && !checkIsAdmin()) {
-        console.log('[Config] TUN mode disabled: no admin privilege');
-    }
+    const tunModeEnabled = settings['dashboard-tun-mode'] === 'true';
 
     let apiUrl = settings['api-url'] || '127.0.0.1:9090';
     apiUrl = apiUrl.replace(/^https?:\/\//, '');
@@ -400,8 +398,8 @@ export function mergeSettingsIntoConfig(config: any, profileId?: string): Singbo
         const defaultServer = enabledDnsServers.find(s => s.is_default);
         config.dns = { servers };
         if (defaultServer) config.dns.final = defaultServer.id;
-        // 使用数据库 dnsPolicies 重新生成 dns.rules
-        const dnsPolicies = dbUtils.getDnsPolicies();
+        // 使用数据库 dnsPolicies 重新生成 dns.rules（过滤禁用的策略）
+        const dnsPolicies = dbUtils.getDnsPolicies().filter((p) => p.enabled);
         if (dnsPolicies.length > 0) {
             const { rules } = dnsPoliciesToSingboxConfig(dnsPolicies);
             config.dns.rules = rules;
@@ -506,10 +504,6 @@ export function appendExtraOutbounds(config: any): void {
     }
 }
 
-const REGENERATE_CONFIG_DEBOUNCE_MS = 400;
-let regenerateConfigTimer: ReturnType<typeof setTimeout> | null = null;
-let regenerateConfigPendingResolves: Array<(value: boolean) => void> = [];
-
 /** 确保 config.dns.servers 中存在 dns_direct_out */
 function ensureDnsDirectOutExists(config: any): void {
     if (!config.dns) config.dns = { servers: [] };
@@ -562,13 +556,11 @@ function applyDashboardMode(config: any, settings: Record<string, string>): void
         if (!config.route) config.route = {};
         config.route.rules = [];
         config.route.final = 'direct_out';
-        config.route.rule_set = [];
         console.log('[Config] Outbound mode: direct (all traffic direct)');
     } else if (dashboardMode === 'global') {
         if (!config.route) config.route = {};
         config.route.rules = [];
         config.route.final = 'selector_out';
-        config.route.rule_set = [];
         console.log('[Config] Outbound mode: global (all traffic via proxy)');
     }
 }
@@ -614,7 +606,7 @@ export async function generateConfigFile(
         const configPath = getConfigPath();
         
         // 记录生成配置时的 TUN 模式状态到数据库（用于启动时判断是否需要重新生成）
-        const tunModeEnabled = settings['dashboard-tun-mode'] === 'true' && checkIsAdmin();
+        const tunModeEnabled = settings['dashboard-tun-mode'] === 'true';
         dbUtils.setSetting('last-config-tun-mode', tunModeEnabled ? 'true' : 'false');
         
         fs.writeFileSync(configPath, JSON.stringify(mergedConfig, null, 2), 'utf8');
@@ -624,57 +616,6 @@ export async function generateConfigFile(
     } finally {
         if (sendToRenderer) sendToRenderer('config-generate-end');
     }
-}
-
-async function runRegenerateConfigIfOverrideRulesEnabled(
-    reason: string,
-    sendToRenderer?: (channel: string, ...args: any[]) => void,
-    log?: { info: (s: string) => void; error: (s: string) => void }
-): Promise<boolean> {
-    const settings = dbUtils.getAllSettings();
-    if (settings['override-rules'] !== 'true') return false;
-    const selectedProfile = dbUtils.getSelectedProfile();
-    if (!selectedProfile) return false;
-    await generateConfigFile(selectedProfile.id, sendToRenderer);
-    log?.info(`[Config] override-rules enabled, regenerated config.json (${reason})`);
-    return true;
-}
-
-/** 防抖式重新生成 config（当 override-rules 启用时） */
-export function regenerateConfigIfOverrideRulesEnabled(
-    reason: string,
-    sendToRenderer?: (channel: string, ...args: any[]) => void,
-    log?: { info: (s: string) => void; error: (s: string) => void }
-): Promise<boolean> {
-    return new Promise((resolve) => {
-        regenerateConfigPendingResolves.push(resolve);
-        if (regenerateConfigTimer) clearTimeout(regenerateConfigTimer);
-        regenerateConfigTimer = setTimeout(async () => {
-            regenerateConfigTimer = null;
-            const resolvers = regenerateConfigPendingResolves;
-            regenerateConfigPendingResolves = [];
-            try {
-                const ok = await runRegenerateConfigIfOverrideRulesEnabled(reason, sendToRenderer, log);
-                resolvers.forEach((r) => r(ok));
-            } catch (err: any) {
-                log?.error(`[Config] regenerate failed: ${err?.message || err}`);
-                resolvers.forEach((r) => r(false));
-            }
-        }, REGENERATE_CONFIG_DEBOUNCE_MS);
-    });
-}
-
-/** 规则集更新后按需重新生成 config */
-export async function regenerateConfigForRuleProviderIfNeeded(
-    providerId: string,
-    reason: string,
-    sendToRenderer?: (channel: string, ...args: any[]) => void,
-    log?: { info: (s: string) => void; error: (s: string) => void }
-): Promise<boolean> {
-    const provider = dbUtils.getRuleProviderById(providerId);
-    if (!provider) return false;
-    if (!isRuleProviderUsedByEnabledPolicies(provider)) return false;
-    return regenerateConfigIfOverrideRulesEnabled(reason, sendToRenderer, log);
 }
 
 /** 获取当前 config 中的 route.rules */
@@ -717,20 +658,51 @@ export async function updateConfigFile(updates: { mode?: string; tun?: boolean }
         const tunIndex = config.inbounds.findIndex((inbound: any) => inbound.type === 'tun');
 
         if (updates.tun) {
-            const tunConfig = {
-                type: 'tun',
-                tag: 'tun-in',
-                mtu: 9000,
-                auto_route: true,
-                strict_route: true,
-                stack: 'system',
-                sniff: true,
-                endpoint_independent_nat: false
-            };
-            if (tunIndex >= 0) {
-                config.inbounds[tunIndex] = tunConfig;
+            // 在 macOS 上使用特殊的 TUN 配置
+            if (process.platform === 'darwin') {
+                console.log('[Config File] macOS detected, enabling TUN with direct DNS inbound');
+                const tunConfig = {
+                    type: 'tun',
+                    tag: 'tun-in',
+                    interface_name: 'utun199',
+                    mtu: 9000,
+                    address: [
+                        '172.19.0.1/30',
+                        'fdfe:dcba:9876::1/126'
+                    ],
+                    auto_route: true,
+                    strict_route: true,
+                    stack: 'mixed',
+                    route_exclude_address: [
+                        '192.168.0.0/16',
+                        'fc00::/7'
+                    ],
+                    sniff: true,
+                    sniff_override_destination: true,
+                    endpoint_independent_nat: false
+                };
+                
+                if (tunIndex >= 0) {
+                    config.inbounds[tunIndex] = tunConfig;
+                } else {
+                    config.inbounds.push(tunConfig);
+                }
             } else {
-                config.inbounds.push(tunConfig);
+                const tunConfig = {
+                    type: 'tun',
+                    tag: 'tun-in',
+                    mtu: 9000,
+                    auto_route: true,
+                    strict_route: true,
+                    stack: 'system',
+                    sniff: true,
+                    endpoint_independent_nat: false
+                };
+                if (tunIndex >= 0) {
+                    config.inbounds[tunIndex] = tunConfig;
+                } else {
+                    config.inbounds.push(tunConfig);
+                }
             }
             console.log('[Config File] TUN enabled');
         } else {
@@ -858,6 +830,70 @@ function arraysOverlap(arr1: any[], arr2: any[]): boolean {
     if (!arr1 || !arr2 || arr1.length === 0 || arr2.length === 0) return false;
     const set1 = new Set(arr1);
     return arr2.some(item => set1.has(item));
+}
+
+// 防抖重新生成配置的定时器和回调队列
+const REGENERATE_CONFIG_DEBOUNCE_MS = 300;
+let regenerateConfigTimer: NodeJS.Timeout | null = null;
+let regenerateConfigPendingResolves: ((ok: boolean) => void)[] = [];
+
+/** 内部函数：实际执行配置重新生成 */
+async function runRegenerateConfig(
+    reason: string,
+    sendToRenderer?: (channel: string, ...args: any[]) => void,
+    log?: { info: (s: string) => void; error: (s: string) => void }
+): Promise<boolean> {
+    const selectedProfile = dbUtils.getSelectedProfile();
+    if (!selectedProfile) return false;
+    await generateConfigFile(selectedProfile.id, sendToRenderer);
+    log?.info(`[Config] regenerated config.json (${reason})`);
+    return true;
+}
+
+/** 防抖式重新生成 config（仅当 override-rules 启用时） */
+export function regenerateConfigIfOverrideRulesEnabled(
+    reason: string,
+    sendToRenderer?: (channel: string, ...args: any[]) => void,
+    log?: { info: (s: string) => void; error: (s: string) => void }
+): Promise<boolean> {
+    const settings = dbUtils.getAllSettings();
+    const overrideRules = settings['override-rules'] === 'true';
+    if (!overrideRules) {
+        log?.info(`[Config] skip regenerate (override-rules disabled, ${reason})`);
+        return Promise.resolve(false);
+    }
+
+    return new Promise((resolve) => {
+        regenerateConfigPendingResolves.push(resolve);
+        if (regenerateConfigTimer) clearTimeout(regenerateConfigTimer);
+        regenerateConfigTimer = setTimeout(async () => {
+            regenerateConfigTimer = null;
+            const resolvers = regenerateConfigPendingResolves;
+            regenerateConfigPendingResolves = [];
+            try {
+                const ok = await runRegenerateConfig(reason, sendToRenderer, log);
+                resolvers.forEach((r) => r(ok));
+            } catch (err: any) {
+                log?.error(`[Config] regenerate failed: ${err?.message || err}`);
+                resolvers.forEach((r) => r(false));
+            }
+        }, REGENERATE_CONFIG_DEBOUNCE_MS);
+    });
+}
+
+/** 规则集更新后重新生成 config（如果规则集存在且 override-rules 启用） */
+export async function regenerateConfigForRuleProviderIfNeeded(
+    providerId: string,
+    reason: string,
+    sendToRenderer?: (channel: string, ...args: any[]) => void,
+    log?: { info: (s: string) => void; error: (s: string) => void }
+): Promise<boolean> {
+    const provider = dbUtils.getRuleProviderById(providerId);
+    if (!provider) {
+        log?.info(`[Config] skip regenerate (provider ${providerId} not found)`);
+        return false;
+    }
+    return regenerateConfigIfOverrideRulesEnabled(reason, sendToRenderer, log);
 }
 
 export { POLICY_FINAL_OUTBOUND_VALUES };

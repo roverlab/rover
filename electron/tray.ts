@@ -37,8 +37,17 @@ async function setProxyMode(mode: 'rule' | 'global' | 'direct') {
 function copyEnvVariables() {
     const settings = dbUtils.getAllSettings();
     const port = settings['mixed-port'] || '7890';
-    const envText = `set http_proxy=http://127.0.0.1:${port}
+    
+    let envText: string;
+    if (process.platform === 'win32') {
+        // Windows: 使用 set 命令
+        envText = `set http_proxy=http://127.0.0.1:${port}
 set https_proxy=http://127.0.0.1:${port}`;
+    } else {
+        // macOS/Linux: 使用 export
+        envText = `export all_proxy="http://127.0.0.1:${port}"`;
+    }
+    
     clipboard.writeText(envText);
 }
 

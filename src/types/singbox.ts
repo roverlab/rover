@@ -71,7 +71,6 @@ export interface InboundConfig {
     sniff?: boolean;
     interface_name?: string;
     address?: string[];
-    route_address?: string[];
     route_exclude_address?: string[];
     [key: string]: any;
 }
@@ -478,7 +477,7 @@ function buildInbounds(config: MihomoConfig): InboundConfig[] {
 export const tunDefaultConfig = {
     type: 'tun',
     tag: 'tun-in',
-    interface_name: 'rover_tun',
+    interface_name: 'utun199',
     mtu: 9000,
     address: [
         '172.19.0.1/30',
@@ -487,12 +486,6 @@ export const tunDefaultConfig = {
     auto_route: true,
     strict_route: true,
     stack: 'system',
-    route_address: [
-        '0.0.0.0/1',
-        '128.0.0.0/1',
-        '::/1',
-        '8000::/1'
-    ],
     route_exclude_address: [
         '192.168.0.0/16',
         'fc00::/7'
@@ -501,6 +494,7 @@ export const tunDefaultConfig = {
     sniff_override_destination: true,
     endpoint_independent_nat: false
 }
+
 function buildOutbounds(config: MihomoConfig): OutboundConfig[] {
     const builtins = buildBuiltinOutbounds(config);
 

@@ -312,7 +312,21 @@ export function updateDnsServer(id: string, updates: Partial<DnsServer>): void {
         } else {
             // tag 未变更，仅应用其他字段（不允许通过 updates 修改 id）
             const { id: _unusedId, ...rest } = updates;
-            arr[idx] = { ...server, ...rest };
+            // 处理 undefined 值：显式删除字段而非设置为 undefined
+            const cleanedRest: Record<string, unknown> = {};
+            for (const [key, value] of Object.entries(rest)) {
+                if (value !== undefined) {
+                    cleanedRest[key] = value;
+                }
+            }
+            // 从原服务器中删除值为 undefined 的字段
+            const cleanedServer: Record<string, unknown> = { ...server };
+            for (const key of Object.keys(rest)) {
+                if (rest[key] === undefined) {
+                    delete cleanedServer[key];
+                }
+            }
+            arr[idx] = { ...cleanedServer, ...cleanedRest };
         }
     });
 }

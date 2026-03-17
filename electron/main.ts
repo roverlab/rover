@@ -15,8 +15,7 @@ process.on('warning', (warning) => {
 });
 
 import { app, BrowserWindow, ipcMain, shell, dialog } from 'electron';
-import { execSync } from 'node:child_process';
-import { setCachedIsAdmin, getCachedIsAdmin } from './admin-cache';
+import { setCachedIsServiceInstalled, getCachedIsServiceInstalled } from './roverservice-cache';
 
 // UAC 以管理员运行后白屏：Chromium 沙箱与提升权限冲突，需禁用沙箱
 // 见 https://github.com/electron/electron/issues/49167
@@ -24,38 +23,32 @@ import { setCachedIsAdmin, getCachedIsAdmin } from './admin-cache';
 
 import path from 'node:path';
 import fs from 'node:fs';
-import os from 'node:os';
-import { exec, spawn, spawnSync } from 'node:child_process';
 import * as dbUtils from './db';
 import * as singbox from './singbox';
 import * as proxy from './proxy';
 import { createTray, updateTrayMenu } from './tray';
 import * as scheduler from './scheduler';
-import { policiesToSingboxConfig } from '../src/types/policy';
 import { initLogger, createLogger, getLogDir, getLogFiles, clearAllLogs, redirectConsole, log as loggerLog, logBatch } from './logger';
-import { getDataDir, getProfilesDir, getGeoDir, resolveDataPath, getAppRootPath, getDistPath, getPublicPath, getPreloadPath, getTemplatesIndexPath, getPresetTemplatesPath, getBuildInfoPath, getSingboxLogPath } from './paths';
+import { getDataDir, getProfilesDir,  resolveDataPath, getAppRootPath, getDistPath, getPublicPath, getPreloadPath, getTemplatesIndexPath, getPresetTemplatesPath, getBuildInfoPath, getSingboxLogPath, syncBuiltinRulesetsToUserData } from './paths';
 import {
     getConfigPath,
     readConfig,
     generateConfigFile,
-    regenerateConfigIfOverrideRulesEnabled,
-    regenerateConfigForRuleProviderIfNeeded,
     getCurrentConfigRules,
     getAvailableOutbounds,
-    updateConfigFile,
-    POLICY_FINAL_OUTBOUND_VALUES
+    POLICY_FINAL_OUTBOUND_VALUES,
+    regenerateConfigForRuleProviderIfNeeded
 } from './config-file';
 import {
     loadPresetRulesets,
-    loadBuiltinRulesets,
     getAllRuleSetsGrouped,
     addRuleProvidersFromPreset as addRuleProvidersFromPresetFn,
-    buildProvidersForConfig,
     registerRuleProviderIpcHandlers
 } from './route-policy';
 import { decompileSrsToJson } from './ruleset-utils';
 import { validateProfileContent } from './validation';
 import * as subscription from './subscription';
+import { setTunDns, restoreDns } from './dns-macos';
 import { fetchIpThroughProxy, fetchIpDirect } from './network-check';
 import * as configBackup from './config-backup';
 import type { LogLevel, LogEntry } from './logger';
@@ -189,6 +182,7 @@ ipcMain.handle('config:import', async (event) => {
     }
 });
 
+
 scheduler.setRuleProviderUpdatedHook(async (providerId) => {
     try {
         await regenerateConfigForRuleProviderIfNeeded(providerId, 'rule provider auto-updated by scheduler', sendToRenderer, log);
@@ -235,10 +229,15 @@ ipcMain.handle('db:deleteProfile', (_, id) => {
 });
 ipcMain.handle('db:selectProfile', (_, id) => dbUtils.selectProfile(id));
 ipcMain.handle('db:getSetting', (_, key, defaultValue) => dbUtils.getSetting(key, defaultValue));
-ipcMain.handle('db:setSetting', (_, key, value) => {
+ipcMain.handle('db:setSetting', async (_, key, value) => {
     dbUtils.setSetting(key, value);
     if (key === 'rule-provider-update-interval') {
         scheduler.initSchedulers();
+    }
+    // TUN 模式切换时重置控制器，下次启动时将根据新设置自动选择正确的控制器
+    if (key === 'dashboard-tun-mode') {
+        await singbox.resetController();
+        log.info(`[DB] TUN 模式已${value === 'true' ? '启用' : '禁用'}，控制器已重置`);
     }
 });
 ipcMain.handle('db:setPolicyFinalOutbound', async (_, value: string) => {
@@ -246,7 +245,6 @@ ipcMain.handle('db:setPolicyFinalOutbound', async (_, value: string) => {
         throw new Error('Invalid policy final outbound value');
     }
     dbUtils.setSetting('policy-final-outbound', value);
-    await regenerateConfigIfOverrideRulesEnabled('policy final outbound updated', sendToRenderer, log);
 });
 ipcMain.handle('db:updateProfileDetails', (_, id, name, url, updateInterval) => {
     dbUtils.updateProfileDetails(id, name, url, updateInterval);
@@ -258,14 +256,9 @@ ipcMain.handle('db:updateProfileInterval', (_, id, updateInterval) => {
     // 全量重新加载定时任务
     scheduler.initSchedulers();
 });
-ipcMain.handle('db:getAutoUpdateProfiles', () => dbUtils.getAutoUpdateProfiles());
 
 // IPC Handlers for Scheduler
 // 定时任务已改为全量更新，在数据库操作后自动调用 initSchedulers()
-ipcMain.handle('db:updateProfileContent', (_, id, content) => {
-    const filePath = saveProfileFile(id, content);
-    return dbUtils.updateProfileContent(id, filePath);
-});
 ipcMain.handle('db:getProfileContent', (_, id: string) => {
     const profile = dbUtils.getProfileById(id);
     const profilePath = profile?.path ? resolveDataPath(profile.path) : undefined;
@@ -275,35 +268,17 @@ ipcMain.handle('db:getAllSettings', () => dbUtils.getAllSettings());
 
 // IPC Handlers for Rule Providers
 ipcMain.handle('db:getRuleProviders', () => dbUtils.getRuleProviders());
-ipcMain.handle('db:addRuleProvider', (_, provider) => {
-    const id = dbUtils.addRuleProvider(provider);
-    // 全量重新加载定时任务
-    scheduler.initSchedulers();
-    return id;
-});
 ipcMain.handle('db:updateRuleProvider', async (_, id, updates) => {
     dbUtils.updateRuleProvider(id, updates);
     scheduler.initSchedulers();
-    await regenerateConfigForRuleProviderIfNeeded(id, 'rule provider updated', sendToRenderer, log);
 });
 ipcMain.handle('db:deleteRuleProvider', async (_, id) => {
     dbUtils.deleteRuleProvider(id);
-    scheduler.initSchedulers();
-    await regenerateConfigIfOverrideRulesEnabled('rule provider deleted', sendToRenderer, log);
-});
-ipcMain.handle('db:updateRuleProviderContent', async (_, id, filePath, lastUpdate) => {
-    dbUtils.updateRuleProviderContent(id, filePath, lastUpdate);
-    await regenerateConfigForRuleProviderIfNeeded(id, 'rule provider content updated', sendToRenderer, log);
-});
-ipcMain.handle('db:addRuleProvidersBatch', (_, providers) => {
-    dbUtils.addRuleProvidersBatch(providers);
-    // 全量重新加载定时任务
     scheduler.initSchedulers();
 });
 
 // IPC Handlers for Policies
 ipcMain.handle('db:getPolicies', () => dbUtils.getPolicies());
-ipcMain.handle('db:getPolicyById', (_, id) => dbUtils.getPolicyById(id));
 ipcMain.handle('db:addPolicy', (_, policy) => {
     return dbUtils.addPolicy(policy);
 });
@@ -319,73 +294,31 @@ ipcMain.handle('db:addPoliciesBatch', (_, policies, clearFirst?: boolean) => {
 ipcMain.handle('db:updatePoliciesOrder', (_, orders) => {
     dbUtils.updatePoliciesOrder(orders);
 });
-ipcMain.handle('db:clearPolicies', () => {
-    dbUtils.clearPolicies();
-});
 // Profile Policies
-ipcMain.handle('db:getProfilePolicies', () => dbUtils.getProfilePolicies());
-ipcMain.handle('db:getProfilePolicy', (_, profileId) => dbUtils.getProfilePolicy(profileId));
 ipcMain.handle('db:getProfilePolicyByPolicyId', (_, profileId, policyId) => dbUtils.getProfilePolicyByPolicyId(profileId, policyId));
 ipcMain.handle('db:setProfilePolicy', (_, profileId, policyId, preferredOutbounds) => dbUtils.setProfilePolicy(profileId, policyId, preferredOutbounds));
-ipcMain.handle('db:deleteProfilePolicy', (_, profileId) => dbUtils.deleteProfilePolicy(profileId));
 // DNS Policies (配置生成在前端触发)
 ipcMain.handle('db:getDnsPolicies', () => dbUtils.getDnsPolicies());
-ipcMain.handle('db:getDnsPolicyById', (_, id) => dbUtils.getDnsPolicyById(id));
 ipcMain.handle('db:addDnsPolicy', (_, policy) => dbUtils.addDnsPolicy(policy));
 ipcMain.handle('db:updateDnsPolicy', (_, id, updates) => dbUtils.updateDnsPolicy(id, updates));
 ipcMain.handle('db:deleteDnsPolicy', (_, id) => dbUtils.deleteDnsPolicy(id));
 ipcMain.handle('db:updateDnsPoliciesOrder', (_, orders) => dbUtils.updateDnsPoliciesOrder(orders));
-ipcMain.handle('db:clearDnsPolicies', () => dbUtils.clearDnsPolicies());
 // Profile DNS Policies
-ipcMain.handle('db:getProfileDnsPolicies', () => dbUtils.getProfileDnsPolicies());
-ipcMain.handle('db:getProfileDnsPolicy', (_, profileId) => dbUtils.getProfileDnsPolicy(profileId));
 ipcMain.handle('db:getProfileDnsPolicyByPolicyId', (_, profileId, dnsPolicyId) => dbUtils.getProfileDnsPolicyByPolicyId(profileId, dnsPolicyId));
 ipcMain.handle('db:setProfileDnsPolicy', (_, profileId, dnsPolicyId, dnsServerId) => dbUtils.setProfileDnsPolicy(profileId, dnsPolicyId, dnsServerId));
-ipcMain.handle('db:deleteProfileDnsPolicy', (_, profileId) => dbUtils.deleteProfileDnsPolicy(profileId));
 ipcMain.handle('db:getDnsServers', () => dbUtils.getDnsServers());
 ipcMain.handle('db:getDnsServerRefs', (_, tag: string) => dbUtils.getDnsServerRefs(tag));
 ipcMain.handle('db:addDnsServer', (_, server: any) => dbUtils.addDnsServer(server));
 ipcMain.handle('db:updateDnsServer', (_, id: string, updates: any) => dbUtils.updateDnsServer(id, updates));
 ipcMain.handle('db:deleteDnsServer', (_, id: string) => dbUtils.deleteDnsServer(id));
-ipcMain.handle('db:clearRuleProviders', () => {
-    dbUtils.clearRuleProviders();
-    scheduler.initSchedulers();
-});
 
 ipcMain.handle('core:getPresetRulesets', () => loadPresetRulesets());
-ipcMain.handle('core:getBuiltinRulesets', () => loadBuiltinRulesets());
 ipcMain.handle('core:getAllRuleSetsGrouped', () => getAllRuleSetsGrouped());
 
 ipcMain.handle('core:addRuleProvidersFromPreset', async (_, aclIds: string[]) => {
     return addRuleProvidersFromPresetFn(aclIds, () => Promise.resolve(true));
 });
 
-// 预设导入（覆盖模式）：后台清空所有策略和规则集，再导入预设规则集和策略
-ipcMain.handle('core:importPresetWithOverwrite', async (_, arg: { policies: any[]; presetRulesetIds: string[] }) => {
-    const { policies, presetRulesetIds } = arg;
-    dbUtils.clearPolicies();
-    dbUtils.clearRuleProviders();
-    if (presetRulesetIds.length > 0) {
-        const preset = loadPresetRulesets();
-        const presetById = new Map(preset.map((p: any) => [p.id, p]));
-        for (const id of presetRulesetIds) {
-            const entry = presetById.get(id);
-            if (!entry) continue;
-            const provider = {
-                id: entry.id,
-                name: entry.name,
-                url: entry.url || '',
-                type: entry.type || 'clash',
-                path: entry.path,
-                enabled: entry.enabled !== false,
-            };
-            dbUtils.upsertRuleProviderFromPreset(provider);
-        }
-        scheduler.initSchedulers();
-    }
-    const addedCount = dbUtils.addPoliciesBatch(policies);
-    return { addedCount };
-});
 
 // 获取模板列表（从 resources/presets/templates.json）
 ipcMain.handle('core:getTemplates', async () => {
@@ -451,8 +384,15 @@ ipcMain.handle('core:getCurrentConfigRules', async () => {
 // IPC Handlers for Sing-box Core
 ipcMain.handle('core:isRunning', () => singbox.isSingboxRunning());
 ipcMain.handle('core:getStartTime', () => singbox.getSingboxStartTime());
-ipcMain.handle('core:stop', () => {
+ipcMain.handle('core:stop', async () => {
     log.info('IPC core:stop');
+
+    // macOS TUN 模式：恢复系统 DNS
+    if (process.platform === 'darwin') {
+        log.info('[core:stop] macOS, restoring system DNS...');
+        await restoreDns();
+    }
+
     return singbox.stopSingbox();
 });
 
@@ -460,6 +400,13 @@ ipcMain.handle('core:restart', async () => {
     try {
         log.info('IPC core:restart 开始重启内核');
         log.info('[重启内核] 正在停止当前内核...');
+
+        // macOS TUN 模式：恢复系统 DNS
+        if (process.platform === 'darwin') {
+            log.info('[重启内核] macOS, restoring system DNS...');
+            await restoreDns();
+        }
+
         await singbox.stopSingbox();
         log.info('[重启内核] 内核已停止，等待 500ms 后重新启动');
         await new Promise((r) => setTimeout(r, 500));
@@ -476,6 +423,13 @@ ipcMain.handle('core:restart', async () => {
         }
         log.info(`[重启内核] 二进制路径: ${binaryPath}`);
         await singbox.startSingbox(configPath, binaryPath);
+
+        // macOS TUN 模式：设置系统 DNS
+        if (process.platform === 'darwin' && singbox.isTunModeEnabled()) {
+            log.info('[重启内核] macOS TUN mode enabled, setting system DNS...');
+            await setTunDns();
+        }
+
         log.info('[重启内核] 内核已成功重启');
         return true;
     } catch (err: any) {
@@ -513,74 +467,21 @@ ipcMain.handle('core:updateTrayMenu', () => {
     updateTrayMenu();
 });
 
-ipcMain.handle('core:isAdmin', () => {
-    if (process.platform !== 'win32') return false;
-    return isAdmin();
+ipcMain.handle('core:isServiceInstalled', () => {
+    return isServiceInstalled();
 });
 
 /**
- * 检测当前进程是否以管理员权限运行
- * 使用 Windows API 检测当前进程令牌，这是最准确的方法
+ * 检测 RoverService 服务是否已安装
  */
-function isAdmin(): boolean {
-    // 方法1: 使用 Windows API 检查当前进程令牌（最准确）
-    // 直接检测当前进程是否拥有管理员令牌，而不是用户是否属于管理员组
-    try {
-        const script = `
-            $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
-            $principal = New-Object Security.Principal.WindowsPrincipal($identity)
-            $isAdmin = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-            if ($isAdmin) { exit 0 } else { exit 1 }
-        `;
-        execSync('powershell.exe -Command ' + script, { 
-            encoding: 'utf8', 
-            windowsHide: true,
-            timeout: 5000 
-        });
-        return true;
-    } catch {
-        // PowerShell 失败，继续尝试其他方法
-    }
-    
-    // 方法2: 传统的 net session 检测 (作为备选)
-    try {
-        execSync('net session', { stdio: 'ignore', windowsHide: true });
-        return true;
-    } catch {
-        // net session 失败
-    }
-    
-    return false;
+function isServiceInstalled(): boolean {
+    // 非支持平台返回 false
+    if (!roverservice.isSupported()) return false;
+
+    // 使用缓存的值（启动时计算）
+    return getCachedIsServiceInstalled();
 }
 
-ipcMain.handle('core:restartAsAdmin', () => {
-    if (process.platform === 'win32') {
-        const exePath = process.execPath;
-        let psCommand = '';
-        if (app.isPackaged) {
-            psCommand = `Start-Process -FilePath '${exePath}' -Verb RunAs`;
-        } else {
-            // 在开发环境（未打包开发）时，需要把启动参数也传递过去，否则只会弹出一个空白的 Electron
-            // UAC 提升后不继承 env，需通过 --vite-dev-url 传递开发服务器地址
-            const baseArgs = process.argv.slice(1).filter((a) => !a.startsWith('--vite-dev-url='));
-            const devUrl = process.env.VITE_DEV_SERVER_URL;
-            if (devUrl) {
-                const escaped = devUrl.replace(/'/g, "''");
-                baseArgs.push(`--vite-dev-url=${escaped}`);
-            }
-            const args = baseArgs.map((arg) => `'${arg.replace(/'/g, "''")}'`).join(', ');
-            psCommand = `Start-Process -FilePath '${exePath}' -ArgumentList ${args} -Verb RunAs`;
-        }
-
-        exec(`powershell.exe -Command "${psCommand}"`, { windowsHide: true }, (err) => {
-            if (!err) {
-                app.quit();
-            }
-        });
-        return true;
-    }
-    return false;
-});
 
 // 使用 subscription 模块处理订阅相关 IPC 调用
 ipcMain.handle('core:updateProfile', async (_, profileId) => {
@@ -654,16 +555,6 @@ ipcMain.handle('core:getAvailableOutbounds', async () => {
     }
 });
 
-ipcMain.handle('core:updateConfigFile', async (_, updates: { mode?: string; tun?: boolean }) => {
-    try {
-        log.info(`IPC core:updateConfigFile ${JSON.stringify(updates)}`);
-        await updateConfigFile(updates);
-        return true;
-    } catch (e: any) {
-        console.error('Failed to update config file:', e);
-        throw new Error(`Failed to update config file: ${e.message}`);
-    }
-});
 
 ipcMain.handle('core:getSelectedProfile', async () => {
     try {
@@ -729,6 +620,16 @@ ipcMain.handle('core:start', async () => {
         }
 
         await singbox.startSingbox(configPath, binaryPath);
+
+        // macOS TUN 模式：设置系统 DNS
+        if (process.platform === 'darwin' && singbox.isTunModeEnabled()) {
+            log.info('[core:start] macOS TUN mode enabled, setting system DNS...');
+            const dnsResult = await setTunDns();
+            if (!dnsResult) {
+                log.warn('[core:start] Failed to set TUN DNS, but sing-box is running');
+            }
+        }
+
         return true;
     } catch (err: any) {
         console.error('Failed to start core:', err.message);
@@ -899,6 +800,12 @@ app.on('before-quit', async (event) => {
     // 停止定时任务
     scheduler.stopAllSchedulers();
 
+    // macOS TUN 模式：恢复系统 DNS
+    if (process.platform === 'darwin') {
+        log.info('[before-quit] macOS, restoring system DNS...');
+        await restoreDns();
+    }
+
     if (singbox.isSingboxRunning()) {
         await singbox.stopSingbox();
         console.log('sing-box stopped successfully');
@@ -981,6 +888,38 @@ ipcMain.handle('singbox:clearLog', async () => {
     }
 });
 
+// ==================== RoverService IPC Handlers ====================
+
+// 导入 roverservice-client 模块
+import * as roverservice from './roverservice-client';
+
+ipcMain.handle('roverservice:getInstallationStatus', async () => {
+    return roverservice.getInstallationStatus();
+});
+
+ipcMain.handle('roverservice:install', async (_, helperPath?: string) => {
+    const result = await roverservice.installHelper(helperPath);
+    // 安装成功后更新缓存
+    if (result.success) {
+        const isLoaded = roverservice.isServiceLoaded();
+        setCachedIsServiceInstalled(isLoaded);
+        log.info(`[RoverService] 安装完成，服务状态已缓存: ${isLoaded ? '服务已运行' : '服务未运行'}`);
+    }
+    return result;
+});
+
+ipcMain.handle('roverservice:uninstall', async () => {
+    const result = await roverservice.uninstallHelper();
+    // 卸载成功后更新缓存并重置控制器
+    if (result.success) {
+        setCachedIsServiceInstalled(false);
+        // 重置控制器，下次启动时将根据 TUN 模式自动选择
+        await singbox.resetController();
+        log.info('[RoverService] 卸载完成，服务状态已缓存: 服务未安装');
+    }
+    return result;
+});
+
 // 防止重复启动：获取单实例锁
 let gotTheLock = app.requestSingleInstanceLock();
 
@@ -1019,72 +958,37 @@ app.whenReady().then(async () => {
     log.info(`操作系统: ${process.platform} ${process.arch}`);
     log.info(`用户数据目录: ${getDataDir()}`);
 
-    // 检测管理员权限（在日志系统初始化后进行）
-    // 注意：S-1-5-32-544 只表示用户属于管理员组，不代表进程有管理员权限
-    // 正确做法是检查完整性级别：S-1-16-12288 = 高完整性（管理员权限已提升）
-    let isAdminResult = false;
-    if (process.platform === 'win32') {
-        try {
-            const output = execSync('whoami /groups', { encoding: 'utf8', windowsHide: true });
-            // S-1-16-12288 是高完整性级别的 SID，表示进程有管理员权限
-            const hasHighIntegrity = output.includes('S-1-16-12288');
-            log.info(`[权限检测] whoami 输出包含 S-1-16-12288 (高完整性): ${hasHighIntegrity}`);
-            isAdminResult = hasHighIntegrity;
-        } catch (e: any) {
-            log.warn(`[权限检测] whoami 失败: ${e?.message}, 尝试 net session`);
-            try {
-                execSync('net session', { stdio: 'ignore', windowsHide: true });
-                isAdminResult = true;
-                log.info('[权限检测] net session 检测: 有管理员权限');
-            } catch {
-                isAdminResult = false;
-                log.info('[权限检测] net session 检测: 无管理员权限');
-            }
-        }
+    // 同步内置规则集到用户数据目录，确保 root 进程可以访问
+    log.info('同步内置规则集到用户数据目录...');
+    const syncResult = syncBuiltinRulesetsToUserData();
+    if (syncResult.success) {
+        log.info(`规则集同步完成: 复制了 ${syncResult.copied} 个文件`);
+    } else {
+        log.error(`规则集同步失败: ${syncResult.errors.join(', ')}`);
     }
-    setCachedIsAdmin(isAdminResult);
-    log.info(`[权限检测] 检测结果已缓存: ${isAdminResult ? '有管理员权限' : '无管理员权限'}`);
+
+    // 检测 RoverService 服务是否已安装并运行
+    log.info('[RoverService] 检测 RoverService 服务安装状态...');
+    const binaryInstalled = roverservice.isInstalled();
+    const serviceRunning = roverservice.isServiceLoaded();
+    // 服务需要二进制存在且服务正在运行
+    const isInstalled = binaryInstalled && serviceRunning;
+    setCachedIsServiceInstalled(isInstalled);
+    log.info(`[RoverService] 检测结果: 二进制=${binaryInstalled}, 服务运行=${serviceRunning}, 缓存=${isInstalled ? '服务已安装' : '服务未安装'}`);
 
     // 清理无效的 profile.policies / profile.dnsPolicies 条目
     dbUtils.cleanupProfilePolicies();
     dbUtils.cleanupProfileDnsPolicies();
 
-    // 检查 TUN 模式设置与管理员权限是否匹配
-    // 需要综合对比：上次生成配置时的 TUN 状态、数据库设置、当前管理员权限
-    const tunModeSetting = dbUtils.getSetting('dashboard-tun-mode');
-    const tunModeEnabled = tunModeSetting === 'true';
-    const isAdmin = getCachedIsAdmin();
+    // 简化逻辑：TUN 模式需要 RootService 服务
+    // 如果开启 TUN 但 RootService 未安装，提示用户安装
+    const tunModeEnabled = dbUtils.getSetting('dashboard-tun-mode') === 'true';
+    const isServiceInstalledCached = getCachedIsServiceInstalled();
     
-    // 从数据库读取上次生成配置时记录的 TUN 状态
-    const lastConfigTunModeSetting = dbUtils.getSetting('last-config-tun-mode');
-    const lastConfigTunMode = lastConfigTunModeSetting === 'true';
-    const lastConfigTunModeValid = lastConfigTunModeSetting === 'true' || lastConfigTunModeSetting === 'false';
+    log.info(`[启动检测] TUN模式: ${tunModeEnabled}, RootService已安装: ${isServiceInstalledCached}`);
     
-    log.info(`[启动检测] TUN模式设置: ${tunModeEnabled}, 管理员权限: ${isAdmin}, 上次配置TUN: ${lastConfigTunModeValid ? lastConfigTunMode : '未记录'}`);
-    
-    // 判断是否需要重新生成配置
-    // 场景1: 数据库开启 TUN，但配置中没有 TUN，且当前有管理员权限 -> 需要重新生成（添加 TUN）
-    // 场景2: 配置中有 TUN，但当前没有管理员权限 -> 需要重新生成（移除 TUN）
-    const needRegenerate = 
-        (tunModeEnabled && isAdmin && lastConfigTunModeValid && lastConfigTunMode === false) ||
-        (lastConfigTunModeValid && lastConfigTunMode === true && !isAdmin);
-    
-    if (needRegenerate) {
-        const reason = (lastConfigTunMode === true && !isAdmin) 
-            ? '配置中有TUN但当前无管理员权限' 
-            : '数据库开启TUN且当前有管理员权限，但配置中没有TUN';
-        log.warn(`[启动检测] 需要重新生成配置文件，原因: ${reason}`);
-        const selectedProfile = dbUtils.getSelectedProfile();
-        if (selectedProfile) {
-            try {
-                await generateConfigFile(selectedProfile.id, sendToRenderer);
-                log.info('[启动检测] 配置文件已重新生成');
-            } catch (err: any) {
-                log.error(`[启动检测] 重新生成配置失败: ${err?.message || err}`);
-            }
-        }
-    } else {
-        log.info(`[启动检测] 配置无需重新生成`);
+    if (tunModeEnabled && !isServiceInstalledCached) {
+        log.warn('[启动检测] TUN模式已启用但RootService未安装，请安装RootService以使用TUN模式');
     }
 
     createWindow();
@@ -1116,11 +1020,9 @@ app.whenReady().then(async () => {
                     return;
                 }
                 const configPath = getConfigPath();
+                // 主程序启动时不再重新生成配置，仅使用已有配置
                 if (!fs.existsSync(configPath)) {
-                    await generateConfigFile(selectedProfile.id, sendToRenderer);
-                }
-                if (!fs.existsSync(configPath)) {
-                    log.warn('config.json 不存在，跳过自动启动内核');
+                    log.warn('config.json 不存在，跳过自动启动内核（请手动启动）');
                     return;
                 }
                 const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
@@ -1138,6 +1040,13 @@ app.whenReady().then(async () => {
                     return;
                 }
                 await singbox.startSingbox(configPath, binaryPath);
+
+                // macOS TUN 模式：设置系统 DNS
+                if (process.platform === 'darwin' && singbox.isTunModeEnabled()) {
+                    log.info('[自动启动] macOS TUN mode enabled, setting system DNS...');
+                    await setTunDns();
+                }
+
                 log.info('内核已自动启动');
             } catch (err: any) {
                 log.error(`自动启动内核失败: ${err?.message || err}`);

@@ -59,6 +59,21 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
   const [configImportSuccessModal, setConfigImportSuccessModal] = useState(false);
   const [configImportStep, setConfigImportStep] = useState<string | null>(null);
 
+  // RoverService 状态 (支持的系统)
+  const [roverserviceStatus, setRoverServiceStatus] = useState<{
+    platform: string;
+    supported: boolean;
+    socketAvailable: boolean;
+    binaryInstalled: boolean;
+    serviceLoaded: boolean;
+    running: boolean;
+    pid?: number;
+    version?: string;
+  } | null>(null);
+  const [roverserviceInstalling, setRoverServiceInstalling] = useState(false);
+  const [roverserviceUninstalling, setRoverServiceUninstalling] = useState(false);
+  const [roverserviceError, setRoverServiceError] = useState<string | null>(null);
+
   const loadSettings = async () => {
     try {
       const allSettings = await window.ipcRenderer.db.getAllSettings();
@@ -135,12 +150,24 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
     }
   };
 
+  // 加载 RoverService 状态
+  const loadRoverServiceStatus = async () => {
+    try {
+      const status = await window.ipcRenderer.roverservice.getInstallationStatus();
+      setRoverServiceStatus(status);
+
+    } catch (err: any) {
+      console.error('Failed to load RoverService status:', err);
+    }
+  };
+
   // 每次进入设置页时刷新数据
   useEffect(() => {
     if (!isActive) return;
     loadSettings();
     checkStatus();
     loadBuildInfo();
+    loadRoverServiceStatus();
     const timer = setInterval(checkStatus, 3000);
     return () => clearInterval(timer);
   }, [isActive]);
@@ -241,6 +268,99 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
     setHostsSaved(true);
     setTimeout(() => setHostsSaved(false), 3000);
     await regenerateConfigIfNeeded();
+  };
+
+  // RoverService 安装处理
+  const handleInstallRoverService = async () => {
+    setRoverServiceInstalling(true);
+    setRoverServiceError(null);
+    try {
+      // 不需要传路径，会自动从应用资源目录查找
+      const result = await window.ipcRenderer.roverservice.install();
+      if (result.success) {
+
+        // 卸载服务后自动关闭 TUN 模式
+        await window.ipcRenderer.db.setSetting('dashboard-tun-mode', 'true');
+
+
+        await loadRoverServiceStatus();
+
+        window.ipcRenderer.core.generateConfig();
+      } else {
+        // 用户拒绝安装服务（取消 UAC 提示），不显示错误提示
+        if (!result.isUserCanceled) {
+          setRoverServiceError(result.error || '安装失败');
+        }
+      }
+    } catch (err: any) {
+      setRoverServiceError(err.message || '安装失败');
+    } finally {
+      setRoverServiceInstalling(false);
+    }
+  };
+
+  // RoverService 卸载处理
+  const handleUninstallRoverService = async () => {
+    setRoverServiceUninstalling(true);
+    setRoverServiceError(null);
+    try {
+      const result = await window.ipcRenderer.roverservice.uninstall();
+      if (result.success) {
+        // 卸载服务后自动关闭 TUN 模式
+        await window.ipcRenderer.db.setSetting('dashboard-tun-mode', 'false');
+        // 重新生成配置
+        await loadRoverServiceStatus();
+
+        window.ipcRenderer.core.generateConfig();
+
+      } else {
+        // 用户拒绝卸载服务（取消 UAC 提示），不显示错误提示
+        if (!result.isUserCanceled) {
+          setRoverServiceError(result.error || '卸载失败');
+        }
+      }
+    } catch (err: any) {
+      setRoverServiceError(err.message || '卸载失败');
+    } finally {
+      setRoverServiceUninstalling(false);
+    }
+  };
+
+  // 重新安装 RoverService
+  const handleReinstallRoverService = async () => {
+    setRoverServiceInstalling(true);
+    setRoverServiceError(null);
+    try {
+      // 先卸载
+      const uninstallResult = await window.ipcRenderer.roverservice.uninstall();
+      if (!uninstallResult.success) {
+        // 卸载失败也继续尝试安装
+        console.warn('[RoverService] 卸载失败，尝试重新安装:', uninstallResult.error);
+      } 
+      // 重新加载状态
+      await loadRoverServiceStatus();
+      // 再安装
+      const installResult = await window.ipcRenderer.roverservice.install();
+      if (installResult.success) {
+
+         // 卸载成功，自动关闭 TUN 模式
+        await window.ipcRenderer.db.setSetting('dashboard-tun-mode', 'true');
+        
+        await loadRoverServiceStatus();
+
+        // 重新生成配置以应用最新的服务状态
+        window.ipcRenderer.core.generateConfig();
+      } else {
+        // 用户拒绝安装服务（取消 UAC 提示），不显示错误提示
+        if (!installResult.isUserCanceled) {
+          setRoverServiceError(installResult.error || '重新安装失败');
+        }
+      }
+    } catch (err: any) {
+      setRoverServiceError(err.message || '重新安装失败');
+    } finally {
+      setRoverServiceInstalling(false);
+    }
   };
 
   // Tab 切换
@@ -422,7 +542,7 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
                     <div className="list-row-description">Light / Dark mode</div>
                   </div>
                   <Select
-                    value="light"
+                    defaultValue="light"
                     className="w-[132px]"
                   >
                     <option value="light">Light</option>
@@ -523,6 +643,90 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
 
               </div>
             </Card>
+
+            {/* RoverService 管理卡片 */}
+            {roverserviceStatus?.supported && (
+              <Card>
+                <SectionHeader>
+                  <div>
+                    <h2 className="text-[12px] font-semibold uppercase tracking-[0.18em] text-[var(--app-text-quaternary)]">系统服务</h2>
+                    <p className="text-[12px] text-[var(--app-text-quaternary)] mt-1">以系统权限运行，支持 TUN 模式等需要高级权限的功能。</p>
+                  </div>
+                </SectionHeader>
+                <div className="panel-section">
+                  {/* 状态显示 */}
+                  <ListRow>
+                    <div>
+                      <div className="list-row-title">服务状态</div>
+                      <div className="list-row-description">
+                        {roverserviceStatus.running ? (
+                          <span className="text-green-600">
+                            运行中 (PID: {roverserviceStatus.pid}, 版本: {roverserviceStatus.version})
+                          </span>
+                        ) : roverserviceStatus.binaryInstalled ? (
+                          <span className="text-yellow-600">已安装但未运行</span>
+                        ) : (
+                          <span className="text-[var(--app-text-tertiary)]">未安装</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {roverserviceStatus.running ? (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={handleUninstallRoverService}
+                          disabled={roverserviceUninstalling}
+                        >
+                          {roverserviceUninstalling ? '卸载中...' : '卸载'}
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={handleInstallRoverService}
+                          disabled={roverserviceInstalling}
+                        >
+                          {roverserviceInstalling ? '安装中...' : '安装'}
+                        </Button>
+                      )}
+                    </div>
+                  </ListRow>
+
+                  {/* 重新安装按钮 - 在已安装时显示 */}
+                  {roverserviceStatus.binaryInstalled && (
+                    <ListRow>
+                      <div>
+                        <div className="list-row-title">重新安装</div>
+                        <div className="list-row-description">如果服务异常，可以尝试重新安装系统服务</div>
+                      </div>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={handleReinstallRoverService}
+                        disabled={roverserviceInstalling}
+                      >
+                        {roverserviceInstalling ? '安装中...' : '重新安装'}
+                      </Button>
+                    </ListRow>
+                  )}
+
+                  {/* 错误信息 */}
+                  {roverserviceError && (
+                    <div className="px-4 py-2 text-[12px] text-red-600 bg-red-50 rounded-lg">
+                      {roverserviceError}
+                    </div>
+                  )}
+
+                  {/* 安装提示 */}
+                  {!roverserviceStatus.binaryInstalled && (
+                    <div className="px-4 py-2 text-[12px] text-[var(--app-text-secondary)] bg-[rgba(39,44,54,0.04)] rounded-lg">
+                      安装需要管理员权限，请在弹出的对话框中输入密码确认。
+                    </div>
+                  )}
+                </div>
+              </Card>
+            )}
         </div>
         )}
 

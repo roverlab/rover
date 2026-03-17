@@ -232,6 +232,8 @@ export function Policies() {
         try {
             await policyFinalOutbound.onChange(value);
             addNotification(`未匹配时出站已切换为：${POLICY_FINAL_OPTIONS.find(item => item.value === value)?.label ?? value}`);
+            // 异步生成配置，不阻塞UI
+            window.ipcRenderer.core.generateConfig().catch(console.error);
         } catch (err: unknown) {
             addNotification(`更新未匹配时出站失败: ${(err as Error)?.message || '未知错误'}`, 'error');
         }

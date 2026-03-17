@@ -86,7 +86,7 @@ export function PolicyImportModalContainer({
 
             // 处理 TUN 模式需要管理员权限的情况（只有开启 TUN 时才提示）
             if (result.tunNeedsAdmin && result.tunValue === true) {
-                addNotification('TUN模式没有启用成功，请以管理员权限重启应用后生效', 'error');
+                addNotification('TUN模式没有启用成功，请在设置中安装系统服务后生效', 'error');
             }
 
             // 异步生成配置，不阻塞UI

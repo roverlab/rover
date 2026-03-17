@@ -93,10 +93,17 @@ export function getBuiltinResourcesPath(): string {
 }
 
 /**
- * 获取内置规则集目录路径
+ * 获取内置规则集目录路径（根目录）
  */
 export function getBuiltinRulesetsPath(): string {
     return path.join(getBuiltinResourcesPath());
+}
+
+/**
+ * 获取内置规则集目录路径（实际目录）
+ */
+export function getBuiltinRulesets2Path(): string {
+    return path.join(getBuiltinResourcesPath(), 'rulesets');
 }
 
 /**
@@ -261,4 +268,72 @@ export function resolveDataPath(storedPath: string): string {
     if (!storedPath) return storedPath;
     if (path.isAbsolute(storedPath)) return storedPath; // 兼容旧数据
     return path.join(getDataDir(), storedPath);
+}
+
+/**
+ * 同步内置规则集到用户数据目录
+ * 将 resources/rulesets/ 下的所有 .srs 文件复制到 userData/data/rulesets/
+ * 这样 root 进程（roverservice/sing-box）可以访问这些文件
+ */
+export function syncBuiltinRulesetsToUserData(): { success: boolean; copied: number; errors: string[] } {
+    const result = { success: true, copied: 0, errors: [] as string[] };
+    
+    try {
+        const builtinDir = getBuiltinRulesets2Path();
+        const userDir = getRulesetsDir();
+        
+        if (!fs.existsSync(builtinDir)) {
+            result.errors.push(`内置规则集目录不存在: ${builtinDir}`);
+            result.success = false;
+            return result;
+        }
+        
+        // 递归复制 .srs 文件
+        function copySrsFiles(srcDir: string, destDir: string) {
+            const items = fs.readdirSync(srcDir, { withFileTypes: true });
+            
+            for (const item of items) {
+                const srcPath = path.join(srcDir, item.name);
+                const destPath = path.join(destDir, item.name);
+                
+                if (item.isDirectory()) {
+                    // 确保目标目录存在
+                    if (!fs.existsSync(destPath)) {
+                        fs.mkdirSync(destPath, { recursive: true });
+                    }
+                    // 递归处理子目录
+                    copySrsFiles(srcPath, destPath);
+                } else if (item.isFile() && item.name.endsWith('.srs')) {
+                    // 检查是否需要复制（文件不存在或已更新）
+                    let needCopy = false;
+                    if (!fs.existsSync(destPath)) {
+                        needCopy = true;
+                    } else {
+                        const srcStat = fs.statSync(srcPath);
+                        const destStat = fs.statSync(destPath);
+                        if (srcStat.mtime > destStat.mtime || srcStat.size !== destStat.size) {
+                            needCopy = true;
+                        }
+                    }
+                    
+                    if (needCopy) {
+                        try {
+                            fs.copyFileSync(srcPath, destPath);
+                            result.copied++;
+                        } catch (err: any) {
+                            result.errors.push(`复制失败 ${item.name}: ${err.message}`);
+                        }
+                    }
+                }
+            }
+        }
+        
+        copySrsFiles(builtinDir, userDir);
+        
+    } catch (err: any) {
+        result.errors.push(`同步规则集失败: ${err.message}`);
+        result.success = false;
+    }
+    
+    return result;
 }
