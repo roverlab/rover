@@ -48,7 +48,6 @@ import {
 import { decompileSrsToJson } from './ruleset-utils';
 import { validateProfileContent } from './validation';
 import * as subscription from './subscription';
-import { setTunDns, restoreDns } from './dns-macos';
 import { fetchIpThroughProxy, fetchIpDirect } from './network-check';
 import * as configBackup from './config-backup';
 import type { LogLevel, LogEntry } from './logger';
@@ -384,15 +383,8 @@ ipcMain.handle('core:getCurrentConfigRules', async () => {
 // IPC Handlers for Sing-box Core
 ipcMain.handle('core:isRunning', () => singbox.isSingboxRunning());
 ipcMain.handle('core:getStartTime', () => singbox.getSingboxStartTime());
-ipcMain.handle('core:stop', async () => {
+ipcMain.handle('core:stop', () => {
     log.info('IPC core:stop');
-
-    // macOS TUN 模式：恢复系统 DNS
-    if (process.platform === 'darwin') {
-        log.info('[core:stop] macOS, restoring system DNS...');
-        await restoreDns();
-    }
-
     return singbox.stopSingbox();
 });
 
@@ -400,13 +392,6 @@ ipcMain.handle('core:restart', async () => {
     try {
         log.info('IPC core:restart 开始重启内核');
         log.info('[重启内核] 正在停止当前内核...');
-
-        // macOS TUN 模式：恢复系统 DNS
-        if (process.platform === 'darwin') {
-            log.info('[重启内核] macOS, restoring system DNS...');
-            await restoreDns();
-        }
-
         await singbox.stopSingbox();
         log.info('[重启内核] 内核已停止，等待 500ms 后重新启动');
         await new Promise((r) => setTimeout(r, 500));
@@ -423,13 +408,6 @@ ipcMain.handle('core:restart', async () => {
         }
         log.info(`[重启内核] 二进制路径: ${binaryPath}`);
         await singbox.startSingbox(configPath, binaryPath);
-
-        // macOS TUN 模式：设置系统 DNS
-        if (process.platform === 'darwin' && singbox.isTunModeEnabled()) {
-            log.info('[重启内核] macOS TUN mode enabled, setting system DNS...');
-            await setTunDns();
-        }
-
         log.info('[重启内核] 内核已成功重启');
         return true;
     } catch (err: any) {
@@ -620,16 +598,6 @@ ipcMain.handle('core:start', async () => {
         }
 
         await singbox.startSingbox(configPath, binaryPath);
-
-        // macOS TUN 模式：设置系统 DNS
-        if (process.platform === 'darwin' && singbox.isTunModeEnabled()) {
-            log.info('[core:start] macOS TUN mode enabled, setting system DNS...');
-            const dnsResult = await setTunDns();
-            if (!dnsResult) {
-                log.warn('[core:start] Failed to set TUN DNS, but sing-box is running');
-            }
-        }
-
         return true;
     } catch (err: any) {
         console.error('Failed to start core:', err.message);
@@ -799,12 +767,6 @@ app.on('before-quit', async (event) => {
 
     // 停止定时任务
     scheduler.stopAllSchedulers();
-
-    // macOS TUN 模式：恢复系统 DNS
-    if (process.platform === 'darwin') {
-        log.info('[before-quit] macOS, restoring system DNS...');
-        await restoreDns();
-    }
 
     if (singbox.isSingboxRunning()) {
         await singbox.stopSingbox();
@@ -1040,13 +1002,6 @@ app.whenReady().then(async () => {
                     return;
                 }
                 await singbox.startSingbox(configPath, binaryPath);
-
-                // macOS TUN 模式：设置系统 DNS
-                if (process.platform === 'darwin' && singbox.isTunModeEnabled()) {
-                    log.info('[自动启动] macOS TUN mode enabled, setting system DNS...');
-                    await setTunDns();
-                }
-
                 log.info('内核已自动启动');
             } catch (err: any) {
                 log.error(`自动启动内核失败: ${err?.message || err}`);

@@ -18,6 +18,7 @@ import {
     SingboxStatus,
     CreateControllerOptions,
 } from './singbox-controller';
+import { setTunDns, restoreDns } from './dns-macos';
 
 const log = createLogger('Singbox');
 
@@ -110,12 +111,27 @@ export function isRoverServiceAvailable(): boolean {
 export async function startSingbox(configPath: string, binaryPath: string): Promise<void> {
     const ctrl = await getController();
     await ctrl.start(configPath, binaryPath);
+
+    // macOS TUN 模式：设置系统 DNS
+    if (process.platform === 'darwin' && isTunModeEnabled()) {
+        log.info('macOS TUN mode enabled, setting system DNS to 172.19.0.2...');
+        const dnsResult = await setTunDns();
+        if (!dnsResult) {
+            log.warn('Failed to set TUN DNS, but sing-box is running');
+        }
+    }
 }
 
 /**
  * 停止 sing-box
  */
 export async function stopSingbox(): Promise<void> {
+    // macOS TUN 模式：恢复系统 DNS
+    if (process.platform === 'darwin') {
+        log.info('macOS, restoring system DNS...');
+        await restoreDns();
+    }
+
     const ctrl = await getController();
     await ctrl.stop();
 }
