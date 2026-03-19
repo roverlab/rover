@@ -6,6 +6,7 @@ import { Input } from '../components/ui/Field';
 import { Card, ListRow, SectionHeader } from '../components/ui/Surface';
 import { Modal } from '../components/ui/Modal';
 import { useApi } from '../contexts/ApiContext';
+import { useProfile } from '../contexts/ProfileContext';
 import { Settings as SettingsIcon, Sliders, Check, Globe, Download, Upload, Info, ExternalLink } from 'lucide-react';
 import { DnsServersTab } from './Settings/DnsServersTab';
 import { useOverrideRules } from '../contexts/OverrideRulesContext';
@@ -20,6 +21,7 @@ interface SettingsProps {
 export function Settings({ isActive = true, initialTab, onTabConsumed }: SettingsProps = {}) {
   const { apiUrl, apiSecret, setApiUrl, setApiSecret } = useApi();
   const { refreshOverrideRules } = useOverrideRules();
+  const { refreshSeed } = useProfile();
 
   // App Settings
   const [lang, setLang] = useState('en');
@@ -32,6 +34,9 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
 
   // Advanced - Rule Override
   const [overrideRules, setOverrideRules] = useState(false);
+
+  // Advanced - Custom Proxy Groups
+  const [customProxyGroups, setCustomProxyGroups] = useState(false);
 
   // 订阅下载 User-Agent
   const [subscriptionUserAgent, setSubscriptionUserAgent] = useState('');
@@ -50,6 +55,10 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
   // Hosts 配置（数组存储，每行一个元素）
   const [hostsText, setHostsText] = useState('');
   const [hostsSaved, setHostsSaved] = useState(false);
+
+  // TUN 排除地址配置（数组存储，每行一个元素）
+  const [tunExcludeAddressText, setTunExcludeAddressText] = useState('');
+  const [tunExcludeAddressSaved, setTunExcludeAddressSaved] = useState(false);
 
   // 配置导出/导入
   const [configExporting, setConfigExporting] = useState(false);
@@ -84,6 +93,7 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
       const urlVal = allSettings['api-url'] || 'http://127.0.0.1:9090';
       const secretVal = allSettings['api-secret'] || '';
       const overrideRulesVal = allSettings['override-rules'] || 'false';
+      const customProxyGroupsVal = allSettings['custom-proxy-groups'] || 'false';
       const subscriptionUserAgentVal = allSettings['subscription-user-agent'] || '';
       const autoStartProxyVal = allSettings['auto-start-proxy'] ?? 'true';
       const ipv6Val = allSettings['ipv6'] ?? 'false';
@@ -94,6 +104,7 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
       setApiUrl(urlVal);
       setApiSecret(secretVal);
       setOverrideRules(overrideRulesVal === 'true');
+      setCustomProxyGroups(customProxyGroupsVal === 'true');
       setSubscriptionUserAgent(subscriptionUserAgentVal);
       setAutoStartProxy(autoStartProxyVal === 'true');
       setIpv6(ipv6Val === 'true');
@@ -105,6 +116,15 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
         setHostsText(Array.isArray(arr) ? arr.filter((s: unknown) => typeof s === 'string').join('\n') : '');
       } catch {
         setHostsText('');
+      }
+
+      // TUN 排除地址配置（数组存储）
+      const tunExcludeVal = allSettings['tun-exclude-address'] || '[]';
+      try {
+        const arr = JSON.parse(tunExcludeVal);
+        setTunExcludeAddressText(Array.isArray(arr) ? arr.filter((s: unknown) => typeof s === 'string').join('\n') : '');
+      } catch {
+        setTunExcludeAddressText('');
       }
     } catch (e) {
       console.error(e);
@@ -236,6 +256,11 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
       if (key === 'subscription-user-agent') setSubscriptionUserAgent(value);
       if (key === 'auto-start-proxy') setAutoStartProxy(value);
       if (key === 'ipv6') setIpv6(value);
+      if (key === 'custom-proxy-groups') {
+        setCustomProxyGroups(value);
+        // 刷新代理页面以显示更新后的代理组
+        refreshSeed();
+      }
 
       // 订阅 User-Agent 和启动自动打开内核 不影响 config.json，无需重新生成
       if (key === 'subscription-user-agent' || key === 'auto-start-proxy') return;
@@ -267,6 +292,15 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
     await window.ipcRenderer.db.setSetting('hosts-override', JSON.stringify(lines));
     setHostsSaved(true);
     setTimeout(() => setHostsSaved(false), 3000);
+    await regenerateConfigIfNeeded();
+  };
+
+  // 保存 TUN 排除地址配置（数组存储）
+  const handleSaveTunExcludeAddress = async () => {
+    const lines = tunExcludeAddressText.split(/\r?\n/).filter(line => line.trim() !== '');
+    await window.ipcRenderer.db.setSetting('tun-exclude-address', JSON.stringify(lines));
+    setTunExcludeAddressSaved(true);
+    setTimeout(() => setTunExcludeAddressSaved(false), 3000);
     await regenerateConfigIfNeeded();
   };
 
@@ -603,6 +637,17 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
 
                 <ListRow>
                   <div>
+                    <div className="list-row-title">自定义代理分组</div>
+                    <div className="list-row-description">使用自定义的代理分组替换订阅中的原始分组</div>
+                  </div>
+                  <Switch
+                    checked={customProxyGroups}
+                    onCheckedChange={(v) => handleUpdateConfig('custom-proxy-groups', v)}
+                  />
+                </ListRow>
+
+                <ListRow>
+                  <div>
                     <div className="list-row-title">IPv6</div>
                     <div className="list-row-description">Enable IPv6 support</div>
                   </div>
@@ -635,6 +680,36 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
                         </span>
                       )}
                       <Button variant="secondary" size="sm" onClick={handleSaveHosts}>
+                        保存
+                      </Button>
+                    </div>
+                  </div>
+                </ListRow>
+
+                <ListRow className="flex-col items-stretch gap-2 py-3">
+                  <div>
+                    <div className="list-row-title">TUN 排除地址</div>
+                    <div className="list-row-description">在 TUN 模式下排除的 IP 地址范围，每行一个 CIDR（如 192.168.0.0/16），这些地址的流量将不经过 TUN 虚拟网卡</div>
+                  </div>
+                  <div className="w-full">
+                    <textarea
+                      value={tunExcludeAddressText}
+                      onChange={(e) => setTunExcludeAddressText(e.target.value)}
+                      placeholder={`192.168.0.0/16
+10.0.0.0/8
+172.16.0.0/12
+fc00::/7`}
+                      rows={6}
+                      className="w-full px-3 py-2 text-[13px] font-mono border rounded-[10px] resize-y focus:outline-none focus:ring-2 focus:ring-[var(--app-accent)] focus:border-transparent bg-white text-[var(--app-text)] placeholder:text-[var(--app-text-quaternary)] border-[rgba(39,44,54,0.12)]"
+                    />
+                    <div className="flex items-center gap-2 mt-2 justify-end">
+                      {tunExcludeAddressSaved && (
+                        <span className="inline-flex items-center gap-1 text-[11px] text-green-600">
+                          <Check className="w-3 h-3" />
+                          已保存
+                        </span>
+                      )}
+                      <Button variant="secondary" size="sm" onClick={handleSaveTunExcludeAddress}>
                         保存
                       </Button>
                     </div>

@@ -1,8 +1,9 @@
 /**
- * RuleTreeNode 与 SingboxLogicalRule 的转换
+ * RuleTreeNode 与 RouteRule 的转换
  * 支持嵌套逻辑规则
  */
-import type { SingboxLogicalRule, SingboxRouteRule } from '../../../types/policy';
+import type { SingboxRouteRule } from '../../../types/policy';
+import type { RouteRule, RouteLogicRule } from '../../../types/singbox';
 import type { RuleTreeNode, LogicGroup, LeafRule, LogicGroupType } from '../types/ruleFields';
 import type { LogicNode, RuleGroup } from '../types/ruleFields';
 import { isLeafRule } from '../types/ruleFields';
@@ -39,8 +40,8 @@ function leafRuleToSingbox(leaf: LeafRule): SingboxRouteRule {
     return out as SingboxRouteRule;
 }
 
-/** RuleTreeNode 转为 SingboxLogicalRule 或 SingboxRouteRule */
-function ruleTreeNodeToSingbox(node: RuleTreeNode): SingboxLogicalRule | SingboxRouteRule {
+/** RuleTreeNode 转为 RouteRule 或 SingboxRouteRule */
+function ruleTreeNodeToSingbox(node: RuleTreeNode): RouteRule | SingboxRouteRule {
     if (isLeafRule(node)) {
         return leafRuleToSingbox(node);
     }
@@ -48,7 +49,7 @@ function ruleTreeNodeToSingbox(node: RuleTreeNode): SingboxLogicalRule | Singbox
     const rules = group.rules
         .map(r => ruleTreeNodeToSingbox(r))
         .filter(r => {
-            if ('type' in r && r.type === 'logical') return (r as SingboxLogicalRule).rules.length > 0;
+            if ('type' in r && r.type === 'logical') return (r as RouteLogicRule).rules!.length > 0;
             return Object.keys(r).length > 0;
         });
 
@@ -64,11 +65,11 @@ function ruleTreeNodeToSingbox(node: RuleTreeNode): SingboxLogicalRule | Singbox
     };
 }
 
-/** RuleTreeNode 转为 SingboxLogicalRule（顶层必须是逻辑组） */
-export function ruleTreeNodeToSingboxLogical(root: RuleTreeNode): SingboxLogicalRule | null {
+/** RuleTreeNode 转为 RouteLogicRule（顶层必须是逻辑组） */
+export function ruleTreeNodeToSingboxLogical(root: RuleTreeNode): RouteLogicRule | null {
     const result = ruleTreeNodeToSingbox(root);
     if ('type' in result && result.type === 'logical') {
-        return result as SingboxLogicalRule;
+        return result as RouteLogicRule;
     }
     const sr = result as SingboxRouteRule;
     if (Object.keys(sr).length === 0) return null;
@@ -116,12 +117,12 @@ function singboxRouteToLeafRules(sr: SingboxRouteRule): LeafRule[] {
     return leaves;
 }
 
-/** SingboxLogicalRule 转为 RuleTreeNode */
-function singboxLogicalToRuleTreeNode(lr: SingboxLogicalRule): RuleTreeNode {
+/** RouteLogicRule 转为 RuleTreeNode */
+function singboxLogicalToRuleTreeNode(lr: RouteLogicRule): RuleTreeNode {
     const type: LogicGroupType = lr.invert ? 'not' : (lr.mode === 'or' ? 'any' : 'all');
-    const rules: RuleTreeNode[] = lr.rules.map(r => {
+    const rules: RuleTreeNode[] = lr.rules!.map(r => {
         if (r && typeof r === 'object' && 'type' in r && (r as { type: string }).type === 'logical') {
-            return singboxLogicalToRuleTreeNode(r as SingboxLogicalRule);
+            return singboxLogicalToRuleTreeNode(r as RouteLogicRule);
         }
         const leaves = singboxRouteToLeafRules(r as SingboxRouteRule);
         if (leaves.length === 0) return { id: crypto.randomUUID(), type: 'domain', value: '' };
@@ -131,8 +132,8 @@ function singboxLogicalToRuleTreeNode(lr: SingboxLogicalRule): RuleTreeNode {
     return { id: crypto.randomUUID(), type, rules };
 }
 
-/** SingboxLogicalRule 转为 RuleTreeNode（入口），无数据时返回 null */
-export function singboxLogicalToRuleTreeNodeRoot(lr: SingboxLogicalRule | undefined): RuleTreeNode | null {
+/** RouteLogicRule 转为 RuleTreeNode（入口），无数据时返回 null */
+export function singboxLogicalToRuleTreeNodeRoot(lr: RouteLogicRule | undefined): RuleTreeNode | null {
     if (!lr || !lr.rules?.length) {
         return null;
     }

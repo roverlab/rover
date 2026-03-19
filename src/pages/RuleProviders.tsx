@@ -7,53 +7,54 @@ import { cn } from '../components/Sidebar';
 import { Plus, Trash2, Edit2, X, RefreshCw, Layers, MoreVertical, Eye, Copy, Search, Settings, Code2, Cloud, Box } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import type { RuleProvider, RuleProviderType, LocalRuleSetData, LocalRule } from '../types/rule-providers';
+import type { RuleProvider, RuleProviderType, LocalRuleSetData } from '../types/rule-providers';
+import type { HeadlessRule } from '../types/singbox';
 import { RuleFieldsEditorModal } from './Policies/components/RuleFieldsEditorModal';
 import { RuleTreeView } from './Policies/components/RuleTreeView';
 import { RULE_FIELD_CONFIG } from './Policies/utils/ruleFieldConfig';
 import type { RuleTreeNode, LogicGroup } from './Policies/types/ruleFields';
 import { getDefaultRuleTreeNode } from './Policies/utils/ruleFieldsUtils';
 import { singboxLogicalToRuleTreeNodeRoot, ruleTreeNodeToSingboxLogical } from './Policies/utils/ruleTreeNodeConversion';
-import type { SingboxLogicalRule, SingboxRouteRule } from '../types/policy';
+import type { HeadlessPlainRule, RouteLogicRule } from '../types/singbox';
 import { useNotificationState, NotificationList, useConfirm } from '../components/ui/Notification';
 import { Modal } from '../components/ui/Modal';
 import { formatRelativeTime } from '../shared/date-utils';
 import { getDisplayErrorMessage } from '../shared/error-utils';
 
-/** 将 LocalRule[] 转换为 RuleTreeNode */
-function localRulesToRuleTreeNode(rules: LocalRule[]): RuleTreeNode {
+/** 将 HeadlessRule[] 转换为 RuleTreeNode */
+function localRulesToRuleTreeNode(rules: HeadlessRule[]): RuleTreeNode {
     if (!rules || rules.length === 0) {
         return getDefaultRuleTreeNode();
     }
-    // LocalRule 结构和 SingboxRouteRule 兼容
-    const logicalRule: SingboxLogicalRule = {
+    // HeadlessRule 结构和 HeadlessPlainRule 兼容
+    const logicalRule: RouteLogicRule = {
         type: 'logical',
         mode: 'or', // 多条规则之间是 OR 关系
-        rules: rules as unknown as SingboxRouteRule[],
+        rules: rules as unknown as HeadlessPlainRule[],
     };
     return singboxLogicalToRuleTreeNodeRoot(logicalRule) ?? getDefaultRuleTreeNode();
 }
 
-/** 将 RuleTreeNode 转换为 LocalRule[] */
-function ruleTreeNodeToLocalRules(node: RuleTreeNode): LocalRule[] {
+/** 将 RuleTreeNode 转换为 HeadlessRule[] */
+function ruleTreeNodeToLocalRules(node: RuleTreeNode): HeadlessRule[] {
     const result = ruleTreeNodeToSingboxLogical(node);
     if (!result || !result.rules || result.rules.length === 0) {
         return [];
     }
-    const localRules: LocalRule[] = [];
-    function extractRules(lr: SingboxLogicalRule) {
+    const localRules: HeadlessRule[] = [];
+    function extractRules(lr: RouteLogicRule) {
         for (const rule of lr.rules) {
             if ('type' in rule && rule.type === 'logical') {
-                localRules.push(rule as unknown as LocalRule);
+                localRules.push(rule as unknown as HeadlessRule);
             } else {
-                localRules.push(rule as unknown as LocalRule);
+                localRules.push(rule as unknown as HeadlessRule);
             }
         }
     }
     if (result.mode === 'or') {
         extractRules(result);
     } else {
-        localRules.push(result as unknown as LocalRule);
+        localRules.push(result as unknown as HeadlessRule);
     }
     return localRules;
 }

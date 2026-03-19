@@ -2,7 +2,7 @@
  * 策略页面工具函数
  */
 import type { Policy } from '../../types/policy';
-import { getPolicyRuleSet } from '../../types/policy';
+import { getPolicyRuleSet } from '../../services/policy';
 import type { RuleProvider } from '../../types/rule-providers';
 import { OUTBOUND_OPTIONS } from '../../types/policy';
 

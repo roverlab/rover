@@ -1,18 +1,13 @@
-// UAC 提升后新进程不继承 env，通过 --vite-dev-url 传递开发服务器地址
-const viteDevUrlArg = process.argv.find((a) => a.startsWith('--vite-dev-url='));
-if (viteDevUrlArg) {
-    process.env.VITE_DEV_SERVER_URL = viteDevUrlArg.slice('--vite-dev-url='.length);
-}
 
 // 抑制 axios 等第三方库使用 url.parse() 的弃用警告
-process.removeAllListeners('warning');
-process.on('warning', (warning) => {
-    // 忽略 DEP0169 url.parse() 弃用警告
-    if (warning.name === 'DeprecationWarning' && warning.message.includes('url.parse()')) {
-        return;
-    }
-    console.warn(warning);
-});
+// process.removeAllListeners('warning');
+// process.on('warning', (warning) => {
+//     // 忽略 DEP0169 url.parse() 弃用警告
+//     if (warning.name === 'DeprecationWarning' && warning.message.includes('url.parse()')) {
+//         return;
+//     }
+//     console.warn(warning);
+// });
 
 import { app, BrowserWindow, ipcMain, shell, dialog } from 'electron';
 import { setCachedIsServiceInstalled, getCachedIsServiceInstalled } from './roverservice-cache';
@@ -24,7 +19,7 @@ import { setCachedIsServiceInstalled, getCachedIsServiceInstalled } from './rove
 import path from 'node:path';
 import fs from 'node:fs';
 import * as dbUtils from './db';
-import * as singbox from './singbox';
+import * as singbox from './core-controller';
 import * as proxy from './proxy';
 import { createTray, updateTrayMenu } from './tray';
 import * as scheduler from './scheduler';
@@ -34,6 +29,7 @@ import {
     getConfigPath,
     readConfig,
     generateConfigFile,
+    writeConfigFileOnly,
     getCurrentConfigRules,
     getAvailableOutbounds,
     POLICY_FINAL_OUTBOUND_VALUES,
@@ -46,27 +42,29 @@ import {
     registerRuleProviderIpcHandlers
 } from './route-policy';
 import { decompileSrsToJson } from './ruleset-utils';
-import { validateProfileContent } from './validation';
 import * as subscription from './subscription';
 import { fetchIpThroughProxy, fetchIpDirect } from './network-check';
-import * as configBackup from './config-backup';
 import type { LogLevel, LogEntry } from './logger';
+import {
+    sendToRenderer,
+    exportConfig,
+    importConfig,
+    importLocalProfile,
+    restartSingbox,
+    startSingbox,
+    generateConfig,
+    isServiceInstalled,
+    getBuildInfo,
+    handleAppQuit,
+    getWindowIconPath,
+    getSelectedProfileWithConfig
+} from './app-utils';
+import { clearAllDns } from './dns-macos';
 
 const log = createLogger('Main');
 
-
-
 // 从 subscription 模块重新导出辅助函数
-const { saveProfileFile, readProfileContent } = subscription;
-
-function sendToRenderer(channel: string, ...args: any[]) {
-    const windows = BrowserWindow.getAllWindows();
-    windows.forEach(w => {
-        if (!w.isDestroyed()) {
-            w.webContents.send(channel, ...args);
-        }
-    });
-}
+const { readProfileContent } = subscription;
 
 registerRuleProviderIpcHandlers(ipcMain, sendToRenderer, log);
 
@@ -98,88 +96,9 @@ ipcMain.handle('core:openExternalUrl', (_, url: string) => {
 });
 
 // 配置导出/导入
-ipcMain.handle('config:export', async (event) => {
-    const parentWindow = BrowserWindow.fromWebContents(event.sender) || undefined;
-    const defaultName = `rover-config-${new Date().toISOString().slice(0, 10)}.zip`;
-    const result = await dialog.showSaveDialog(parentWindow, {
-        title: '导出应用配置',
-        defaultPath: defaultName,
-        filters: [{ name: 'ZIP 备份', extensions: ['zip'] }, { name: 'All Files', extensions: ['*'] }],
-    });
-    if (result.canceled || !result.filePath) return { ok: false, path: null };
-    try {
-        const buffer = configBackup.createBackupZipBuffer();
-        fs.writeFileSync(result.filePath, buffer);
-        log.info(`[Config] export success: ${result.filePath}`);
-        await dialog.showMessageBox(parentWindow ?? undefined, {
-            type: 'info',
-            title: '导出成功',
-            message: '配置已导出',
-            detail: result.filePath,
-        });
-        return { ok: true, path: result.filePath };
-    } catch (err: any) {
-        log.error(`[Config] export failed: ${err?.message || err}`);
-        throw err;
-    }
-});
+ipcMain.handle('config:export', async (event) => exportConfig(event));
 
-ipcMain.handle('config:import', async (event) => {
-    const parentWindow = BrowserWindow.fromWebContents(event.sender) || undefined;
-    const result = await dialog.showOpenDialog(parentWindow, {
-        title: '导入应用配置',
-        filters: [{ name: 'ZIP 备份', extensions: ['zip'] }, { name: 'All Files', extensions: ['*'] }],
-        properties: ['openFile'],
-    });
-    if (result.canceled || result.filePaths.length === 0) return { ok: false };
-    try {
-        configBackup.restoreFromZip(result.filePaths[0]);
-        scheduler.initSchedulers();
-        log.info(`[Config] import success: ${result.filePaths[0]}`);
-
-        // 导入成功后：下载订阅配置、重新生成主配置、尝试重启内核
-        sendToRenderer('config-generate-start');
-        sendToRenderer('config-import-step', 'restoring');
-        try {
-            const profiles = dbUtils.getProfiles();
-            const remoteProfiles = profiles.filter((p) => p.type === 'remote' && p.url);
-            if (remoteProfiles.length > 0) {
-                sendToRenderer('config-import-step', 'downloading');
-                log.info(`[Config] importing: downloading ${remoteProfiles.length} remote profile(s)`);
-                const downloadResults = await Promise.allSettled(
-                    remoteProfiles.map((p) => subscription.downloadProfile(p.id))
-                );
-                const failed = downloadResults.filter((r) => r.status === 'rejected');
-                if (failed.length > 0) {
-                    log.warn(`[Config] import: ${failed.length} profile(s) download failed`);
-                }
-            }
-
-            const selectedProfile = dbUtils.getSelectedProfile();
-            if (selectedProfile) {
-                sendToRenderer('config-import-step', 'generating');
-                log.info(`[Config] import: regenerating config for profile=${selectedProfile.id}`);
-                await generateConfigFile(selectedProfile.id, sendToRenderer);
-                // generateConfigFile 内部已发送 config-generate-end
-            } else {
-                log.info('[Config] import: no selected profile, skip config regeneration');
-            }
-            sendToRenderer('config-import-step', 'done');
-        } finally {
-            // 无选中 profile 时 generateConfigFile 未调用，需手动发送 end 以关闭 loading
-            const selectedProfile = dbUtils.getSelectedProfile();
-            if (!selectedProfile) {
-                sendToRenderer('config-generate-end');
-            }
-        }
-
-        return { ok: true };
-    } catch (err: any) {
-        sendToRenderer('config-generate-end');
-        log.error(`[Config] import failed: ${err?.message || err}`);
-        throw err;
-    }
-});
+ipcMain.handle('config:import', async (event) => importConfig(event, sendToRenderer));
 
 
 scheduler.setRuleProviderUpdatedHook(async (providerId) => {
@@ -311,6 +230,44 @@ ipcMain.handle('db:addDnsServer', (_, server: any) => dbUtils.addDnsServer(serve
 ipcMain.handle('db:updateDnsServer', (_, id: string, updates: any) => dbUtils.updateDnsServer(id, updates));
 ipcMain.handle('db:deleteDnsServer', (_, id: string) => dbUtils.deleteDnsServer(id));
 
+// Custom Proxy Groups
+ipcMain.handle('db:getProfileCustomGroups', (_, profileId: string) => dbUtils.getProfileCustomGroups(profileId));
+ipcMain.handle('db:setProfileCustomGroups', (_, profileId: string, groups: any[]) => dbUtils.setProfileCustomGroups(profileId, groups));
+ipcMain.handle('db:addProfileCustomGroup', (_, profileId: string, group: any) => dbUtils.addProfileCustomGroup(profileId, group));
+ipcMain.handle('db:updateProfileCustomGroup', (_, profileId: string, groupName: string, updates: any) => dbUtils.updateProfileCustomGroup(profileId, groupName, updates));
+ipcMain.handle('db:deleteProfileCustomGroup', (_, profileId: string, groupName: string) => dbUtils.deleteProfileCustomGroup(profileId, groupName));
+ipcMain.handle('db:updateProfileCustomGroupsOrder', (_, profileId: string, orders: any[]) => dbUtils.updateProfileCustomGroupsOrder(profileId, orders));
+ipcMain.handle('db:clearProfileCustomGroups', (_, profileId: string) => dbUtils.clearProfileCustomGroups(profileId));
+ipcMain.handle('db:getProfileNodes', (_, profileId: string) => dbUtils.getProfileNodes(profileId));
+
+// 新的接口：同时设置数据库和重新生成配置
+ipcMain.handle('db:setTunModeWithConfigGeneration', async (_, key, value) => {
+    // 1. 保存到数据库
+    dbUtils.setSetting(key, value);
+    
+    // 2. TUN 模式切换时重置控制器
+    if (key === 'dashboard-tun-mode') {
+        await singbox.resetController();
+        log.info(`[DB] TUN 模式已${value === 'true' ? '启用' : '禁用'}，控制器已重置`);
+    }
+    
+    // 3. 重新生成配置文件（使用纯净函数）
+    try {
+        // 获取当前选中的 profile
+        const selectedProfile = dbUtils.getSelectedProfile();
+        if (!selectedProfile) {
+            throw new Error('No profile selected');
+        }
+        
+        // 使用纯净函数重新生成配置
+        const configPath = await writeConfigFileOnly(selectedProfile.id);
+        log.info(`[DB] config.json 已更新 (dashboard-tun-mode=${value}) -> ${configPath}`);
+    } catch (err: any) {
+        log.error(`[DB] 重新生成配置文件失败: ${err.message}`);
+        throw err;
+    }
+});
+
 ipcMain.handle('core:getPresetRulesets', () => loadPresetRulesets());
 ipcMain.handle('core:getAllRuleSetsGrouped', () => getAllRuleSetsGrouped());
 
@@ -383,38 +340,19 @@ ipcMain.handle('core:getCurrentConfigRules', async () => {
 // IPC Handlers for Sing-box Core
 ipcMain.handle('core:isRunning', () => singbox.isSingboxRunning());
 ipcMain.handle('core:getStartTime', () => singbox.getSingboxStartTime());
-ipcMain.handle('core:stop', () => {
+ipcMain.handle('core:stop', async () => {
     log.info('IPC core:stop');
+    
+    // macOS: 在停止内核前先清除 DNS 设置
+    if (process.platform === 'darwin') {
+        log.info('[core:stop] macOS: clearing DNS settings...');
+        await clearAllDns();
+    }
+    
     return singbox.stopSingbox();
 });
 
-ipcMain.handle('core:restart', async () => {
-    try {
-        log.info('IPC core:restart 开始重启内核');
-        log.info('[重启内核] 正在停止当前内核...');
-        await singbox.stopSingbox();
-        log.info('[重启内核] 内核已停止，等待 500ms 后重新启动');
-        await new Promise((r) => setTimeout(r, 500));
-        const configPath = getConfigPath();
-        if (!fs.existsSync(configPath)) {
-            log.error('[重启内核] config.json 不存在');
-            throw new Error('config.json not found. Please generate the config first.');
-        }
-        log.info(`[重启内核] 配置文件: ${configPath}`);
-        const binaryPath = singbox.getSingboxBinaryPath();
-        if (!fs.existsSync(binaryPath)) {
-            log.error(`[重启内核] Sing-box 二进制不存在: ${binaryPath}`);
-            throw new Error(`Sing-box binary not found at ${binaryPath}`);
-        }
-        log.info(`[重启内核] 二进制路径: ${binaryPath}`);
-        await singbox.startSingbox(configPath, binaryPath);
-        log.info('[重启内核] 内核已成功重启');
-        return true;
-    } catch (err: any) {
-        log.error(`[重启内核] 失败: ${err?.message || err}`);
-        throw err;
-    }
-});
+ipcMain.handle('core:restart', async () => restartSingbox());
 
 ipcMain.handle('core:setSystemProxy', (_, enable) => proxy.setSystemProxy(enable));
 ipcMain.handle('core:getSystemProxyStatus', () => proxy.getSystemProxyStatus());
@@ -449,18 +387,6 @@ ipcMain.handle('core:isServiceInstalled', () => {
     return isServiceInstalled();
 });
 
-/**
- * 检测 RoverService 服务是否已安装
- */
-function isServiceInstalled(): boolean {
-    // 非支持平台返回 false
-    if (!roverservice.isSupported()) return false;
-
-    // 使用缓存的值（启动时计算）
-    return getCachedIsServiceInstalled();
-}
-
-
 // 使用 subscription 模块处理订阅相关 IPC 调用
 ipcMain.handle('core:updateProfile', async (_, profileId) => {
     return await subscription.downloadProfile(profileId);
@@ -470,48 +396,7 @@ ipcMain.handle('core:addSubscriptionProfile', async (_, url: string) => {
     return await subscription.addSubscriptionProfile(url);
 });
 
-ipcMain.handle('core:importLocalProfile', async (event) => {
-    const parentWindow = BrowserWindow.fromWebContents(event.sender) || undefined;
-    const result = await dialog.showOpenDialog(parentWindow, {
-        title: 'Import Local Profile',
-        filters: [
-            { name: 'Config Files', extensions: ['yaml', 'yml', 'json'] },
-            { name: 'All Files', extensions: ['*'] }
-        ],
-        properties: ['openFile']
-    });
-
-    if (result.canceled || result.filePaths.length === 0) {
-        return null; // User cancelled
-    }
-
-    const filePath = result.filePaths[0];
-    const fileName = path.basename(filePath);
-
-    try {
-        const content = fs.readFileSync(filePath, 'utf8');
-        const validatedContent = validateProfileContent(content);
-
-        // Save to profiles directory (source file without extension)
-        const tempProfileId = Date.now(); // Temporary ID for filename
-        const savedFilePath = saveProfileFile(tempProfileId, validatedContent);
-
-        // Add to database (without content)
-        const profileId = dbUtils.addProfile({ name: fileName, type: 'local', path: savedFilePath });
-
-        // Rename file with actual profile ID (no extension)
-        const finalFilePath = path.join(getProfilesDir(), `profile_${profileId}`);
-        if (savedFilePath !== finalFilePath) {
-            fs.renameSync(savedFilePath, finalFilePath);
-            dbUtils.updateProfileContent(profileId, finalFilePath);
-        }
-
-        return profileId;
-    } catch (err: any) {
-        console.error('Failed to import local profile:', err);
-        throw new Error(`Failed to import local profile: ${err.message}`);
-    }
-});
+ipcMain.handle('core:importLocalProfile', async (event) => importLocalProfile(event));
 
 ipcMain.handle('core:getActiveConfig', async () => {
     try {
@@ -534,104 +419,14 @@ ipcMain.handle('core:getAvailableOutbounds', async () => {
 });
 
 
-ipcMain.handle('core:getSelectedProfile', async () => {
-    try {
-        const profile = dbUtils.getSelectedProfile();
-        if (!profile) return null;
-        const config = readConfig();
-        if (!config) {
-            console.log('config.json not found, profile may not be started yet');
-            return { profile, config: null };
-        }
-        return { profile, config };
-    } catch (e) {
-        console.error('Failed to get selected profile:', e);
-        return null;
-    }
-});
+ipcMain.handle('core:getSelectedProfile', async () => getSelectedProfileWithConfig());
 
-ipcMain.handle('core:generateConfig', async () => {
-    try {
-        const selectedProfile = dbUtils.getSelectedProfile();
-        log.info(`IPC core:generateConfig profile=${selectedProfile?.id ?? 'none'}`);
-        if (!selectedProfile) {
-            throw new Error('No profile selected');
-        }
-        const result = await generateConfigFile(selectedProfile.id, sendToRenderer);
-        log.info(`Config generated successfully at ${result}`);
-        return result;
-    } catch (err: any) {
-        log.error(`Failed to generate config: ${err.message}`);
-        throw err;
-    }
-});
+ipcMain.handle('core:generateConfig', async () => generateConfig(sendToRenderer));
 
-ipcMain.handle('core:start', async () => {
-    try {
-        const selectedProfile = dbUtils.getSelectedProfile();
-        log.info(`IPC core:start profile=${selectedProfile?.id ?? 'none'}`);
-        console.log(`Starting profile ${selectedProfile?.id ?? 'none'}...`);
-        // 不再在 run 方法内部直接写入 config.json，前端会先调用 generateConfig 生成好配置
-        const configPath = getConfigPath();
-
-        if (!fs.existsSync(configPath)) {
-            throw new Error('config.json not found. Please generate the config first.');
-        }
-
-        // 迁移：修复旧版写入的根级 config.mode（sing-box 不支持，需在 experimental.clash_api.default_mode）
-        const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-        if (config.mode !== undefined) {
-            const mode = config.mode;
-            delete config.mode;
-            if (!config.experimental) config.experimental = {};
-            if (!config.experimental.clash_api) config.experimental.clash_api = {};
-            config.experimental.clash_api.default_mode = mode;
-            fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8');
-            console.log(`[Config] Migrated config.mode to experimental.clash_api.default_mode: ${mode}`);
-        }
-
-        const binaryPath = singbox.getSingboxBinaryPath();
-        console.log(`Starting sing-box using binary: ${binaryPath}`);
-
-        if (!fs.existsSync(binaryPath)) {
-            throw new Error(`Sing-box binary not found at ${binaryPath}`);
-        }
-
-        await singbox.startSingbox(configPath, binaryPath);
-        return true;
-    } catch (err: any) {
-        console.error('Failed to start core:', err.message);
-        throw err;
-    }
-});
+ipcMain.handle('core:start', async () => startSingbox());
 
 // Get build information (app version, singbox version, etc.)
-ipcMain.handle('core:getBuildInfo', async () => {
-    try {
-        const buildInfoPath = getBuildInfoPath();
-        if (!fs.existsSync(buildInfoPath)) {
-            console.warn('build.json not found at:', buildInfoPath);
-            return {
-                appVersion: 'unknown',
-                singboxVersion: 'unknown',
-                buildTime: new Date().toISOString(),
-                buildNumber: 'dev'
-            };
-        }
-        
-        const content = fs.readFileSync(buildInfoPath, 'utf8');
-        const buildInfo = JSON.parse(content);
-        return buildInfo;
-    } catch (error) {
-        console.error('Failed to read build.json:', error);
-        return {
-            appVersion: 'unknown',
-            singboxVersion: 'unknown',
-            buildTime: new Date().toISOString(),
-            buildNumber: 'dev'
-        };
-    }
-});
+ipcMain.handle('core:getBuildInfo', async () => getBuildInfo());
 
 // The built directory structure
 //
@@ -661,18 +456,15 @@ if (fs.existsSync(process.env.DIST as string)) {
     console.log('[Path Debug] DIST contents:', fs.readdirSync(process.env.DIST as string));
 }
 
-function getWindowIconPath(): string {
-    const icoPath = path.join(publicPath, 'icon.ico');
-    const pngPath = path.join(publicPath, 'icon.png');
-    return fs.existsSync(icoPath) ? icoPath : pngPath;
-}
-
 let win: BrowserWindow | null;
-const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL'];
 
 let isQuitting = false;
 
 function createWindow() {
+    // UAC 提升后新进程不继承 env，通过 --dev-url 传递开发服务器地址
+    const devUrlArg = process.argv.find((a) => a.startsWith('--dev-url='));
+    const devServerUrl = devUrlArg ? devUrlArg.slice('--dev-url='.length) : process.env['DEV_SERVER_URL'];
+
     console.log('Creating main window...');
     win = new BrowserWindow({
         width: 1000,
@@ -684,7 +476,7 @@ function createWindow() {
         trafficLightPosition: { x: 16, y: 16 }, // Mac native traffic light placement
         vibrancy: 'sidebar', // Mac native blur
         visualEffectState: 'active', // Mac
-        icon: getWindowIconPath(),
+        icon: getWindowIconPath(publicPath),
         titleBarOverlay: { // Windows native controls
             color: '#00000000', // transparent
             symbolColor: '#555',
@@ -725,9 +517,9 @@ function createWindow() {
         win?.webContents.send('main-process-message', (new Date()).toLocaleString());
     });
 
-    if (VITE_DEV_SERVER_URL) {
-        console.log(`Loading URL: ${VITE_DEV_SERVER_URL}`);
-        win.loadURL(VITE_DEV_SERVER_URL);
+    if (devServerUrl) {
+        console.log(`Loading URL: ${devServerUrl}`);
+        win.loadURL(devServerUrl);
     } else {
         const indexPath = path.join(process.env.DIST as string, 'index.html');
         console.log(`Loading File: ${indexPath}`);
@@ -768,10 +560,7 @@ app.on('before-quit', async (event) => {
     // 停止定时任务
     scheduler.stopAllSchedulers();
 
-    if (singbox.isSingboxRunning()) {
-        await singbox.stopSingbox();
-        console.log('sing-box stopped successfully');
-    }
+    handleAppQuit();
 
     app.quit();
 });

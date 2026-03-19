@@ -10,6 +10,8 @@ import { getWsUrl, closeConnection, closeAllConnections } from '../services/api'
 interface Connection {
   id: string;
   host: string;
+  destinationIP?: string;
+  port: string;
   network: string;
   type: string;
   chains: string[];
@@ -17,6 +19,7 @@ interface Connection {
   upload: number;
   download: number;
   time: string;
+  process?: string;
 }
 
 const formatBytes = (bytes: number) => {
@@ -66,17 +69,29 @@ export function Connections({ isActive = true }: ConnectionsProps) {
           try {
             const data = JSON.parse(event.data);
             if (data.connections) {
-              const mapped = data.connections.map((c: any) => ({
-                id: c.id,
-                host: c.metadata.host || c.metadata.destinationIP || 'unknown',
-                network: c.metadata.network,
-                type: c.metadata.type,
-                chains: c.chains || [],
-                rule: c.rule || '',
-                upload: c.upload,
-                download: c.download,
-                time: formatTime(c.start)
-              }));
+              const mapped = data.connections.map((c: any) => {
+                // 提取进程名
+                const processPath = c.metadata.processPath || '';
+                const processName = processPath ? processPath.split(/[\\/]/).pop() : '';
+                
+                const hasHost = c.metadata.host && c.metadata.host.trim() !== '';
+                const hasIP = c.metadata.destinationIP && c.metadata.destinationIP.trim() !== '';
+                
+                return {
+                  id: c.id,
+                  host: hasHost ? c.metadata.host : (hasIP ? c.metadata.destinationIP : 'unknown'),
+                  destinationIP: hasHost && hasIP ? c.metadata.destinationIP : undefined,
+                  port: c.metadata.destinationPort || '',
+                  network: c.metadata.network,
+                  type: c.metadata.type,
+                  chains: c.chains || [],
+                  rule: c.rule || '',
+                  upload: c.upload,
+                  download: c.download,
+                  time: formatTime(c.start),
+                  process: processName
+                };
+              });
               setConnections(mapped);
             }
           } catch (e) {
@@ -127,7 +142,10 @@ export function Connections({ isActive = true }: ConnectionsProps) {
     }
   };
 
-  const filteredConnections = connections.filter(c => c.host.includes(search));
+  const filteredConnections = connections.filter(c => 
+    c.host.toLowerCase().includes(search.toLowerCase()) || 
+    (c.process && c.process.toLowerCase().includes(search.toLowerCase()))
+  );
 
   return (
     <div className="page-shell min-w-0">
@@ -180,6 +198,7 @@ export function Connections({ isActive = true }: ConnectionsProps) {
           <table className="data-table text-[12px] min-w-[700px]">
           <thead className="sticky top-0 z-10 text-[12px] font-semibold text-[var(--app-text-secondary)] bg-[rgba(255,255,255,0.7)]">
             <tr>
+              <th className="px-5 py-2.5">进程</th>
               <th className="px-5 py-2.5">地址</th>
               <th className="px-5 py-2.5">网络</th>
               <th className="px-5 py-2.5">链路</th>
@@ -192,16 +211,31 @@ export function Connections({ isActive = true }: ConnectionsProps) {
           <tbody className="divide-y divide-[var(--app-divider)]">
             {filteredConnections.map((conn) => (
               <tr key={conn.id} className="group">
-                <td className="px-5 py-2.5 font-medium text-[var(--app-text)] truncate max-w-[200px]" title={conn.host}>
-                  {conn.host}
+                <td className="px-5 py-2.5">
+                  <span className="text-[11px] text-[var(--app-text-secondary)] truncate max-w-[120px] block" title={conn.process}>
+                    {conn.process || '-'}
+                  </span>
+                </td>
+                <td className="px-5 py-2.5 font-medium text-[var(--app-text)] truncate max-w-[200px]" title={`${conn.host}:${conn.port}${conn.destinationIP ? ' (' + conn.destinationIP + ')' : ''}`}>
+                  <div className="flex flex-col">
+                    <span>{conn.host}:{conn.port}</span>
+                    {conn.destinationIP && (
+                      <span className="text-[10px] text-[var(--app-text-quaternary)] font-mono">({conn.destinationIP})</span>
+                    )}
+                  </div>
                 </td>
                 <td className="px-5 py-2.5">
-                  <span className={cn(
-                    "badge",
-                    conn.network === 'tcp' ? "bg-[rgba(100,116,139,0.12)] text-[var(--app-info)]" : "bg-[var(--app-warning-soft)] text-[var(--app-warning)]"
-                  )}>
-                    {conn.network}
-                  </span>
+                  <div className="flex flex-col gap-1 items-center">
+                    <span className={cn(
+                      "badge",
+                      conn.network === 'tcp' ? "bg-[rgba(100,116,139,0.12)] text-[var(--app-info)]" : "bg-[var(--app-warning-soft)] text-[var(--app-warning)]"
+                    )}>
+                      {conn.network}
+                    </span>
+                    <span className="text-[10px] text-[var(--app-text-quaternary)] font-mono truncate max-w-[80px]" title={conn.type}>
+                      {conn.type}
+                    </span>
+                  </div>
                 </td>
                 <td className="px-5 py-2.5">
                   <div className="flex items-center space-x-1 text-[11px] text-[var(--app-text-tertiary)]">
@@ -213,7 +247,7 @@ export function Connections({ isActive = true }: ConnectionsProps) {
                     ))}
                   </div>
                 </td>
-                <td className="px-5 py-2.5 text-[var(--app-text-quaternary)] text-[11px]">{conn.rule}</td>
+                <td className="px-5 py-2.5 text-[var(--app-text-quaternary)] text-[11px] truncate max-w-[200px]" title={conn.rule}>{conn.rule}</td>
                 <td className="px-5 py-2.5 text-right min-w-[140px] whitespace-nowrap">
                   <div className="flex flex-col text-[11px] font-mono">
                     <span className="text-[var(--app-success)]">↓ {formatBytes(conn.download)}</span>
@@ -235,7 +269,7 @@ export function Connections({ isActive = true }: ConnectionsProps) {
             ))}
             {connections.length === 0 && !isConnected && (
               <tr>
-                <td colSpan={7} className="px-5 py-10 text-center text-[var(--app-text-quaternary)]">
+                <td colSpan={8} className="px-5 py-10 text-center text-[var(--app-text-quaternary)]">
                   <Activity className="w-6 h-6 mx-auto mb-2 text-[var(--app-text-quaternary)]" />
                   <p className="text-[13px]">无活跃连接</p>
                 </td>

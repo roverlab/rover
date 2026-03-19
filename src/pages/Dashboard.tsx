@@ -26,17 +26,19 @@ interface TrafficChartProps {
  }
 
 // 自定义Hook用于管理流量数据
-function useTrafficData(isRunning: boolean, apiUrl: string, apiSecret: string) {
+// pauseConnections: 切换 TUN/内核操作时暂停连接，避免重连干扰端口释放
+function useTrafficData(isRunning: boolean, apiUrl: string, apiSecret: string, pauseConnections: boolean) {
     const [currentTraffic, setCurrentTraffic] = useState({ up: 0, down: 0 });
     const [totalTraffic, setTotalTraffic] = useState({ up: 0, down: 0 });
     const [trafficHistory, setTrafficHistory] = useState<TrafficData[]>([]);
 
     useEffect(() => {
-        if (!isRunning || !apiUrl) {
+        if (!isRunning || !apiUrl || pauseConnections) {
             setCurrentTraffic({ up: 0, down: 0 });
             return;
         }
 
+        let cancelled = false;
         let ws: WebSocket;
         let lastUpdate = 0;
         const DEBOUNCE_MS = 200;
@@ -45,6 +47,7 @@ function useTrafficData(isRunning: boolean, apiUrl: string, apiSecret: string) {
         let reconnectAttempts = 0;
 
         const connectWs = () => {
+            if (cancelled) return;
             const url = getWsUrl(apiUrl, '/traffic', apiSecret);
             ws = new WebSocket(url);
 
@@ -83,7 +86,8 @@ function useTrafficData(isRunning: boolean, apiUrl: string, apiSecret: string) {
             
             ws.onclose = () => {
                 console.log('[Traffic] WebSocket连接关闭');
-                if (isRunning) {
+                if (cancelled) return;
+                if (isRunning && !pauseConnections) {
                     // 指数退避重连策略
                     const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), MAX_RECONNECT_DELAY);
                     reconnectAttempts++;
@@ -96,10 +100,11 @@ function useTrafficData(isRunning: boolean, apiUrl: string, apiSecret: string) {
         connectWs();
         
         return () => {
-            if (ws) ws.close();
+            cancelled = true;
             if (reconnectTimeout) clearTimeout(reconnectTimeout);
+            if (ws) ws.close();
         };
-    }, [isRunning, apiUrl, apiSecret]);
+    }, [isRunning, apiUrl, apiSecret, pauseConnections]);
 
     return { currentTraffic, totalTraffic, trafficHistory };
 }
@@ -169,14 +174,16 @@ export function Dashboard({ isActive }: DashboardProps) {
     const [isRunning, setIsRunning] = useState(false);
     const [systemProxy, setSystemProxy] = useState(false);
     const [tunMode, setTunMode] = useState(false); // 数据库中的设置
-    
-    // 使用自定义Hook管理流量数据
-    const { currentTraffic, totalTraffic, trafficHistory } = useTrafficData(isRunning, apiUrl, apiSecret);
     const [mode, setMode] = useState('rule');
     const [modeChanging, setModeChanging] = useState<string | null>(null); // 正在切换的模式
     const [coreLoading, setCoreLoading] = useState(false); // 内核启动/停止中
     const [coreAction, setCoreAction] = useState<'start' | 'stop' | 'restart' | null>(null); // 当前内核操作类型
     const [tunLoading, setTunLoading] = useState(false); // 虚拟网卡切换中
+    const [pausingStatusCheck, setPausingStatusCheck] = useState(false); // 暂停健康检测
+
+    // 使用自定义Hook管理流量数据（切换 TUN/内核操作时暂停，避免重连干扰端口释放）
+    const pauseTrafficConnections = tunLoading || coreLoading;
+    const { currentTraffic, totalTraffic, trafficHistory } = useTrafficData(isRunning, apiUrl, apiSecret, pauseTrafficConnections);
     const tunModeDisplayRef = useRef(false); // 操作期间冻结显示，避免 Switch 先改变
     const coreActionLockRef = useRef(false); // 同步锁，防止短时间多次触发
     const { notifications, addNotification, removeNotification } = useNotificationState();
@@ -406,10 +413,13 @@ export function Dashboard({ isActive }: DashboardProps) {
         // 等待设置加载完成后再开始检测
         if (!settingsLoaded) return;
 
+        // 如果正在暂停状态检测，则不运行
+        if (pausingStatusCheck) return;
+
         checkStatus();
         const timer = setInterval(() => checkStatus(), 5000); // 从3秒改为5秒，减少性能开销
         return () => clearInterval(timer);
-    }, [settingsLoaded, apiUrl, apiSecret]); // 注意：不要加入 startTime，否则会循环触发
+    }, [settingsLoaded, apiUrl, apiSecret, pausingStatusCheck]); // 注意：不要加入 startTime，否则会循环触发
 
     useEffect(() => {
         let interval: NodeJS.Timeout;
@@ -553,6 +563,11 @@ export function Dashboard({ isActive }: DashboardProps) {
         setTunLoading(true);
         coreActionLockRef.current = true;
 
+        // 等待 React 完成重渲染并关闭 Traffic WebSocket，避免重连干扰端口释放
+        await new Promise<void>((r) => {
+            requestAnimationFrame(() => requestAnimationFrame(() => r()));
+        });
+
         try {
             // 开启 TUN 模式时需要检查 RoverService 服务是否已安装
             if (enable && !isServiceInstalled) {
@@ -581,22 +596,27 @@ export function Dashboard({ isActive }: DashboardProps) {
                 await wait(1000);
             }
 
-            // 2. 保存到本地数据库
-            await window.ipcRenderer.db.setSetting('dashboard-tun-mode', enable ? 'true' : 'false');
-            console.log('[Dashboard] 虚拟网卡状态已保存到数据库:', enable);
-
-            // 3. 写入 config.json（TUN 配置在 mergeSettingsIntoConfig 中生效）
-            await window.ipcRenderer.core.generateConfig();
+            // 2. 保存到本地数据库并重新生成配置（TUN 配置在 mergeSettingsIntoConfig 中生效）
+            await window.ipcRenderer.db.setTunModeWithConfigGeneration('dashboard-tun-mode', enable ? 'true' : 'false');
+            console.log('[Dashboard] 虚拟网卡状态已保存到数据库并重新生成配置:', enable);
 
             // 4. 如果内核正在运行，需要重新启动以应用新的 TUN 配置
-            // 注意：resetController 已在 db:setSetting 的 handler 中调用，会停止旧进程
-            // 这里只需要启动新的进程即可
+            // 使用 restart 而非 start：restart 会先 stop（清理可能残留的 sing-box 进程）、等待端口释放后再 start，
+            // 避免 9090 端口被旧进程占用导致 "address already in use" 错误
             if (isRunning) {
-                console.log('[Dashboard] 内核正在运行，重新启动以应用 TUN 配置变更');
-                await window.ipcRenderer.core.start();
-                // 更新启动时间
-                const newStartTime = await window.ipcRenderer.core.getStartTime();
-                setStartTime(newStartTime || Date.now());
+                console.log('[Dashboard] 重新启动以应用 TUN 配置变更，暂停健康检测');
+                setPausingStatusCheck(true); // 暂停健康检测
+                
+                try {
+                    await window.ipcRenderer.core.start();
+                    // 更新启动时间
+                    const newStartTime = await window.ipcRenderer.core.getStartTime();
+                    setStartTime(newStartTime || Date.now());
+                    
+                    console.log('[Dashboard] TUN 配置重启完成，恢复健康检测');
+                } finally {
+                    setPausingStatusCheck(false); // 恢复健康检测
+                }
             }
 
             // 5. 操作完成后才更新 Switch 显示状态

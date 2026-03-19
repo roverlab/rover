@@ -24,6 +24,35 @@ interface DnsBackup {
 let dnsBackup: DnsBackup[] = [];
 
 /**
+ * Known physical network service names on macOS
+ * These are the real hardware network interfaces
+ */
+const PHYSICAL_SERVICE_NAMES = [
+    'Wi-Fi',
+    'Ethernet',
+    'USB 10/100/1000 LAN',
+    'USB 10/100/1000 LAN 2',
+    'USB-C 10/100/1000 LAN',
+    'Thunderbolt Ethernet',
+    'Ethernet 1',
+    'Ethernet 2',
+    'Ethernet 3',
+    'Ethernet 4',
+    'Ethernet 5',
+    'Ethernet 6',
+    'Ethernet 7',
+    'Ethernet 8',
+];
+
+/**
+ * Check if a network service is a real physical interface
+ * Uses whitelist of known physical interface names
+ */
+function isPhysicalNetworkService(service: string): boolean {
+    return PHYSICAL_SERVICE_NAMES.includes(service);
+}
+
+/**
  * Get all network services on macOS
  * Returns array of service names like ['Wi-Fi', 'Ethernet', ...]
  */
@@ -41,6 +70,17 @@ async function getNetworkServices(): Promise<string[]> {
         log.error(`Failed to get network services: ${err.message}`);
         return [];
     }
+}
+
+/**
+ * Get physical network services only (excludes virtual interfaces like VPN, TUN, etc.)
+ * Returns array of service names like ['Wi-Fi', 'Ethernet', ...]
+ */
+async function getPhysicalNetworkServices(): Promise<string[]> {
+    const allServices = await getNetworkServices();
+    const physicalServices = allServices.filter(isPhysicalNetworkService);
+    log.info(`Filtered physical network services: ${physicalServices.join(', ')} (excluded: ${allServices.filter(s => !isPhysicalNetworkService(s)).join(', ') || 'none'})`);
+    return physicalServices;
 }
 
 /**
@@ -127,14 +167,14 @@ export async function setTunDns(): Promise<boolean> {
         // Clear any existing backup
         dnsBackup = [];
 
-        // Get all network services
-        const services = await getNetworkServices();
+        // Get physical network services only (exclude virtual interfaces)
+        const services = await getPhysicalNetworkServices();
         if (services.length === 0) {
-            log.warn('No network services found');
+            log.warn('No physical network services found');
             return false;
         }
 
-        log.info(`Found network services: ${services.join(', ')}`);
+        log.info(`Found physical network services: ${services.join(', ')}`);
 
         let successCount = 0;
         
@@ -200,18 +240,66 @@ export async function restoreDns(): Promise<boolean> {
             }
         }
 
+        const backupCount = dnsBackup.length;
         // Clear backup after restoration
         dnsBackup = [];
 
-        if (successCount === dnsBackup.length) {
+        if (successCount === backupCount) {
             log.info('Successfully restored DNS settings for all network services');
             return true;
         } else {
-            log.warn(`Restored DNS for ${successCount}/${dnsBackup.length} network services`);
+            log.warn(`Restored DNS for ${successCount}/${backupCount} network services`);
             return successCount > 0;
         }
     } catch (err: any) {
         log.error(`Failed to restore DNS: ${err.message}`);
+        return false;
+    }
+}
+
+/**
+ * Clear DNS settings for all physical network services (use DHCP)
+ * This is safer than restore when app exits unexpectedly
+ */
+export async function clearAllDns(): Promise<boolean> {
+    // Only run on macOS
+    if (process.platform !== 'darwin') {
+        log.info('clearAllDns: Not macOS, skipping');
+        return true;
+    }
+
+    log.info('Clearing DNS settings for all physical network services...');
+
+    try {
+        // Get physical network services only
+        const services = await getPhysicalNetworkServices();
+        if (services.length === 0) {
+            log.info('No physical network services found, nothing to clear');
+            return true;
+        }
+
+        let successCount = 0;
+
+        for (const service of services) {
+            // Clear DNS servers (use DHCP)
+            const success = await setDnsServers(service, []);
+            if (success) {
+                successCount++;
+            }
+        }
+
+        // Clear backup
+        dnsBackup = [];
+
+        if (successCount === services.length) {
+            log.info('Successfully cleared DNS settings for all physical network services');
+            return true;
+        } else {
+            log.warn(`Cleared DNS for ${successCount}/${services.length} network services`);
+            return successCount > 0;
+        }
+    } catch (err: any) {
+        log.error(`Failed to clear DNS: ${err.message}`);
         return false;
     }
 }

@@ -384,12 +384,16 @@ func handleSingboxStart(w http.ResponseWriter, r *http.Request) {
 	cmd := exec.CommandContext(context.Background(), req.BinaryPath, "run", "-c", req.ConfigPath)
 	cmd.Env = os.Environ()
 
+	// Set working directory to config file's directory
+	// This ensures relative paths in config are resolved correctly
+	configDir := filepath.Dir(req.ConfigPath)
+	cmd.Dir = configDir
+
 	// Platform-specific process settings
 	setSysProcAttr(cmd)
 
 	// Create log file
-	logDir := filepath.Dir(req.ConfigPath)
-	logFile := filepath.Join(logDir, "sing-box.log")
+	logFile := filepath.Join(configDir, "sing-box.log")
 
 	logWriter, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
@@ -475,12 +479,9 @@ func handleSingboxStop(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else {
-		// Unix: pkill -9 -f sing-box
-		cmd := exec.Command("pkill", "-9", "-f", "sing-box")
-		if output, err := cmd.CombinedOutput(); err != nil {
-			if !strings.Contains(string(output), "No matching processes") {
-				logWarn("pkill sing-box failed: %v, output: %s", err, string(output))
-			}
+		// Unix: SIGTERM first (graceful), then SIGKILL; killSingboxByImageName includes waitForSingboxExit
+		if err := killSingboxByImageName(); err != nil {
+			logWarn("killSingboxByImageName failed: %v", err)
 		}
 	}
 

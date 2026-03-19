@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import type { RuleSetGroupItem } from './PolicyAllRuleSetModal';
 import type { PolicyEditFormStateBase } from './PolicyEditModalBase';
 import type { RuleTreeNode } from './types/ruleFields';
-import type { SingboxLogicalRule } from '../../types/policy';
+import type { RouteLogicRule } from '../../types/singbox';
 import {
     ruleTreeNodeToSingboxLogical,
     singboxLogicalToRuleTreeNodeRoot,
@@ -27,7 +27,7 @@ export interface BasePolicy {
     order?: number;
     enabled?: boolean;
     raw_data?: Record<string, unknown>;
-    logical_rule?: SingboxLogicalRule;
+    logical_rule?: RouteLogicRule;
     ruleSet?: string[];
     /** 允许额外字段（如 outbound、server 等） */
     [key: string]: unknown;
@@ -102,10 +102,10 @@ export function policyToRuleGroupsTree<P extends BasePolicy>(policy: P | null): 
 
 /** RuleTreeNode 转为 policy，所有规则数据直接存 logical_rule */
 export function ruleGroupsTreeToPolicyFields(tree: RuleTreeNode): {
-    logical_rule?: { type: string; mode: string; rules: unknown[] };
+    logical_rule?: RouteLogicRule;
 } {
     const converted = ruleTreeNodeToSingboxLogical(tree);
-    if (!converted || converted.rules.length === 0) {
+    if (!converted || converted.rules!.length === 0) {
         return {};
     }
     return { logical_rule: converted };
@@ -222,7 +222,7 @@ export function createBuildPolicyData<T extends PolicyEditFormStateBase>(
                 addNotification(`已自动剔除 ${unavailableAclRefs.length} 个不可用规则集`, 'info');
             }
             const logical_rule = subRules.length > 0
-                ? { type: 'logical' as const, mode: 'and' as const, rules: subRules }
+                ? { type: 'logical' as const, mode: treeLogical?.mode ?? 'and' as const, rules: subRules }
                 : undefined;
             return {
                 type: 'default',

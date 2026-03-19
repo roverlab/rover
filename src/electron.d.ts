@@ -1,3 +1,23 @@
+/** 自定义代理分组的单个分组配置 */
+export interface CustomProxyGroup {
+    /** 分组名称 */
+    name: string;
+    /** 分组类型：selector（手动选择）或 urltest（自动测速） */
+    type: 'selector' | 'urltest';
+    /** 分组包含的节点名称列表（对应订阅中的节点 tag） */
+    outbounds: string[];
+    /** 分组排序顺序 */
+    order: number;
+}
+
+/** 代理节点信息（从订阅解析的真实节点，不包含分组） */
+export interface ProxyNode {
+    /** 节点名称/tag */
+    name: string;
+    /** 节点类型（如 shadowsocks, vmess, trojan 等） */
+    type: string;
+}
+
 export interface ElectronAPI {
     ipcRenderer: {
         send(channel: string, ...args: any[]): void;
@@ -45,6 +65,16 @@ export interface ElectronAPI {
             // Profile DNS Policies
             getProfileDnsPolicyByPolicyId(profileId: string, dnsPolicyId: string): Promise<any>;
             setProfileDnsPolicy(profileId: string, dnsPolicyId: string, dnsServerId: string | null): Promise<void>;
+            // Custom Proxy Groups
+            getProfileCustomGroups(profileId: string): Promise<CustomProxyGroup[]>;
+            setProfileCustomGroups(profileId: string, groups: CustomProxyGroup[]): Promise<void>;
+            addProfileCustomGroup(profileId: string, group: Omit<CustomProxyGroup, 'order'>): Promise<void>;
+            updateProfileCustomGroup(profileId: string, groupName: string, updates: Partial<Omit<CustomProxyGroup, 'name'>>): Promise<void>;
+            deleteProfileCustomGroup(profileId: string, groupName: string): Promise<void>;
+            updateProfileCustomGroupsOrder(profileId: string, orders: Array<{ name: string; order: number }>): Promise<void>;
+            clearProfileCustomGroups(profileId: string): Promise<void>;
+            getProfileNodes(profileId: string): Promise<ProxyNode[]>;
+            setTunModeWithConfigGeneration(key: string, value: string): Promise<void>;
         };
         core: {
             start(): Promise<boolean>;

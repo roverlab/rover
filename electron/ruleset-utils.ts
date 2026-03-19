@@ -9,7 +9,7 @@ import { spawnSync } from 'node:child_process';
 import axios from 'axios';
 import * as iconv from 'iconv-lite';
 import * as jschardet from 'jschardet';
-import * as singbox from './singbox';
+import * as singbox from './core-controller';
 import {  clashRuleSetToSingbox } from './clash-rule-set';
 import { getRulesetsDir } from './paths';
 import type { LocalRuleSetData } from '../src/types/rule-providers';

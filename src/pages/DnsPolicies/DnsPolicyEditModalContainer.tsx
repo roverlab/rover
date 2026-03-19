@@ -1,6 +1,7 @@
 import React from 'react';
 import type { DnsPolicy } from '../../types/dns-policy';
-import { getDnsPolicyRuleSet, DNS_SERVER_OPTIONS } from '../../types/dns-policy';
+import { getDnsPolicyRuleSet } from '../../services/dns-policy';
+import { DNS_SERVER_OPTIONS } from '../../types/dns-policy';
 import {
     PolicyEditModalBase,
     type PolicyEditFormStateBase,

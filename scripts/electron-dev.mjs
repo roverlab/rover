@@ -71,7 +71,7 @@ async function main() {
     env: {
       ...process.env,
       NODE_ENV: 'development',
-      VITE_DEV_SERVER_URL: DEV_SERVER_URL,
+      DEV_SERVER_URL: DEV_SERVER_URL,
     },
   });
 

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '../../components/ui/Button';
-import { X, Check } from 'lucide-react';
+import { X } from 'lucide-react';
 import { cn } from '../../components/Sidebar';
 
 type OutboundItem = { tag: string; type: string; all?: string[] };
@@ -10,36 +10,33 @@ type OutboundItem = { tag: string; type: string; all?: string[] };
 interface PolicyPreferredOutboundModalProps {
     open: boolean;
     availableOutbounds: OutboundItem[];
-    preferredOutbounds: string[];
-    onConfirm: (tags: string[]) => void;
+    preferredOutbound: string | null;
+    onConfirm: (tag: string | null) => void;
     onClose: () => void;
 }
 
 /**
- * 订阅优先选择节点 - 完整修复版
- * 解决了高度塌陷、点击丢失元素以及 CSS 变量对齐问题
+ * 订阅优先选择节点 - 单选模式
  */
 export function PolicyPreferredOutboundModal({
     open,
     availableOutbounds = [],
-    preferredOutbounds = [],
+    preferredOutbound = null,
     onConfirm,
     onClose,
 }: PolicyPreferredOutboundModalProps) {
     // 1. 使用本地状态，避免每次点击都触发父组件重绘导致弹窗卸载
-    const [localSelected, setLocalSelected] = useState<string[]>([]);
+    const [localSelected, setLocalSelected] = useState<string | null>(null);
 
     // 2. 每次打开弹窗时，从 props 同步初始选中的值
     useEffect(() => {
         if (open) {
-            setLocalSelected(preferredOutbounds);
+            setLocalSelected(preferredOutbound);
         }
-    }, [open, preferredOutbounds]);
+    }, [open, preferredOutbound]);
 
-    const toggleOutbound = (tag: string) => {
-        setLocalSelected(prev =>
-            prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
-        );
+    const selectOutbound = (tag: string) => {
+        setLocalSelected(prev => prev === tag ? null : tag);
     };
 
     const handleConfirm = () => {
@@ -90,11 +87,11 @@ export function PolicyPreferredOutboundModal({
                     <div className="flex-1 p-6 overflow-y-auto min-h-0 bg-white">
                         <div className="flex flex-wrap gap-2">
                             {availableOutbounds.map(ob => {
-                                const active = localSelected.includes(ob.tag);
+                                const active = localSelected === ob.tag;
                                 return (
                                     <div
                                         key={ob.tag}
-                                        onClick={() => toggleOutbound(ob.tag)}
+                                        onClick={() => selectOutbound(ob.tag)}
                                         className={cn(
                                             "inline-flex items-center gap-1.5 px-3 py-2 rounded-[10px] cursor-pointer transition-all border shrink-0",
                                             active
@@ -102,13 +99,14 @@ export function PolicyPreferredOutboundModal({
                                                 : "border-[var(--app-stroke)] bg-white hover:bg-[var(--app-hover)]"
                                         )}
                                     >
+                                        {/* 单选用圆形指示器 */}
                                         <div className={cn(
-                                            "w-4 h-4 rounded-[4px] border flex items-center justify-center shrink-0 transition-colors",
+                                            "w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors",
                                             active
-                                                ? "border-[var(--app-accent)] bg-[var(--app-accent)]"
+                                                ? "border-[var(--app-accent)]"
                                                 : "border-[var(--app-stroke-strong)]"
                                         )}>
-                                            {active && <Check className="w-3 h-3 text-white" />}
+                                            {active && <div className="w-2 h-2 rounded-full bg-[var(--app-accent)]" />}
                                         </div>
                                         <span className="text-[13px] text-[var(--app-text)]">{ob.tag}</span>
                                         <span className="text-[10px] text-[var(--app-text-quaternary)]">({ob.type})</span>
@@ -120,9 +118,20 @@ export function PolicyPreferredOutboundModal({
 
                     {/* Footer - 固定高度 */}
                     <div className="flex shrink-0 items-center justify-between px-6 py-4 border-t border-[var(--app-divider)] bg-[var(--app-sidebar)]/30">
-                        <span className="text-[12px] text-[var(--app-text-quaternary)]">
-                            已选择 {localSelected.length} 个节点，按顺序优先连接
-                        </span>
+                        <div className="flex items-center gap-3">
+                            <span className="text-[12px] text-[var(--app-text-quaternary)]">
+                                {localSelected ? `已选择: ${localSelected}` : '未选择节点'}
+                            </span>
+                            {localSelected && (
+                                <button
+                                    type="button"
+                                    onClick={() => setLocalSelected(null)}
+                                    className="text-[11px] text-[var(--app-text-tertiary)] hover:text-red-500 transition-colors"
+                                >
+                                    清除选择
+                                </button>
+                            )}
+                        </div>
                         <div className="flex gap-2">
                             <Button variant="ghost" onClick={onClose}>取消</Button>
                             <Button variant="primary" onClick={handleConfirm}>确定</Button>

@@ -2,7 +2,7 @@
  * DNS策略页面工具函数
  */
 import type { DnsPolicy } from '../../types/dns-policy';
-import { getDnsPolicyRuleSet } from '../../types/dns-policy';
+import { getDnsPolicyRuleSet } from '../../services/dns-policy';
 import type { RuleProvider } from '../../types/rule-providers';
 
 import { DNS_SERVER_LABELS } from '../../types/dns-policy';

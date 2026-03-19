@@ -8,7 +8,8 @@
  */
 
 import yaml from 'js-yaml';
-import { convertClashRuleToRouteRule, type HeadlessRule } from '../src/types/singbox';
+import { convertClashRuleToRouteRule } from '../src/services/singbox';
+import type { HeadlessRule } from '../src/types/singbox';
 
 /** sing-box 规则集源格式 */
 export interface SingboxRuleSetSource {
@@ -56,18 +57,21 @@ function compactRules(rules: HeadlessRule[]): HeadlessRule[] {
     const processName: string[] = [];
 
     for (const r of rules) {
+        // 跳过逻辑规则，只处理纯规则
+        if ('type' in r && r.type === 'logical') continue;
         // 使用 for 循环逐个 push 避免大数组栈溢出
-        if (r.domain_suffix) { for (const item of r.domain_suffix) domainSuffix.push(item); }
-        if (r.domain_keyword) { for (const item of r.domain_keyword) domainKeyword.push(item); }
-        if (r.domain) { for (const item of r.domain) domain.push(item); }
-        if (r.domain_regex) { for (const item of r.domain_regex) domainRegex.push(item); }
-        if (r.ip_cidr) { for (const item of r.ip_cidr) ipCidr.push(item); }
-        if (r.source_ip_cidr) { for (const item of r.source_ip_cidr) sourceIpCidr.push(item); }
-        if (r.port) { for (const item of r.port) port.push(item); }
-        if (r.port_range) { for (const item of r.port_range) portRange.push(item); }
-        if (r.source_port) { for (const item of r.source_port) sourcePort.push(item); }
-        if (r.source_port_range) { for (const item of r.source_port_range) sourcePortRange.push(item); }
-        if (r.process_name) { for (const item of r.process_name) processName.push(item); }
+        const plain = r as import('../src/types/singbox').HeadlessPlainRule;
+        if (plain.domain_suffix) { for (const item of plain.domain_suffix) domainSuffix.push(item); }
+        if (plain.domain_keyword) { for (const item of plain.domain_keyword) domainKeyword.push(item); }
+        if (plain.domain) { for (const item of plain.domain) domain.push(item); }
+        if (plain.domain_regex) { for (const item of plain.domain_regex) domainRegex.push(item); }
+        if (plain.ip_cidr) { for (const item of plain.ip_cidr) ipCidr.push(item); }
+        if (plain.source_ip_cidr) { for (const item of plain.source_ip_cidr) sourceIpCidr.push(item); }
+        if (plain.port) { for (const item of plain.port) port.push(item); }
+        if (plain.port_range) { for (const item of plain.port_range) portRange.push(item); }
+        if (plain.source_port) { for (const item of plain.source_port) sourcePort.push(item); }
+        if (plain.source_port_range) { for (const item of plain.source_port_range) sourcePortRange.push(item); }
+        if (plain.process_name) { for (const item of plain.process_name) processName.push(item); }
     }
 
     const result: HeadlessRule[] = [];

@@ -9,9 +9,9 @@ import { spawnSync, execSync } from 'node:child_process';
 import axios from 'axios';
 import * as dbUtils from './db';
 // import { formatDateFixed } from './db'; // 不再使用，改用标准ISO格式
-import * as singbox from './singbox';
+import * as singbox from './core-controller';
 import { getDataDir, getRulesetsDir, resolveDataPath, getBuiltinResourcesPath, getPresetRulesetsPath, getPresetTemplatesPath } from './paths';
-import { cnJsonRuleToPolicy, getPolicyRuleSet } from '../src/types/policy';
+import { cnJsonRuleToPolicy, getPolicyRuleSet } from '../src/services/policy';
 import type { RuleProviderForConfig, CnJsonRule } from '../src/types/policy';
 import { getRuleProviderFileBaseName, downloadAndConvertRuleSet, compileLocalRuleSet } from './ruleset-utils';
 import {
@@ -447,7 +447,7 @@ export function registerRuleProviderIpcHandlers(
                     // TUN 模式生效时才需要管理员权限（在 Dashboard 中处理）
                     dbUtils.setSetting('dashboard-tun-mode', 'true');
                     // 重置控制器，下次启动时将使用 ServiceSingboxController
-                    await require('./singbox').resetController();
+                    await require('./core-controller').resetController();
                     tunSet = true;
 // 检查 RoverService 服务是否已安装，用于前端提示
 tunNeedsAdmin = !checkIsServiceInstalled();
@@ -461,7 +461,7 @@ tunNeedsAdmin = !checkIsServiceInstalled();
                 try {
                     dbUtils.setSetting('dashboard-tun-mode', 'false');
                     // 重置控制器，下次启动时将使用 LocalSingboxController
-                    await require('./singbox').resetController();
+                    await require('./core-controller').resetController();
                     tunSet = true;
                 } catch (e) {
                     console.error('Failed to process tun setting from template:', e);

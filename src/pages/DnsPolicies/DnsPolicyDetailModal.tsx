@@ -6,7 +6,7 @@ import { Badge } from '../../components/ui/Surface';
 import { X, Copy, Edit2 } from 'lucide-react';
 import { cn } from '../../components/Sidebar';
 import type { DnsPolicy } from '../../types/dns-policy';
-import { getDnsPolicyRuleSet, getDnsPolicyMatchableFields } from '../../types/dns-policy';
+import { getDnsPolicyRuleSet, getDnsPolicyMatchableFields } from '../../services/dns-policy';
 import type { RuleProvider } from '../../types/rule-providers';
 import { getRuleSetBadgeClass, getServerLabel, getServerTone, getPolicyServer } from './utils';
 

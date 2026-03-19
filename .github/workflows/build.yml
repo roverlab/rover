@@ -56,6 +56,24 @@ jobs:
       - name: Download sing-box
         run: node scripts/download-singbox.cjs ${{ env.SINGBOX_VERSION }} ${{ matrix.platform == 'windows' && 'win32' || 'darwin' }} ${{ matrix.arch }}
 
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+          cache-dependency-path: roverservice/go.sum
+
+      - name: Build roverservice
+        run: |
+          cd roverservice
+          if [[ "${{ matrix.platform }}" == "windows" ]]; then
+            # Build for Windows amd64
+            GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o ../resources/roverservice.exe .
+          else
+            # Build for macOS (only arm64 is configured in the matrix)
+            GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-s -w" -o ../resources/roverservice .
+          fi
+        shell: bash
+
       - name: Download rulesets
         run: npx tsx scripts/download-rulesets.js
 

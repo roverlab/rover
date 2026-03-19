@@ -1,9 +1,10 @@
 import { Tray, Menu, nativeImage, app, BrowserWindow, clipboard } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
-import * as singbox from './singbox';
+import * as singbox from './core-controller';
 import * as dbUtils from './db';
 import { getSetting } from './db';
+import { handleAppQuit } from './app-utils';
 
 let tray: Tray | null = null;
 let updateMenuFn: (() => Promise<void>) | null = null;
@@ -186,9 +187,8 @@ export function createTray(mainWindow: BrowserWindow) {
             {
                 label: '退出',
                 click: async () => {
-                    console.log('Quit from tray: stopping sing-box...');
-                    await singbox.stopSingbox();
-                    console.log('sing-box stopped, quitting app');
+                    console.log('Quit from tray...');
+                    await handleAppQuit();
                     app.quit();
                 }
             },

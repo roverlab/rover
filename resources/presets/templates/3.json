@@ -3,8 +3,13 @@
     "servers": [
       {
         "tag": "Google",
-        "type": "udp",
+        "type": "tls",
         "server": "8.8.8.8"
+      },
+       {
+        "tag": "Cloudflare",
+        "type": "tls",
+        "server": "1.1.1.1"
       },
       {
         "tag": "阿里云",
@@ -63,6 +68,13 @@
         "ip_is_private": true,
         "outbound": "direct"
       }
+    },
+    {
+      "rule_set_build_in": [
+        "acl:Apple"
+      ],
+      "outbound": "direct",
+      "name": "🍎 苹果服务"
     },
     {
       "rule_set_build_in": [

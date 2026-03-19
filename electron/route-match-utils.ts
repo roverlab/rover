@@ -7,7 +7,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import axios from 'axios';
 import { spawnSync } from 'node:child_process';
-import * as singbox from './singbox';
+import * as singbox from './core-controller';
 import { decompileSrsToJson, isBuiltinRuleSet } from './ruleset-utils';
 import { getRulesetsDir, getGeoDir, getDataDir } from './paths';
 

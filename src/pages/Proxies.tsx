@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react';
 import { createPortal } from 'react-dom';
 import { cn } from '../components/Sidebar';
-import { Zap, Search, Disc, MoreVertical, RefreshCw, Activity, X, LayoutGrid, List, ArrowUpDown, AlignLeft, Monitor, ArrowLeft, Settings } from 'lucide-react';
+import { Zap, Search, MoreVertical, RefreshCw, Activity, X, LayoutGrid, List, ArrowUpDown, AlignLeft, Monitor, ArrowLeft, Settings } from 'lucide-react';
 import { Button } from '../components/ui/Button';
-import { Badge, Card } from '../components/ui/Surface';
 import { useApi } from '../contexts/ApiContext';
 import { useProfile } from '../contexts/ProfileContext';
 import { selectProxy, getProxyDelay, fetchProxies } from '../services/api';
@@ -131,13 +130,13 @@ export function Proxies() {
   const [searchInputFocused, setSearchInputFocused] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  const testQueueRef = useRef<string[]>([]);
+  const testQueueRef = useRef<Node[]>([]);
   const testingCountRef = useRef(0);
   const switchingRef = useRef(false); // 用于防止切换时被轮询覆盖
   const activeGroupNameRef = useRef<string>(''); // 用于存储当前活动组名
   const isTestRunningRef = useRef(false); // 防止测试重复触发
   const activeTabRef = useRef<string>(''); // 用于存储当前 activeTab，避免循环依赖
-  const MAX_CONCURRENT_TESTS = 10;
+  const MAX_CONCURRENT_TESTS = 20; // 最大并发测试数量
 
   const loadProxies = useCallback(async (force = false) => {
     // 如果正在切换节点且不是强制刷新，跳过本次轮询
@@ -317,37 +316,44 @@ export function Proxies() {
     if (testingCountRef.current >= MAX_CONCURRENT_TESTS || testQueueRef.current.length === 0) return;
 
     while (testingCountRef.current < MAX_CONCURRENT_TESTS && testQueueRef.current.length > 0) {
-      const nodeName = testQueueRef.current.shift()!;
+      const node = testQueueRef.current.shift()!;
+      const nodeName = node.name;
       testingCountRef.current++;
 
       setNodeTestState(prev => ({ ...prev, [nodeName]: 'testing' }));
 
-      getProxyDelay(apiUrl, apiSecret, nodeName).then(data => {
-        setNodeDelays(prev => ({ ...prev, [nodeName]: data.delay }));
-      }).catch(e => {
-        setNodeDelays(prev => ({ ...prev, [nodeName]: 0 }));
-      }).finally(() => {
+
+
+      const finishTest = (delay: number) => {
+        setNodeDelays(prev => ({ ...prev, [nodeName]: delay }));
         setNodeTestState(prev => {
           const next = { ...prev };
           delete next[nodeName];
           return next;
         });
         testingCountRef.current--;
-        // 检查是否还有节点需要测试
         if (testQueueRef.current.length > 0 || testingCountRef.current > 0) {
           processQueue();
         } else {
-          // 所有测试完成，重置标志
           isTestRunningRef.current = false;
         }
-      });
+      };
+
+    
+        // 代理节点：调用 sing-box API 测速
+        const testUrl = 'http://www.gstatic.com/generate_204';
+        getProxyDelay(apiUrl, apiSecret, nodeName, testUrl).then(data => {
+          finishTest(data.delay);
+        }).catch(e => {
+          finishTest(0);
+        });
     }
   }, [apiUrl, apiSecret]);
 
-  const enqueueTest = useCallback((nodeName: string) => {
-    if (nodeTestState[nodeName]) return; // 已经在队列中或正在测试
-    testQueueRef.current.push(nodeName);
-    setNodeTestState(prev => ({ ...prev, [nodeName]: 'queued' }));
+  const enqueueTest = useCallback((node: Node) => {
+    if (nodeTestState[node.name]) return; // 已经在队列中或正在测试
+    testQueueRef.current.push(node);
+    setNodeTestState(prev => ({ ...prev, [node.name]: 'queued' }));
     processQueue();
   }, [nodeTestState, processQueue]);
 
@@ -370,11 +376,6 @@ export function Proxies() {
     return results;
   }, [groups, searchQuery]);
 
-  // 获取搜索结果中涉及的组（去重）
-  const searchResultGroups = useMemo(() => {
-    const groupNames = new Set(searchResults.map(r => r.group.name));
-    return groups.filter(g => groupNames.has(g.name));
-  }, [searchResults, groups]);
 
   // 当前搜索选中的组
   const [searchActiveGroup, setSearchActiveGroup] = useState<string>('');
@@ -422,7 +423,7 @@ export function Proxies() {
     // 将需要测试的节点加入队列（排除已在测试中的）
     const toEnqueue = nodesToTest.filter(n => !nodeTestState[n.name]);
     toEnqueue.forEach(n => {
-      testQueueRef.current.push(n.name);
+      testQueueRef.current.push(n);
     });
 
     // 批量设置状态

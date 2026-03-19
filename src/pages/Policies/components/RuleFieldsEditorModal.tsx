@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X } from 'lucide-react';
 import { Button } from '../../../components/ui/Button';
+import { useNotificationState, NotificationList } from '../../../components/ui/Notification';
 import type { RuleFieldsEditorProps, RuleTreeNode, LogicGroup, LeafRule } from '../types/ruleFields';
 import { isLogicGroup, isLeafRule } from '../types/ruleFields';
 import type { RuleFieldConfig } from '../types/ruleFields';
@@ -40,6 +41,7 @@ export function RuleFieldsEditorModal({
     title = '规则集编辑器',
     onConfirm,
 }: RuleFieldsEditorModalProps) {
+    const { notifications, addNotification, removeNotification } = useNotificationState();
 
     const getTreeNode = useCallback((): RuleTreeNode => {
         const raw = form?.ruleGroupsTree as RuleTreeNode | undefined;
@@ -91,9 +93,11 @@ export function RuleFieldsEditorModal({
     const jsonPreview = ruleTreeNodeToSingboxLogical(node);
 
     return createPortal(
-        <AnimatePresence>
-            {open && (
-                <div className="fixed inset-0 z-[500] flex items-center justify-center overflow-y-auto p-4">
+        <>
+            <NotificationList notifications={notifications} onRemove={removeNotification} />
+            <AnimatePresence>
+                {open && (
+                    <div className="fixed inset-0 z-[500] flex items-center justify-center overflow-y-auto p-4">
                     <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
@@ -145,10 +149,15 @@ export function RuleFieldsEditorModal({
                                     </span>
                                     <button
                                         type="button"
-                                        onClick={() => {
-                                            navigator.clipboard.writeText(
-                                                JSON.stringify(jsonPreview, null, 2)
-                                            );
+                                        onClick={async () => {
+                                            try {
+                                                await navigator.clipboard.writeText(
+                                                    JSON.stringify(jsonPreview, null, 2)
+                                                );
+                                                addNotification('JSON预览已复制到剪贴板');
+                                            } catch (err: any) {
+                                                addNotification(`复制失败: ${err?.message || '未知错误'}`, 'error');
+                                            }
                                         }}
                                         className="text-[11px] font-medium px-3 py-1.5 rounded-[8px] bg-[var(--app-accent-soft)] hover:bg-[var(--app-accent-soft-card)] text-[var(--app-accent-strong)] border border-[var(--app-accent-border)] transition"
                                     >
@@ -180,7 +189,8 @@ export function RuleFieldsEditorModal({
                     </motion.div>
                 </div>
             )}
-        </AnimatePresence>,
+            </AnimatePresence>
+        </>,
         document.body
     );
 }

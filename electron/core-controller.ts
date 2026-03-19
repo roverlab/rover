@@ -7,6 +7,49 @@
  */
 
 import { ChildProcess } from 'node:child_process';
+import * as net from 'node:net';
+import { getSingboxBinaryPath as getSingboxBinaryPathFromPaths } from './paths';
+
+/**
+ * 检查端口是否可绑定（通过实际 bind 检测，避免 TIME_WAIT 误判）
+ * connect 检测会误判：TIME_WAIT 时无进程监听会返回 ECONNREFUSED，但端口仍不可 bind
+ */
+function isPortBindable(host: string, port: number): Promise<boolean> {
+    return new Promise((resolve) => {
+        const server = net.createServer();
+        server.once('error', () => {
+            server.close();
+            resolve(false); // 绑定失败 = 端口不可用（被占用或 TIME_WAIT）
+        });
+        server.once('listening', () => {
+            server.close();
+            resolve(true); // bind 成功 = 端口可用
+        });
+        server.listen(port, host);
+    });
+}
+
+/**
+ * 等待端口可绑定（轮询直到可 bind 或超时）
+ * 轮询间隔 200ms，总超时 12s（SIGTERM 优雅退出可显著缩短 TIME_WAIT）
+ */
+async function waitForPortBindable(host: string, port: number, timeoutMs: number): Promise<void> {
+    const pollInterval = 200;
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+        const bindable = await isPortBindable(host, port);
+        if (bindable) return;
+        await new Promise((r) => setTimeout(r, pollInterval));
+    }
+    throw new Error(`端口 ${host}:${port} 在 ${timeoutMs}ms 内未能释放，请稍后重试`);
+}
+
+/**
+ * 获取 sing-box 二进制文件路径
+ */
+export function getSingboxBinaryPath(): string {
+    return getSingboxBinaryPathFromPaths();
+}
 
 /**
  * sing-box 运行状态
@@ -29,7 +72,7 @@ export interface SingboxStatus {
  *
  * 定义了控制 sing-box 内核的标准方法
  */
-export interface ISingboxController {
+export interface CoreController {
     /**
      * 控制器类型标识
      */
@@ -235,7 +278,7 @@ function killByPidLocal(pid: number): Promise<boolean> {
  *
  * 直接在本地启动 sing-box 进程
  */
-export class LocalSingboxController implements ISingboxController {
+export class LocalSingboxController implements CoreController {
     readonly type = 'local' as const;
 
     private process: ChildProcess | null = null;
@@ -260,13 +303,24 @@ export class LocalSingboxController implements ISingboxController {
 
         if (hasRunning) {
             log.warn('检测到已有 sing-box 进程，先停止');
-            await this.stop();
+            // 如果是TUN模式且是macOS平台，使用完整的停止流程来确保DNS恢复
+            if (process.platform === 'darwin' && isTunModeEnabled()) {
+                log.info('macOS TUN模式，使用完整停止流程恢复DNS');
+                await stopSingbox();
+            } else {
+                await this.stop();
+            }
             log.info(`等待 ${this.options.portReleaseDelayMs}ms 以便端口释放`);
             await new Promise((r) => setTimeout(r, this.options.portReleaseDelayMs));
         } else if (this.process || this.pid) {
             log.info('进程已退出，清理残留状态');
             this.clearState();
         }
+
+        // 启动前确保 clash API 端口 9090 已释放（SIGTERM 优雅退出可缩短等待）
+        // log.info('[Local] 等待 clash API 端口 127.0.0.1:9090 可绑定...');
+        // await waitForPortBindable('127.0.0.1', 9090, 12000);
+        // log.info('[Local] 端口已就绪');
 
         const singboxLogPath = getSingboxLogPath();
 
@@ -504,7 +558,7 @@ async function isRoverServiceAvailable(): Promise<boolean> {
  *
  * 通过 RoverService 服务启动 sing-box（需要管理员权限）
  */
-export class ServiceSingboxController implements ISingboxController {
+export class ServiceSingboxController implements CoreController {
     readonly type = 'service' as const;
 
     private pid: number | null = null;
@@ -579,7 +633,13 @@ export class ServiceSingboxController implements ISingboxController {
         if (!response.success) {
             // 如果 restart 失败，尝试手动 stop + start
             log.warn('[Service] restart API 失败，尝试手动 stop + start');
-            await this.stop();
+            // 如果是TUN模式且是macOS平台，使用完整的停止流程来确保DNS恢复
+            if (process.platform === 'darwin' && isTunModeEnabled()) {
+                log.info('macOS TUN模式，使用完整停止流程恢复DNS');
+                await stopSingbox();
+            } else {
+                await this.stop();
+            }
             await new Promise((r) => setTimeout(r, this.options.portReleaseDelayMs!));
             await this.start(configPath, binaryPath);
             return;
@@ -650,7 +710,7 @@ export interface CreateControllerOptions extends ControllerOptions {
  *
  * 根据条件自动选择 Local 或 Service 控制器
  */
-export async function createSingboxController(options?: CreateControllerOptions): Promise<ISingboxController> {
+export async function createSingboxController(options?: CreateControllerOptions): Promise<CoreController> {
     // 强制使用本地模式
     if (options?.forceLocal) {
         log.info('使用本地控制器模式（强制）');
@@ -703,4 +763,188 @@ export function createLocalController(options?: ControllerOptions): LocalSingbox
  */
 export function createServiceController(options?: ControllerOptions): ServiceSingboxController {
     return new ServiceSingboxController(options);
+}
+
+// ============================================================================
+// Singbox Manager - 高级管理功能
+// ============================================================================
+
+import { setTunDns, restoreDns, clearAllDns } from './dns-macos';
+
+const managerLog = createLogger('Singbox');
+
+// Controller 实例缓存
+let controllerInstance: CoreController | null = null;
+
+/**
+ * 获取或创建 Controller 实例
+ *
+ * 简化逻辑：只有两种情况
+ * 1. 不开启 TUN → 使用普通用户启动
+ * 2. 开启 TUN → 使用 RootService 使用 root 权限
+ */
+async function getController(): Promise<CoreController> {
+    if (controllerInstance) {
+        return controllerInstance;
+    }
+
+    // 简化逻辑：TUN 模式启用 → 使用 ServiceSingboxController
+    if (isTunModeEnabled()) {
+        managerLog.info('TUN 模式已启用，使用 ServiceSingboxController');
+        controllerInstance = new ServiceSingboxController();
+        return controllerInstance;
+    }
+
+    // TUN 模式未启用 → 使用 LocalSingboxController
+    managerLog.info('TUN 模式未启用，使用 LocalSingboxController');
+    controllerInstance = new LocalSingboxController();
+    return controllerInstance;
+}
+
+/**
+ * 重置 Controller（用于切换模式时）
+ *
+ * 会先停止当前运行的 sing-box 进程，等待端口释放，然后重置控制器
+ */
+export async function resetController(): Promise<void> {
+    if (controllerInstance) {
+        try {
+            const running = await controllerInstance.isRunning();
+            if (running) {
+                managerLog.info('重置控制器前停止 sing-box 进程...');
+                
+                // 在重置控制器前先恢复DNS（如果是在TUN模式下）
+                if (process.platform === 'darwin' && isTunModeEnabled()) {
+                    managerLog.info('macOS TUN模式，恢复系统DNS...');
+                    await restoreDns();
+                }
+                
+                await controllerInstance.stop();
+                managerLog.info('sing-box 进程已停止');
+
+                // 等待端口释放（TUN 模式下进程停止后端口释放可能较慢，尤其是 clash_api 9090）
+                const portReleaseDelay = 600;
+                managerLog.info(`等待 ${portReleaseDelay}ms 以确保端口释放...`);
+                await new Promise((r) => setTimeout(r, portReleaseDelay));
+                managerLog.info('端口释放等待完成');
+            }
+        } catch (err: any) {
+            managerLog.warn(`停止 sing-box 进程时出错: ${err.message}`);
+        }
+    }
+    controllerInstance = null;
+    managerLog.info('控制器已重置');
+}
+
+/**
+ * 检查 TUN 模式是否启用
+ */
+export function isTunModeEnabled(): boolean {
+    const settings = require('./db').getAllSettings();
+    return settings['dashboard-tun-mode'] === 'true';
+}
+
+/**
+ * 检查是否应该使用 RoverService 模式
+ *
+ * 简化逻辑：TUN 模式启用时需要使用 RoverService
+ */
+export function shouldUseRoverService(): boolean {
+    return isTunModeEnabled();
+}
+
+/**
+ * 启动 sing-box
+ */
+export async function startSingbox(configPath: string, binaryPath: string): Promise<void> {
+    const ctrl = await getController();
+    await ctrl.start(configPath, binaryPath);
+
+    // macOS TUN 模式：设置系统 DNS
+    if (process.platform === 'darwin' && isTunModeEnabled()) {
+        managerLog.info('macOS TUN mode enabled, setting system DNS to 172.19.0.2...');
+        const dnsResult = await setTunDns();
+        if (!dnsResult) {
+            managerLog.warn('Failed to set TUN DNS, but sing-box is running');
+        }
+    }
+}
+
+/**
+ * 停止 sing-box
+ */
+export async function stopSingbox(): Promise<void> {
+    const ctrl = await getController();
+    
+    // macOS TUN 模式：恢复系统 DNS
+    if (process.platform === 'darwin' && isTunModeEnabled()) {
+        managerLog.info('macOS TUN mode enabled, restoring system DNS before stopping sing-box...');
+        await clearAllDns();
+    }
+
+    await ctrl.stop();
+}
+
+/**
+ * 检查 sing-box 是否在运行（同步版本，兼容旧代码）
+ */
+export function isSingboxRunning(): boolean {
+    // 如果有 controller，检查其状态
+    if (controllerInstance) {
+        const pid = controllerInstance.getPid();
+        if (pid) {
+            try {
+                process.kill(pid, 0);
+                return true;
+            } catch {
+                // 进程不存在
+            }
+        }
+    }
+
+    // 回退到检查系统进程
+    return listSystemSingboxPids().length > 0;
+}
+
+/**
+ * 异步检查 sing-box 是否在运行
+ */
+export async function isSingboxRunningAsync(): Promise<boolean> {
+    const ctrl = await getController();
+    return ctrl.isRunning();
+}
+
+/**
+ * 获取 sing-box 启动时间
+ */
+export function getSingboxStartTime(): number | null {
+    if (controllerInstance) {
+        return controllerInstance.getStartTime();
+    }
+    return null;
+}
+
+/**
+ * 获取当前 sing-box 进程 PID
+ */
+export function getSingboxPid(): number | null {
+    if (controllerInstance) {
+        return controllerInstance.getPid();
+    }
+    return null;
+}
+
+/**
+ * 获取 sing-box 状态
+ */
+export async function getSingboxStatus(): Promise<SingboxStatus> {
+    const ctrl = await getController();
+    return ctrl.getStatus();
+}
+
+/**
+ * 获取当前使用的 Controller 类型
+ */
+export function getControllerType(): 'local' | 'service' | null {
+    return controllerInstance?.type ?? null;
 }

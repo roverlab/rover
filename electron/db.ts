@@ -3,7 +3,7 @@ import { getDbPath, getDataDir, toDataRelativePath } from './paths';
 import type { RuleProvider, LocalRuleSetData } from '../src/types/rule-providers';
 import type { Policy } from '../src/types/policy';
 import type { DnsPolicy } from '../src/types/dns-policy';
-import { getPolicyRuleSet } from '../src/types/policy';
+import { getPolicyRuleSet } from '../src/services/policy';
 
 /** 订阅用户信息（从 Subscription-Userinfo 响应头解析） */
 export interface SubscriptionUserinfo {
@@ -29,6 +29,26 @@ export interface ProfileDnsPolicyItem {
     preferred_server: string | null;
 }
 
+/** 自定义代理分组的单个分组配置 */
+export interface CustomProxyGroup {
+    /** 分组名称 */
+    name: string;
+    /** 分组类型：selector（手动选择）或 urltest（自动测速） */
+    type: 'selector' | 'urltest';
+    /** 分组包含的节点名称列表（对应订阅中的节点 tag） */
+    outbounds: string[];
+    /** 分组排序顺序 */
+    order: number;
+}
+
+/** 代理节点信息（从订阅解析的真实节点，不包含分组） */
+export interface ProxyNode {
+    /** 节点名称/tag */
+    name: string;
+    /** 节点类型（如 shadowsocks, vmess, trojan 等） */
+    type: string;
+}
+
 export interface Profile {
     id: string;
     name: string;
@@ -47,6 +67,10 @@ export interface Profile {
     policies?: ProfilePolicyItem[];
     /** DNS 策略偏好（直接嵌入 profile） */
     dnsPolicies?: ProfileDnsPolicyItem[];
+    /** 自定义代理分组（用户自定义的分组，会替换订阅中的原始分组） */
+    customGroups?: CustomProxyGroup[];
+    /** 代理节点列表（从订阅解析的真实节点，不包含分组） */
+    nodes?: ProxyNode[];
 }
 
 /** @deprecated 使用 ProfilePolicyItem，保留用于兼容返回格式 */
@@ -326,7 +350,7 @@ export function updateDnsServer(id: string, updates: Partial<DnsServer>): void {
                     delete cleanedServer[key];
                 }
             }
-            arr[idx] = { ...cleanedServer, ...cleanedRest };
+            arr[idx] = { ...cleanedServer, ...cleanedRest } as DnsServer;
         }
     });
 }
@@ -1176,4 +1200,144 @@ export function cleanupProfileDnsPolicies(): void {
             console.log(`[DB] Cleaned up ${cleanedCount} invalid profile.dnsPolicies entries`);
         }
     });
+}
+
+// ===== Custom Proxy Groups =====
+
+/**
+ * 获取指定 profile 的自定义代理分组
+ */
+export function getProfileCustomGroups(profileId: string): CustomProxyGroup[] {
+    const profile = getProfileById(profileId);
+    return (profile?.customGroups ?? []).sort((a, b) => a.order - b.order);
+}
+
+/**
+ * 设置指定 profile 的自定义代理分组（完整替换）
+ */
+export function setProfileCustomGroups(profileId: string, groups: CustomProxyGroup[]): void {
+    withDb((data) => {
+        const profile = data.profiles.find((p) => p.id === profileId);
+        if (!profile) return;
+        // 确保每个分组都有 order 字段
+        const orderedGroups = groups.map((g, idx) => ({
+            ...g,
+            order: g.order ?? idx
+        })).sort((a, b) => a.order - b.order);
+        profile.customGroups = orderedGroups;
+        console.log(`[DB] Set ${orderedGroups.length} custom groups for profile ${profileId}`);
+    });
+}
+
+/**
+ * 添加一个自定义分组到 profile
+ */
+export function addProfileCustomGroup(profileId: string, group: Omit<CustomProxyGroup, 'order'>): void {
+    withDb((data) => {
+        const profile = data.profiles.find((p) => p.id === profileId);
+        if (!profile) return;
+        const groups = profile.customGroups ?? [];
+        const maxOrder = groups.reduce((m, g) => Math.max(m, g.order), -1);
+        const newGroup: CustomProxyGroup = {
+            ...group,
+            order: maxOrder + 1
+        };
+        // 检查名称是否重复
+        if (groups.some(g => g.name === group.name)) {
+            throw new Error(`分组名称 "${group.name}" 已存在`);
+        }
+        groups.push(newGroup);
+        profile.customGroups = groups;
+        console.log(`[DB] Added custom group "${group.name}" to profile ${profileId}`);
+    });
+}
+
+/**
+ * 更新指定 profile 中的一个自定义分组
+ */
+export function updateProfileCustomGroup(profileId: string, groupName: string, updates: Partial<Omit<CustomProxyGroup, 'name'>>): void {
+    withDb((data) => {
+        const profile = data.profiles.find((p) => p.id === profileId);
+        if (!profile) return;
+        const groups = profile.customGroups ?? [];
+        const idx = groups.findIndex(g => g.name === groupName);
+        if (idx < 0) {
+            throw new Error(`分组 "${groupName}" 不存在`);
+        }
+        groups[idx] = {
+            ...groups[idx],
+            ...updates
+        };
+        profile.customGroups = groups;
+        console.log(`[DB] Updated custom group "${groupName}" in profile ${profileId}`);
+    });
+}
+
+/**
+ * 删除指定 profile 中的一个自定义分组
+ */
+export function deleteProfileCustomGroup(profileId: string, groupName: string): void {
+    withDb((data) => {
+        const profile = data.profiles.find((p) => p.id === profileId);
+        if (!profile) return;
+        const groups = profile.customGroups ?? [];
+        const before = groups.length;
+        profile.customGroups = groups.filter(g => g.name !== groupName);
+        if (profile.customGroups.length < before) {
+            console.log(`[DB] Deleted custom group "${groupName}" from profile ${profileId}`);
+        }
+    });
+}
+
+/**
+ * 更新自定义分组的排序
+ */
+export function updateProfileCustomGroupsOrder(profileId: string, orders: Array<{ name: string; order: number }>): void {
+    withDb((data) => {
+        const profile = data.profiles.find((p) => p.id === profileId);
+        if (!profile) return;
+        const groups = profile.customGroups ?? [];
+        const orderMap = new Map(orders.map(o => [o.name, o.order]));
+        for (const group of groups) {
+            if (orderMap.has(group.name)) {
+                group.order = orderMap.get(group.name)!;
+            }
+        }
+        profile.customGroups = groups.sort((a, b) => a.order - b.order);
+        console.log(`[DB] Updated custom groups order for profile ${profileId}`);
+    });
+}
+
+/**
+ * 清空指定 profile 的所有自定义分组
+ */
+export function clearProfileCustomGroups(profileId: string): void {
+    withDb((data) => {
+        const profile = data.profiles.find((p) => p.id === profileId);
+        if (profile) {
+            profile.customGroups = [];
+            console.log(`[DB] Cleared all custom groups for profile ${profileId}`);
+        }
+    });
+}
+
+/**
+ * 更新 profile 的代理节点列表
+ */
+export function updateProfileNodes(profileId: string, nodes: ProxyNode[]): void {
+    withDb((data) => {
+        const profile = data.profiles.find((p) => p.id === profileId);
+        if (profile) {
+            profile.nodes = nodes;
+            console.log(`[DB] Updated ${nodes.length} nodes for profile ${profileId}`);
+        }
+    });
+}
+
+/**
+ * 获取 profile 的代理节点列表
+ */
+export function getProfileNodes(profileId: string): ProxyNode[] {
+    const profile = getProfileById(profileId);
+    return profile?.nodes ?? [];
 }

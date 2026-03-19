@@ -6,7 +6,7 @@ import { Badge } from '../../components/ui/Surface';
 import { X, Copy, Edit2 } from 'lucide-react';
 import { cn } from '../../components/Sidebar';
 import type { Policy } from '../../types/policy';
-import { getPolicyRuleSet, getPolicyMatchableFields } from '../../types/policy';
+import { getPolicyRuleSet, getPolicyMatchableFields } from '../../services/policy';
 import type { RuleProvider } from '../../types/rule-providers';
 import { getRuleSetBadgeClass, getOutboundLabel, getOutboundTone, getPolicyOutbound } from './utils';
 import { RuleTreeView } from './components/RuleTreeView';

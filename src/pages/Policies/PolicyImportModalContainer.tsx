@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { Policy, SingboxRouteRuleWithOutbound } from '../../types/policy';
-import { cnJsonRuleToPolicy, configRouteRuleToPolicy, getPolicyRuleSet } from '../../types/policy';
+import { cnJsonRuleToPolicy, configRouteRuleToPolicy, getPolicyRuleSet } from '../../services/policy';
 import type { RuleProvider } from '../../types/rule-providers';
 import { normalizeRuleSetBuildInToAclIds } from './utils';
 import { PolicyImportModal } from './PolicyImportModal';

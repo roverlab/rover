@@ -61,6 +61,16 @@ contextBridge.exposeInMainWorld('ipcRenderer', {
         // Profile DNS Policies
         getProfileDnsPolicyByPolicyId: (profileId: string, dnsPolicyId: string) => ipcRenderer.invoke('db:getProfileDnsPolicyByPolicyId', profileId, dnsPolicyId),
         setProfileDnsPolicy: (profileId: string, dnsPolicyId: string, dnsServerId: string | null) => ipcRenderer.invoke('db:setProfileDnsPolicy', profileId, dnsPolicyId, dnsServerId),
+        // Custom Proxy Groups
+        getProfileCustomGroups: (profileId: string) => ipcRenderer.invoke('db:getProfileCustomGroups', profileId),
+        setProfileCustomGroups: (profileId: string, groups: any[]) => ipcRenderer.invoke('db:setProfileCustomGroups', profileId, groups),
+        addProfileCustomGroup: (profileId: string, group: any) => ipcRenderer.invoke('db:addProfileCustomGroup', profileId, group),
+        updateProfileCustomGroup: (profileId: string, groupName: string, updates: any) => ipcRenderer.invoke('db:updateProfileCustomGroup', profileId, groupName, updates),
+        deleteProfileCustomGroup: (profileId: string, groupName: string) => ipcRenderer.invoke('db:deleteProfileCustomGroup', profileId, groupName),
+        updateProfileCustomGroupsOrder: (profileId: string, orders: any[]) => ipcRenderer.invoke('db:updateProfileCustomGroupsOrder', profileId, orders),
+        clearProfileCustomGroups: (profileId: string) => ipcRenderer.invoke('db:clearProfileCustomGroups', profileId),
+        getProfileNodes: (profileId: string) => ipcRenderer.invoke('db:getProfileNodes', profileId),
+        setTunModeWithConfigGeneration: (key: string, value: string) => ipcRenderer.invoke('db:setTunModeWithConfigGeneration', key, value),
     },
 
     // Sing-box APIs

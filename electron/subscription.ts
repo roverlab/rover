@@ -8,14 +8,14 @@ import * as iconv from 'iconv-lite';
 import * as jschardet from 'jschardet';
 import yaml from 'js-yaml';
 import * as dbUtils from './db';
-// import { formatDateFixed } from './db'; // 不再使用，改用标准ISO格式
 import { validateProfileContent } from './validation';
-import { getProfilesDir, resolveDataPath } from './paths';
+import { getProfilesDir } from './paths';
 import { downloadAndConvertRuleSet } from './ruleset-utils';
 import path from 'node:path';
 import fs from 'node:fs';
 import type { RuleProvider as ClashRuleProvider } from '../src/types/clash';
-import type { SubscriptionUserinfo } from './db';
+import type { SubscriptionUserinfo, ProxyNode } from './db';
+import { convertClashToSingbox } from '../src/services/singbox';
 
 const DEFAULT_SUBSCRIPTION_USER_AGENT = 'clash-verge/v2.4.2';
 
@@ -70,6 +70,75 @@ export function isYamlContent(content: string): boolean {
     } catch {
         return true;
     }
+}
+
+
+
+/**
+ * 从订阅配置中解析真实代理节点（不含分组）
+ * 支持 Clash YAML 和 Sing-box JSON 格式
+ * 使用 convertClashToSingbox 进行过滤，自动排除不支持的协议（如 SSR）
+ */
+export function parseProxyNodes(content: string): ProxyNode[] {
+
+    /** 内置出站类型（非代理节点） */
+    const BUILTIN_OUTBOUND_TYPES = new Set(['direct', 'block']);
+
+    /** 分组出站类型 */
+    const GROUP_OUTBOUND_TYPES = new Set(['selector', 'urltest']);
+
+    const nodes: ProxyNode[] = [];
+    
+    try {
+        let parsed: any;
+        
+        // 判断是否为 YAML 格式
+        if (isYamlContent(content)) {
+            parsed = yaml.load(content) as any;
+        } else {
+            parsed = JSON.parse(content);
+        }
+        
+        if (!parsed || typeof parsed !== 'object') return [];
+        
+        // 处理 Clash 格式（有 proxies 字段）- 使用 convertClashToSingbox 过滤
+        if (Array.isArray(parsed.proxies)) {
+            const singboxConfig = convertClashToSingbox(parsed, { skipRules: true });
+            const outbounds = singboxConfig.outbounds ?? [];
+            
+            for (const outbound of outbounds) {
+                // 排除内置类型和分组类型
+                const type = (outbound.type || '').toLowerCase();
+                if (!BUILTIN_OUTBOUND_TYPES.has(type) && !GROUP_OUTBOUND_TYPES.has(type)) {
+                    nodes.push({
+                        name: outbound.tag,
+                        type: outbound.type
+                    });
+                }
+            }
+        }
+        // 处理 Sing-box 格式（有 outbounds 字段）
+        else if (Array.isArray(parsed.outbounds)) {
+            for (const outbound of parsed.outbounds) {
+                if (outbound && outbound.tag && outbound.type) {
+                    // 排除分组类型和内置类型
+                    const type = (outbound.type || '').toLowerCase();
+                    if (!BUILTIN_OUTBOUND_TYPES.has(type) && !GROUP_OUTBOUND_TYPES.has(type)) {
+                        nodes.push({
+                            name: outbound.tag,
+                            type: outbound.type
+                        });
+                    }
+                }
+            }
+        }
+        
+        console.log(`[Nodes] Parsed ${nodes.length} proxy nodes from content`);
+    } catch (e) {
+        console.error('[Nodes] Failed to parse proxy nodes:', e);
+    }
+    
+    return nodes;
 }
 
 /**
@@ -462,6 +531,10 @@ export async function downloadProfile(profileId: string): Promise<string> {
             console.warn(`[RuleProviders] Some rule providers failed to download for profile ${profileId}: ${failedItems}`);
         }
 
+        // 解析并保存代理节点列表
+        const nodes = parseProxyNodes(content);
+        dbUtils.updateProfileNodes(profileId, nodes);
+
         return content;
     } catch (dlErr: any) {
         console.error('Failed to update profile:', dlErr.message);
@@ -539,6 +612,10 @@ export async function addSubscriptionProfile(url: string): Promise<string> {
         .catch(err => {
             console.error(`[RuleProviders] Failed to parse/download rule-providers for new profile ${profileId}:`, err);
         });
+
+    // 解析并保存代理节点列表
+    const nodes = parseProxyNodes(content);
+    dbUtils.updateProfileNodes(profileId, nodes);
 
     return profileId;
 }

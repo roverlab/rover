@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Download, RefreshCw, Plus, MoreVertical, Trash2, Loader2, Edit2, FileText, X, Copy } from 'lucide-react';
+import { Download, RefreshCw, Plus, MoreVertical, Trash2, Loader2, Edit2, FileText, X, Copy, Layers } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../components/Sidebar';
 import { Button } from '../components/ui/Button';
@@ -9,6 +9,7 @@ import { Badge, Card } from '../components/ui/Surface';
 import { useNotificationState, NotificationList, useConfirm } from '../components/ui/Notification';
 import { useProfile } from '../contexts/ProfileContext';
 import { formatRelativeTime } from '../shared/date-utils';
+import { GroupEditor } from './Profiles/components/GroupEditor';
 
 /** 格式化更新间隔显示 */
 function formatInterval(seconds: number | undefined): string {
@@ -39,6 +40,8 @@ interface Profile {
   updateInterval?: number;
   /** 订阅用户信息（流量、过期时间） */
   subscriptionUserinfo?: SubscriptionUserinfo;
+  /** 代理节点列表 */
+  nodes?: Array<{ name: string; type: string }>;
 }
 
 /** 格式化字节为可读字符串 */
@@ -83,6 +86,9 @@ export function Profiles() {
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
   const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0 });
   const dropdownButtonRefs = useRef<{ [key: string]: HTMLButtonElement | null }>({});
+
+  // 分组编辑器状态
+  const [editingGroupProfile, setEditingGroupProfile] = useState<Profile | null>(null);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -360,14 +366,17 @@ export function Profiles() {
                 key={profile.id}
                 onClick={() => handleSelect(profile.id)}
                 className={cn(
-                  "relative p-4 cursor-pointer transition-all flex flex-col h-40 group",
+                  "relative p-4 cursor-pointer transition-all flex flex-col h-40 group shadow-none",
                   profile.selected
                     ? "border-[var(--app-accent-border)] bg-[var(--app-accent-soft-card)]"
                     : "hover:border-[rgba(39,44,54,0.14)] hover:bg-white/80"
                 )}
               >
                 <div className="relative flex justify-between items-start mb-1.5 z-10">
-                  <h3 className="font-medium text-[14px] text-[var(--app-text)] truncate pr-3">{profile.name}</h3>
+                  <div className="flex items-center gap-2 min-w-0 pr-3">
+                    <h3 className="font-medium text-[14px] text-[var(--app-text)] truncate max-w-[160px]">{profile.name}</h3>
+                    <span className="shrink-0 text-[11px] text-[var(--app-text-tertiary)]">{profile.nodes?.length ?? 0} 节点</span>
+                  </div>
                   <div className={cn("flex space-x-0.5 transition-opacity", openDropdownId === profile.id ? "opacity-100 relative z-50" : "opacity-100")}>
                     <Button
                       variant="ghost"
@@ -411,6 +420,16 @@ export function Profiles() {
                         <FileText className="w-3.5 h-3.5 mr-2" />
                         查看
                       </button>
+                      <button
+                        className="flex items-center px-3 py-1.5 text-[12px] text-[var(--app-text-secondary)] hover:bg-[var(--app-bg-secondary)] hover:text-[var(--app-text)] transition-colors text-left w-full"
+                        onClick={() => {
+                          setOpenDropdownId(null);
+                          setEditingGroupProfile(profile);
+                        }}
+                      >
+                        <Layers className="w-3.5 h-3.5 mr-2" />
+                        自定义分组
+                      </button>
                       <div className="mx-2 my-1 border-t border-[rgba(39,44,54,0.06)]" />
                       <button
                         className="flex items-center px-3 py-1.5 text-[12px] text-[var(--app-danger)] hover:bg-[rgba(177,79,94,0.08)] transition-colors text-left w-full"
@@ -427,7 +446,8 @@ export function Profiles() {
                   )}
                 </div>
 
-                <div className="mt-1 min-h-[2rem] flex flex-col justify-center gap-1">
+                <div className="mt-1 flex-1 flex flex-col justify-center gap-1">
+                  {/* 流量信息 */}
                   {profile.subscriptionUserinfo ? (
                     <>
                       <div className="h-1.5 w-full rounded-full bg-[var(--app-bg-secondary)] overflow-hidden">
@@ -437,15 +457,15 @@ export function Profiles() {
                         />
                       </div>
                       <div className="text-[10px] text-[var(--app-text-tertiary)] truncate w-full" title={`已用 ${formatBytes(profile.subscriptionUserinfo.upload + profile.subscriptionUserinfo.download)} / 总 ${formatBytes(profile.subscriptionUserinfo.total)} · 到期 ${formatExpire(profile.subscriptionUserinfo.expire)}`}>
-                        已用 {formatBytes(profile.subscriptionUserinfo.upload + profile.subscriptionUserinfo.download)} / 总 {formatBytes(profile.subscriptionUserinfo.total)} ·  {formatExpire(profile.subscriptionUserinfo.expire)}
+                        已用 {formatBytes(profile.subscriptionUserinfo.upload + profile.subscriptionUserinfo.download)} / 总 {formatBytes(profile.subscriptionUserinfo.total)} · {formatExpire(profile.subscriptionUserinfo.expire)}
                       </div>
                     </>
                   ) : null}
                 </div>
 
                 <div className="flex items-center justify-between mt-3">
-                  <div className="flex items-center text-[11px] text-[var(--app-text-quaternary)]">
-                    <span>更新时间: {profile.last_update ? formatRelativeTime(profile.last_update) : 'Never'}</span>
+                  <div className="text-[11px] text-[var(--app-text-quaternary)]">
+                    <span>更新: {profile.last_update ? formatRelativeTime(profile.last_update) : 'Never'}</span>
                   </div>
                   {profile.url && (
                     <Button
@@ -628,6 +648,20 @@ export function Profiles() {
           )}
         </AnimatePresence>,
         document.body
+      )}
+
+      {/* Group Editor Modal */}
+      {editingGroupProfile && (
+        <GroupEditor
+          profileId={editingGroupProfile.id}
+          profileName={editingGroupProfile.name}
+          onClose={() => setEditingGroupProfile(null)}
+          onSave={() => {
+            // 刷新 profiles 列表
+            refreshSeed();
+            loadProfiles();
+          }}
+        />
       )}
 
     </div>
