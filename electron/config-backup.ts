@@ -6,7 +6,7 @@
 import fs from 'node:fs';
 import AdmZip from 'adm-zip';
 import { createLogger } from './logger';
-import { getDbPath, getDataDir } from './paths';
+import { getDbPath, getDataDir, getBuildInfoPath } from './paths';
 
 const log = createLogger('ConfigBackup');
 
@@ -23,6 +23,10 @@ export interface BackupManifest {
     createdAt: string;
     /** 应用标识 */
     app: string;
+    /** 应用版本号 */
+    appVersion?: string;
+    /** sing-box 内核版本号 */
+    singboxVersion?: string;
 }
 
 const MANIFEST_APP = 'roverlab.rover';
@@ -40,16 +44,32 @@ export function createBackupZipBuffer(): Buffer {
     const zip = new AdmZip();
     const dbContent = fs.readFileSync(dbPath, 'utf8');
 
+    // 读取版本信息
+    let appVersion = 'unknown';
+    let singboxVersion = 'unknown';
+    try {
+        const buildInfoPath = getBuildInfoPath();
+        if (fs.existsSync(buildInfoPath)) {
+            const buildInfo = JSON.parse(fs.readFileSync(buildInfoPath, 'utf8'));
+            appVersion = buildInfo.appVersion || 'unknown';
+            singboxVersion = buildInfo.singboxVersion || 'unknown';
+        }
+    } catch (err) {
+        log.warn('[Export] failed to read build.json, using unknown versions');
+    }
+
     const manifest: BackupManifest = {
         formatVersion: CONFIG_BACKUP_FORMAT_VERSION,
         createdAt: new Date().toISOString(),
         app: MANIFEST_APP,
+        appVersion,
+        singboxVersion,
     };
 
     zip.addFile('manifest.json', Buffer.from(JSON.stringify(manifest, null, 2), 'utf8'));
     zip.addFile('database.json', Buffer.from(dbContent, 'utf8'));
 
-    log.info(`[Export] created backup zip, formatVersion=${CONFIG_BACKUP_FORMAT_VERSION}`);
+    log.info(`[Export] created backup zip, formatVersion=${CONFIG_BACKUP_FORMAT_VERSION}, appVersion=${appVersion}, singboxVersion=${singboxVersion}`);
     return zip.toBuffer();
 }
 

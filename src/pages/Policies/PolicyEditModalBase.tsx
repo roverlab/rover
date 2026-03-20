@@ -3,11 +3,12 @@ import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '../../components/ui/Button';
 import { Input, Select } from '../../components/ui/Field';
-import { X, ChevronDown, AlignLeft, Settings2, Code2, ChevronUp } from 'lucide-react';
+import { X, ChevronDown, Settings2, Code2, ChevronUp } from 'lucide-react';
 import { cn } from '../../components/Sidebar';
 import type { RuleSetGroupItem } from './PolicyAllRuleSetModal';
 import { PolicyAllRuleSetModal } from './PolicyAllRuleSetModal';
 import { RuleFieldsEditorModal } from './components/RuleFieldsEditorModal';
+import { JsonEditor } from '../../components/JsonEditor';
 import { RuleTreeView } from './components/RuleTreeView';
 import { RULE_FIELD_CONFIG } from './utils/ruleFieldConfig';
 import type { RuleFieldConfig } from './types/ruleFields';
@@ -235,44 +236,16 @@ export function PolicyEditModalBase<T extends PolicyEditFormStateBase>({
                                 {form.policyType === 'default' && extraFields}
 
                                 {form.policyType === 'raw' ? (
-                                    <div className="space-y-1.5">
-                                        <div className="flex items-center justify-between gap-2 pl-1">
-                                            <label className="text-[12px] font-medium text-[var(--app-text-secondary)]">原始规则</label>
-                                            <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                onClick={() => {
-                                                    const content = form.rawDataContent.trim();
-                                                    if (!content) {
-                                                        addNotification?.('请输入 JSON 内容后再格式化', 'error');
-                                                        return;
-                                                    }
-                                                    try {
-                                                        const parsed = JSON.parse(content);
-                                                        if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-                                                            addNotification?.('JSON 内容必须是有效的对象格式', 'error');
-                                                            return;
-                                                        }
-                                                        onFormChange({ rawDataContent: JSON.stringify(parsed, null, 2) } as Partial<T>);
-                                                        addNotification?.('已格式化', 'success');
-                                                    } catch {
-                                                        addNotification?.('JSON 格式错误，请检查输入', 'error');
-                                                    }
-                                                }}
-                                            >
-                                                <AlignLeft className="w-3.5 h-3.5 mr-1" />
-                                                格式化
-                                            </Button>
-                                        </div>
-                                        <textarea
-                                            value={form.rawDataContent}
-                                            onChange={e => onFormChange({ rawDataContent: e.target.value } as Partial<T>)}
-                                            placeholder={`{\n  "domain": ["example.com"],\n  "domain_suffix": [".google.com"],\n  "ip_cidr": ["192.168.1.0/24"]\n}`}
-                                            className="w-full h-48 px-3 py-2 text-[13px] font-mono rounded-[10px] border border-[rgba(39,44,54,0.12)] bg-white focus:border-[var(--app-accent-border)] focus:outline-none resize-none"
-                                            spellCheck={false}
-                                        />
-                                        <p className="text-[11px] text-[var(--app-text-quaternary)] pl-1">输入 sing-box 路由规则 JSON 格式</p>
-                                    </div>
+                                    <JsonEditor
+                                        value={form.rawDataContent}
+                                        onChange={value => onFormChange({ rawDataContent: value } as Partial<T>)}
+                                        placeholder={`{\n  "domain": ["example.com"],\n  "domain_suffix": [".google.com"],\n  "ip_cidr": ["192.168.1.0/24"]\n}`}
+                                        rows={12}
+                                        hint="输入 sing-box 路由规则 JSON 格式"
+                                        showFormatButton
+                                        onFormatSuccess={() => addNotification?.('已格式化', 'success')}
+                                        onFormatError={err => addNotification?.(err, 'error')}
+                                    />
                                 ) : (
                                     <>
                                         <div className="space-y-1.5">

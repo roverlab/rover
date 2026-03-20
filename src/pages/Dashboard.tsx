@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useApi } from '../contexts/ApiContext';
-import { fetchConfigs, getWsUrl, checkApiAvailable } from '../services/api';
+import { getWsUrl, checkApiAvailable } from '../services/api';
 import { Switch } from '../components/ui/Switch';
 import { Button } from '../components/ui/Button';
 import { Badge, Card } from '../components/ui/Surface';
@@ -240,22 +240,6 @@ export function Dashboard({ isActive }: DashboardProps) {
         return false;
     };
 
-    // 获取 configs（只在初始化时调用一次）
-    const fetchConfigsOnce = async () => {
-        if (!apiUrl) return;
-        try {
-            const ready = await checkApiAvailable(apiUrl, apiSecret, 1000);
-            if (!ready) {
-                console.warn('[Dashboard] API 尚未就绪，跳过本次 configs 拉取');
-                return;
-            }
-            const data = await fetchConfigs(apiUrl, apiSecret);
-            setMode(normalizeMode(data.mode || 'rule'));
-        } catch (e) {
-            console.error('Failed to fetch configs', e);
-        }
-    };
-
     const checkStatus = useCallback(async (skipExternalCheck: boolean = false) => {
         try {
             // 先检测应用内部进程是否运行
@@ -289,13 +273,6 @@ export function Dashboard({ isActive }: DashboardProps) {
             console.error('[状态检测] 错误:', err);
         }
     }, [apiUrl, apiSecret]);
-
-    // 初始化时获取一次 configs
-    useEffect(() => {
-        if (isRunning) {
-            fetchConfigsOnce();
-        }
-    }, [isRunning]);
 
     // 网络检测：应用启动、进入首页、内核状态变化时刷新
     useEffect(() => {
@@ -641,15 +618,6 @@ export function Dashboard({ isActive }: DashboardProps) {
     // 显示 Toast 提示
     const showToast = (message: string, type: 'success' | 'error' | 'info' | 'warning' = 'success') => {
         addNotification(message, type);
-    };
-
-    // 将 API 返回的 mode 转换为统一的小写格式
-    const normalizeMode = (apiMode: string): string => {
-        const mode = apiMode.toLowerCase();
-        if (mode === 'rule' || mode === 'global' || mode === 'direct') {
-            return mode;
-        }
-        return 'rule'; // 默认规则模式
     };
 
     const handleModeChange = async (newMode: string) => {

@@ -10,7 +10,7 @@ import { DnsPolicyRowDropdown } from './DnsPolicyRowDropdown';
 
 interface DnsPolicyListCardProps {
     policies: DnsPolicy[];
-    dnsServers: Array<{ id: string; tag: string }>;
+    dnsServers: Array<{ id: string }>;
     availableOutbounds: Array<{ tag: string; type: string }>;
     profileDnsPolicies: Record<string, string>;
     onAdd: () => void;
@@ -84,7 +84,7 @@ export function DnsPolicyListCard({
             const searchFields = [
                 policy.name,
                 serverId,
-                dnsServer?.tag,
+                dnsServer?.id,
                 getSubscriptionServer(policy),
             ];
             return searchFields.some((value) => value?.toLowerCase().includes(query));
@@ -286,7 +286,7 @@ export function DnsPolicyListCard({
                                                 const dnsServer = serverId ? dnsServers.find(s => s.id === serverId) : null;
                                                 return dnsServer ? (
                                                     <Badge tone="info" className="text-[10px] px-1.5 py-0 whitespace-nowrap inline-block truncate max-w-[80px]">
-                                                        {dnsServer.tag}
+                                                        {dnsServer.id}
                                                     </Badge>
                                                 ) : serverId ? (
                                                     <Badge tone="neutral" className="text-[10px] px-1.5 py-0 whitespace-nowrap inline-block truncate max-w-[80px]">
@@ -303,7 +303,7 @@ export function DnsPolicyListCard({
                                                 if (!preferredServer) return null;
                                                 // 如果preferredServer是id，查找对应的tag
                                                 const dnsServer = dnsServers.find(s => s.id === preferredServer);
-                                                const displayTag = dnsServer?.tag || preferredServer;
+                                                const displayTag = dnsServer?.id || preferredServer;
                                                 return (
                                                     <Badge 
                                                         tone="accent" 

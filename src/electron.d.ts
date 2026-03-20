@@ -50,7 +50,7 @@ export interface ElectronAPI {
             updatePoliciesOrder(orders: Array<{ id: string; order: number }>): Promise<void>;
             // Profile Policies
             getProfilePolicyByPolicyId(profileId: string, policyId: string): Promise<any>;
-            setProfilePolicy(profileId: string, policyId: string, preferredOutbounds: string[]): Promise<void>;
+            setProfilePolicy(profileId: string, policyId: string, preferredOutbound: string | null): Promise<void>;
             // DNS Policies
             getDnsPolicies(): Promise<any[]>;
             addDnsPolicy(policy: any): Promise<string>;
@@ -58,13 +58,17 @@ export interface ElectronAPI {
             deleteDnsPolicy(id: string): Promise<void>;
             updateDnsPoliciesOrder(orders: Array<{ id: string; order: number }>): Promise<void>;
             getDnsServers(): Promise<any[]>;
-            getDnsServerRefs(tag: string): Promise<Array<{ source: 'dns' | 'route'; index: number; name: string }>>;
+            getDnsServerRefs(tag: string): Promise<Array<{ source: 'dns' | 'route' | 'dns_server'; index: number; name: string }>>;
             addDnsServer(server: any): Promise<string>;
             updateDnsServer(id: string, updates: any): Promise<void>;
             deleteDnsServer(id: string): Promise<void>;
             // Profile DNS Policies
             getProfileDnsPolicyByPolicyId(profileId: string, dnsPolicyId: string): Promise<any>;
             setProfileDnsPolicy(profileId: string, dnsPolicyId: string, dnsServerId: string | null): Promise<void>;
+            // Profile DNS Server Detours
+            getProfileDnsServerDetour(profileId: string, dnsServerId: string): Promise<string | null>;
+            setProfileDnsServerDetour(profileId: string, dnsServerId: string, detour: string | null): Promise<void>;
+            getAllProfileDnsServerDetours(profileId: string): Promise<Array<{ dns_server_id: string; detour: string | null }>>;
             // Custom Proxy Groups
             getProfileCustomGroups(profileId: string): Promise<CustomProxyGroup[]>;
             setProfileCustomGroups(profileId: string, groups: CustomProxyGroup[]): Promise<void>;
@@ -149,7 +153,7 @@ export interface ElectronAPI {
                 pid?: number;
                 version?: string;
             }>;
-            install(helperPath?: string): Promise<{ success: boolean; error?: string; isUserCanceled?: boolean }>;
+            install(): Promise<{ success: boolean; error?: string; isUserCanceled?: boolean }>;
             uninstall(): Promise<{ success: boolean; error?: string; isUserCanceled?: boolean }>;
         };
         onConfigGenerateStart(callback: () => void): () => void;

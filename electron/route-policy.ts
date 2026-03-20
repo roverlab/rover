@@ -57,11 +57,6 @@ export function getPolicyFinalOutbound(): string {
     return saved && POLICY_FINAL_OUTBOUND_VALUES.has(saved) ? saved : 'selector_out';
 }
 
-/** 确保规则集本地文件存在（rulesets/geo 仅使用本地，不下载） */
-export async function ensureLocalRuleSetFiles(config: any): Promise<void> {
-    const ruleSets = config.route?.rule_set;
-    if (!Array.isArray(ruleSets)) return;
-}
 
 /** 判断是否为 singbox 二进制规则集（.srs 需原样保存） */
 export function isSingboxBinaryRuleSet(provider: { type?: string; url?: string }): boolean {

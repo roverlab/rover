@@ -183,6 +183,9 @@ export async function importLocalProfile(event: any): Promise<string | null> {
             dbUtils.updateProfileContent(profileId, finalFilePath);
         }
 
+        // 处理配置内容（解析节点、下载 rule-providers，与远程订阅保持一致）
+        await subscription.processProfileContent(validatedContent, profileId);
+
         return profileId;
     } catch (err: any) {
         console.error('Failed to import local profile:', err);

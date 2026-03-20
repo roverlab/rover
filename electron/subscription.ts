@@ -519,27 +519,38 @@ export async function downloadProfile(profileId: string): Promise<string> {
             console.log(`[Subscription] Profile ${profileId} userinfo: upload=${userinfo.upload} download=${userinfo.download} total=${userinfo.total} expire=${userinfo.expire}`);
         }
 
-        // 解析并下载 rule-providers（同步执行，等待所有下载完成）
-        console.log(`[RuleProviders] Starting rule providers download for profile ${profileId}...`);
-        const downloadResults = await parseAndDownloadRuleProvidersWithConcurrency(content, profileId, 10);
-        const successCount = downloadResults.filter(r => r.success).length;
-        const failCount = downloadResults.filter(r => !r.success).length;
-        console.log(`[RuleProviders] Download completed for profile ${profileId}: ${successCount} success, ${failCount} failed`);
-        
-        if (failCount > 0) {
-            const failedItems = downloadResults.filter(r => !r.success).map(r => `${r.name} (${r.error})`).join(', ');
-            console.warn(`[RuleProviders] Some rule providers failed to download for profile ${profileId}: ${failedItems}`);
-        }
-
-        // 解析并保存代理节点列表
-        const nodes = parseProxyNodes(content);
-        dbUtils.updateProfileNodes(profileId, nodes);
+        // 处理配置内容（解析节点、下载 rule-providers，等待完成）
+        await processProfileContent(content, profileId);
 
         return content;
     } catch (dlErr: any) {
         console.error('Failed to update profile:', dlErr.message);
         throw new Error(`Update failed: ${dlErr.message}`);
     }
+}
+
+/**
+ * 处理订阅配置内容（解析节点、下载 rule-providers）
+ * 远程订阅和本地文件导入共用此方法
+ * @param content 配置内容
+ * @param profileId 配置文件 ID
+ */
+export async function processProfileContent(content: string, profileId: string): Promise<void> {
+    // 解析并下载 rule-providers（等待完成）
+    console.log(`[RuleProviders] Starting rule providers download for profile ${profileId}...`);
+    const downloadResults = await parseAndDownloadRuleProvidersWithConcurrency(content, profileId, 10);
+    const successCount = downloadResults.filter(r => r.success).length;
+    const failCount = downloadResults.filter(r => !r.success).length;
+    console.log(`[RuleProviders] Download completed for profile ${profileId}: ${successCount} success, ${failCount} failed`);
+    
+    if (failCount > 0) {
+        const failedItems = downloadResults.filter(r => !r.success).map(r => `${r.name} (${r.error})`).join(', ');
+        console.warn(`[RuleProviders] Some rule providers failed to download for profile ${profileId}: ${failedItems}`);
+    }
+
+    // 解析并保存代理节点列表
+    const nodes = parseProxyNodes(content);
+    dbUtils.updateProfileNodes(profileId, nodes);
 }
 
 /**
@@ -597,25 +608,8 @@ export async function addSubscriptionProfile(url: string): Promise<string> {
         console.log(`[Subscription] New profile ${profileId} userinfo: upload=${userinfo.upload} download=${userinfo.download} total=${userinfo.total} expire=${userinfo.expire}`);
     }
 
-    // 解析并下载 rule-providers（同步执行，等待所有下载完成）
-    console.log(`[RuleProviders] Starting rule providers download for new profile ${profileId}...`);
-    parseAndDownloadRuleProvidersWithConcurrency(content, profileId, 10)
-        .then(downloadResults => {
-            const successCount = downloadResults.filter(r => r.success).length;
-            const failCount = downloadResults.filter(r => !r.success).length;
-            console.log(`[RuleProviders] Download completed for new profile ${profileId}: ${successCount} success, ${failCount} failed`);
-            
-            if (failCount > 0) {
-                console.warn(`[RuleProviders] Some rule providers failed to download for new profile ${profileId}: ${downloadResults.filter(r => !r.success).map(r => `${r.name} (${r.error})`).join(', ')}`);
-            }
-        })
-        .catch(err => {
-            console.error(`[RuleProviders] Failed to parse/download rule-providers for new profile ${profileId}:`, err);
-        });
-
-    // 解析并保存代理节点列表
-    const nodes = parseProxyNodes(content);
-    dbUtils.updateProfileNodes(profileId, nodes);
+    // 处理配置内容（解析节点、下载 rule-providers）
+    await processProfileContent(content, profileId);
 
     return profileId;
 }

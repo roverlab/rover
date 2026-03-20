@@ -12,27 +12,49 @@
         "server": "1.1.1.1"
       },
       {
-        "tag": "阿里云",
+        "tag": "Aliyun",
         "type": "udp",
         "server": "223.5.5.5"
       },
       {
+        "tag": "阿里云",
+        "type": "https",
+        "server": "dns.alidns.com",
+        "domain_resolver": "local"
+      },
+      {
+        "tag": "腾讯云",
+        "type": "https",
+        "server": "doh.pub",
+        "domain_resolver": "local"
+      },
+      {
+        "tag": "local",
+        "type": "local"
+      },
+      {
         "tag": "fakeip",
-        "type": "fakeip",
-        "inet4_range": "198.18.0.0/15",
-        "inet6_range": "fc00::/18"
+        "raw_data": {
+          "tag": "fakeip",
+          "type": "fakeip",
+          "inet4_range": "198.18.0.0/15",
+          "inet6_range": "fc00::/18"
+        }
+   
       }
     ],
     "rules": [
       {
         "name": "🎯 国内域名解析",
         "rule_set": [
+        "acl:Apple",
         "acl:ChinaDomain",
         "acl:UnBan",
         "acl:SteamCN",
-        "acl:ChinaMedia"
+        "acl:ChinaMedia",
+        "acl:Download"
       ],
-        "server": "阿里云"
+        "server": "Aliyun"
       },
       {
         "name": "🌏 其它域名IP伪装",
@@ -49,21 +71,7 @@
   },
   "rules": [
     {
-      "name": "🔍 流量嗅探",
-      "raw_data": {
-        "action": "sniff"
-      }
-    },
-    {
-      "name": "🛡️ DNS 劫持",
-      "raw_data": {
-        "protocol": "dns",
-        "action": "hijack-dns"
-      }
-    },
-    {
       "name": "🏠 私有网络",
-      "outbound": "direct",
       "raw_data": {
         "ip_is_private": true,
         "outbound": "direct"
@@ -116,5 +124,5 @@
   ],
   "rule_unmatched_outbound": "currentSelected",
   "tun": true,
-  "default_dns_server": "Google"
+  "default_dns_server": "Cloudflare"
 }

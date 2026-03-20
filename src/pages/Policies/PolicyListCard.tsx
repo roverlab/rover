@@ -69,8 +69,8 @@ export function PolicyListCard({
                         policies.map(async (policy) => {
                             try {
                                 const profilePolicy = await window.ipcRenderer.db.getProfilePolicyByPolicyId(currentProfileId, policy.id);
-                                if (profilePolicy?.preferred_outbounds) {
-                                    newProfilePolicies[policy.id] = profilePolicy.preferred_outbounds;
+                                if (profilePolicy?.preferred_outbound) {
+                                    newProfilePolicies[policy.id] = [profilePolicy.preferred_outbound];
                                 }
                             } catch (err) {
                                 console.error(`Failed to load profile policy for policy ${policy.id}:`, err);

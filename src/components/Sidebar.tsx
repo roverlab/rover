@@ -16,7 +16,7 @@ interface SidebarProps {
 const NAV_ITEMS: { id: Page; label: string; icon: React.ElementType }[] = [
   { id: 'Dashboard', label: '仪表盘', icon: Activity },
   { id: 'Proxies', label: '代理', icon: Globe },
-  { id: 'Profiles', label: '配置', icon: FileText },
+  { id: 'Profiles', label: '订阅', icon: FileText },
   { id: 'Routes', label: '路由', icon: Route },
   { id: 'Logs', label: '日志', icon: ScrollText },
   { id: 'Connections', label: '连接', icon: Zap },

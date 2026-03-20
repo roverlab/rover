@@ -9,38 +9,30 @@ import { Select } from '../../components/ui/Field';
 import { Card, SectionHeader } from '../../components/ui/Surface';
 import { Modal } from '../../components/ui/Modal';
 import { Plus, Pencil, Trash2, Check, AlertCircle, Power, CircleDot } from 'lucide-react';
-import { OUTBOUND_LABELS } from '../../constants/outboundLabels';
+import { OutboundSelector } from '../../components/OutboundSelector';
+import { JsonEditor } from '../../components/JsonEditor';
 
 /** sing-box DNS 服务器类型 */
 export type DnsServerType =
   | 'local'
-  | 'hosts'
   | 'udp'
-  | 'tcp'
   | 'tls'
-  | 'quic'
   | 'https'
-  | 'h3'
-  | 'fakeip'
-  | 'dhcp'
-  | 'tailscale'
-  | 'resolved';
-
-/** sing-box predefined 格式：hostname -> IP 或 hostname -> IP[] */
-export type PredefinedHosts = Record<string, string | string[]>;
+  | 'raw';
 
 /** DNS 服务器配置（通用结构） */
 export interface DnsServerConfig {
   type: DnsServerType;
-  tag: string;
+  id: string;
   server?: string;
   server_port?: number;
   path?: string;
   detour?: string;
   prefer_go?: boolean;
-  inet4_range?: string;
-  inet6_range?: string;
-  predefined?: PredefinedHosts;
+  /** 域名解析器，当 server 为域名时必须指定 */
+  domain_resolver?: string;
+  /** 原始 JSON 配置（raw 类型使用） */
+  raw_data?: Record<string, unknown>;
   /** 是否启用 */
   enabled?: boolean;
   /** 是否为默认DNS服务器 */
@@ -49,74 +41,22 @@ export interface DnsServerConfig {
 }
 
 const DNS_SERVER_TYPES: { value: DnsServerType; label: string }[] = [
-  { value: 'local', label: 'Local（本地）' },
+  { value: 'local', label: 'Local（本地网关）' },
   { value: 'udp', label: 'UDP' },
-  { value: 'tcp', label: 'TCP' },
   { value: 'tls', label: 'TLS (DoT)' },
   { value: 'https', label: 'HTTPS (DoH)' },
-  { value: 'h3', label: 'HTTP/3' },
-  { value: 'quic', label: 'QUIC' },
-  { value: 'hosts', label: 'Hosts' },
-  { value: 'fakeip', label: 'FakeIP' },
-  { value: 'dhcp', label: 'DHCP' },
-  { value: 'tailscale', label: 'Tailscale' },
-  { value: 'resolved', label: 'Resolved' },
+  { value: 'raw', label: 'Raw（原始JSON）' },
 ];
 
-/** 出站选项（与策略编辑页一致） */
-const DETOUR_OPTIONS = [
-  { value: 'direct_out', label: OUTBOUND_LABELS.direct_out },
-  { value: 'block_out', label: OUTBOUND_LABELS.block_out },
-  { value: 'selector_out', label: OUTBOUND_LABELS.selector_out },
-] as const;
 
 const DEFAULT_PORTS: Partial<Record<DnsServerType, number>> = {
   udp: 53,
-  tcp: 53,
   tls: 853,
   https: 443,
-  h3: 443,
-  quic: 853,
 };
 
 function getDefaultPath(type: DnsServerType): string {
-  return type === 'https' || type === 'h3' ? '/dns-query' : '';
-}
-
-/** 将 sing-box predefined 对象转为 Windows hosts 风格多行文本 */
-function predefinedToHostsText(predefined: PredefinedHosts | undefined): string {
-  if (!predefined || typeof predefined !== 'object') return '';
-  const lines: string[] = [];
-  for (const [hostname, ips] of Object.entries(predefined)) {
-    const ipList = Array.isArray(ips) ? ips : [ips];
-    for (const ip of ipList) {
-      if (ip && typeof ip === 'string') lines.push(`${ip}\t${hostname}`);
-    }
-  }
-  return lines.join('\n');
-}
-
-/** 将 Windows hosts 风格多行文本解析为 sing-box predefined 对象 */
-function hostsTextToPredefined(text: string): PredefinedHosts {
-  const result: Record<string, string[]> = {};
-  const lines = text.split(/\r?\n/);
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) continue;
-    const parts = trimmed.split(/\s+/);
-    if (parts.length < 2) continue;
-    const ip = parts[0];
-    const hostnames = parts.slice(1).filter((h) => h && !h.startsWith('#'));
-    for (const hostname of hostnames) {
-      if (!result[hostname]) result[hostname] = [];
-      if (!result[hostname].includes(ip)) result[hostname].push(ip);
-    }
-  }
-  const predefined: PredefinedHosts = {};
-  for (const [hostname, ips] of Object.entries(result)) {
-    predefined[hostname] = ips.length === 1 ? ips[0] : ips;
-  }
-  return predefined;
+  return type === 'https' ? '/dns-query' : '';
 }
 
 interface DnsServersTabProps {
@@ -134,16 +74,17 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<Partial<DnsServerConfig>>({
     type: 'udp',
-    tag: '',
+    id: '',
     server: '',
     server_port: 53,
     path: '',
     detour: '',
+    domain_resolver: '',
     enabled: true,
     is_default: false,
   });
-  /** hosts 类型的 predefined，以 Windows hosts 风格多行文本编辑 */
-  const [hostsPredefinedText, setHostsPredefinedText] = useState('');
+  /** raw 类型的原始 JSON 文本 */
+  const [rawJsonText, setRawJsonText] = useState('');
 
   const loadDnsServers = async () => {
     try {
@@ -151,10 +92,23 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
         window.ipcRenderer.db.getDnsServers(),
         window.ipcRenderer.core.getSelectedProfile(),
       ]);
+      const currentProfileId = (selected as any)?.profile?.id || '';
       setDnsServers(servers || []);
-      setProfileId((selected as any)?.profile?.id || '');
+      setProfileId(currentProfileId);
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  /** 获取 DNS 服务器的 detour（从 profile 关联） */
+  const getDnsServerDetour = async (serverId: string): Promise<string> => {
+    if (!profileId) return '';
+    try {
+      const detour = await window.ipcRenderer.db.getProfileDnsServerDetour(profileId, serverId);
+      return detour || '';
+    } catch (e) {
+      console.error('Failed to get DNS server detour:', e);
+      return '';
     }
   };
 
@@ -164,14 +118,33 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
   }, [isActive]);
 
   const validateForm = (): string => {
-    if (!form.tag?.trim()) return '名称不能为空';
-    const tag = form.tag.trim();
+    if (!form.id?.trim()) return '名称不能为空';
+    const id = form.id.trim();
     const others = dnsServers.filter((s) => s.id !== editingId);
-    if (others.some((s) => (s.tag || '').toLowerCase() === tag.toLowerCase())) {
-      return `名称 "${tag}" 已存在`;
+    if (others.some((s) => (s.id || '').toLowerCase() === id.toLowerCase())) {
+      return `名称 "${id}" 已存在`;
     }
-    const needsServer = ['udp', 'tcp', 'tls', 'https', 'h3', 'quic'].includes(form.type || '');
+    const needsServer = ['udp', 'tls', 'https'].includes(form.type || '');
     if (needsServer && !form.server?.trim()) return '服务器地址不能为空';
+    // 检查如果 server 是域名，则 domain_resolver 必须填写
+    if (needsServer && form.server?.trim()) {
+      const serverAddr = form.server.trim();
+      // 判断是否为域名（非 IP 地址）
+      const isDomain = !/^(\d{1,3}\.){3}\d{1,3}$/.test(serverAddr) &&
+                       !/^\[([0-9a-fA-F:]+)\]$/.test(serverAddr) &&
+                       !/^[0-9a-fA-F:]+$/.test(serverAddr);
+      if (isDomain && !form.domain_resolver?.trim()) {
+        return '服务器地址为域名时，必须指定域名解析器';
+      }
+    }
+    if (form.type === 'raw') {
+      try {
+        if (!rawJsonText.trim()) return '原始 JSON 不能为空';
+        JSON.parse(rawJsonText);
+      } catch {
+        return '原始 JSON 格式无效';
+      }
+    }
     return '';
   };
 
@@ -179,36 +152,36 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
     const type = (form.type || 'udp') as DnsServerType;
     const server: Record<string, unknown> = {
       type,
-      tag: form.tag?.trim() || 'dns',
+      id: form.id?.trim() || 'dns',
     };
-    if (['udp', 'tcp', 'tls', 'https', 'h3', 'quic'].includes(type)) {
+    if (type === 'raw') {
+      // raw 类型直接保存原始 JSON
+      try {
+        const rawData = JSON.parse(rawJsonText);
+        server.raw_data = rawData;
+        // 从 raw_data 中提取 type 和 id（如果存在）
+        if (rawData.type) server.type = rawData.type;
+        if (rawData.tag) server.id = rawData.tag; // 使用模板中的 tag 作为 id
+      } catch {
+        // 验证时已检查，这里应该不会出错
+      }
+      return server;
+    }
+    if (['udp', 'tls', 'https'].includes(type)) {
       if (form.server) server.server = form.server.trim();
       const port = form.server_port ?? DEFAULT_PORTS[type];
-      if (port !== undefined && port !== 53 && type === 'udp') server.server_port = port;
-      if (port !== undefined && port !== 53 && type === 'tcp') server.server_port = port;
-      if (port !== undefined && port !== 853 && type === 'tls') server.server_port = port;
-      if (port !== undefined && port !== 443 && (type === 'https' || type === 'h3')) server.server_port = port;
-      if (port !== undefined && port !== 853 && type === 'quic') server.server_port = port;
+      if (port !== undefined && port !== DEFAULT_PORTS[type]) server.server_port = port;
     }
-    if ((type === 'https' || type === 'h3') && form.path?.trim()) {
+    if (type === 'https' && form.path?.trim()) {
       server.path = form.path.trim();
     }
-    const detourVal = form.detour?.trim();
-    if (detourVal && DETOUR_OPTIONS.some((o) => o.value === detourVal)) {
-      server.detour = detourVal;
-    } else {
-      // 显式设置为 undefined 以清除原有值
-      server.detour = undefined;
+    // domain_resolver
+    if (form.domain_resolver?.trim()) {
+      server.domain_resolver = form.domain_resolver.trim();
     }
+    // detour 不再保存到 DNS 服务器本身，而是保存到 profile 关联
+    // 在 handleSubmit 中处理
     if (type === 'local' && form.prefer_go !== undefined) server.prefer_go = form.prefer_go;
-    if (type === 'fakeip') {
-      if (form.inet4_range?.trim()) server.inet4_range = form.inet4_range.trim();
-      if (form.inet6_range?.trim()) server.inet6_range = form.inet6_range.trim();
-    }
-    if (type === 'hosts') {
-      const predefined = hostsTextToPredefined(hostsPredefinedText);
-      if (Object.keys(predefined).length > 0) server.predefined = predefined;
-    }
     return server;
   };
 
@@ -216,35 +189,38 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
     setEditingId(null);
     setForm({
       type: 'udp',
-      tag: '',
+      id: '',
       server: '',
       server_port: 53,
       path: getDefaultPath('https'),
       detour: '',
+      domain_resolver: '',
       enabled: true,
       is_default: false,
     });
-    setHostsPredefinedText('');
+    setRawJsonText('');
     setModalOpen(true);
   };
 
   const openEditModal = async (s: any) => {
     setEditingId(s.id);
-    const tag = s.tag || '';
-    const detourVal = s.detour?.trim();
-    const validDetour = detourVal && DETOUR_OPTIONS.some((o) => o.value === detourVal) ? detourVal : '';
+    const id = s.id || '';
+    // 从 profile 获取 detour，而不是从 DNS 服务器本身
+    const detourVal = await getDnsServerDetour(s.id);
+    // 判断是否为 raw 类型（存储时有 raw_data 字段）
+    const isRaw = !!s.raw_data;
     setForm({
-      type: (s.type || 'udp') as DnsServerType,
-      tag,
+      type: isRaw ? 'raw' : ((s.type || 'udp') as DnsServerType),
+      id,
       server: s.server || '',
       server_port: s.server_port ?? DEFAULT_PORTS[(s.type || 'udp') as DnsServerType],
       path: s.path ?? getDefaultPath((s.type || 'https') as DnsServerType),
-      detour: validDetour,
+      detour: detourVal,
       prefer_go: s.prefer_go,
-      inet4_range: s.inet4_range,
-      inet6_range: s.inet6_range,
+      domain_resolver: s.domain_resolver || '',
+      raw_data: s.raw_data,
     });
-    setHostsPredefinedText(predefinedToHostsText(s.predefined));
+    setRawJsonText(s.raw_data ? JSON.stringify(s.raw_data, null, 2) : '');
     setModalOpen(true);
   };
 
@@ -256,12 +232,25 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
       return;
     }
     const serverData = buildServerFromForm();
+    const detourVal = form.detour?.trim() || null;
 
+    let serverId: string;
     if (editingId) {
       await window.ipcRenderer.db.updateDnsServer(editingId, serverData);
+      serverId = editingId;
     } else {
-      await window.ipcRenderer.db.addDnsServer(serverData);
+      serverId = await window.ipcRenderer.db.addDnsServer(serverData);
     }
+
+    // 保存 detour 到 profile 关联（与订阅相关）
+    if (profileId) {
+      try {
+        await window.ipcRenderer.db.setProfileDnsServerDetour(profileId, serverId, detourVal);
+      } catch (e) {
+        console.error('Failed to save DNS server detour to profile:', e);
+      }
+    }
+
     setSaved(true);
     setTimeout(() => setSaved(false), 3000);
     await loadDnsServers();
@@ -269,12 +258,21 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
     setModalOpen(false);
   };
 
+  const getSourceLabel = (source: string) => {
+    switch (source) {
+      case 'dns': return 'DNS 策略';
+      case 'route': return '路由策略';
+      case 'dns_server': return 'DNS 服务器域名解析';
+      default: return source;
+    }
+  };
+
   const handleDelete = async (s: any) => {
-    const tag = (s.tag || '').trim();
+    const id = (s.id || '').trim();
     const refs = s.id ? await window.ipcRenderer.db.getDnsServerRefs(s.id) : [];
     if (refs.length > 0) {
-      const lines = refs.map((r) => `#${r.index} ${r.name}（${r.source === 'dns' ? 'DNS 策略' : '路由策略'}）`);
-      setErrorMessage(`「${tag}」正在被以下规则引用，无法删除：\n\n${lines.join('\n')}\n\n请先移除上述规则中的引用。`);
+      const lines = refs.map((r) => `#${r.index} ${r.name}（${getSourceLabel(r.source)}）`);
+      setErrorMessage(`「${id}」正在被以下规则引用，无法删除：\n\n${lines.join('\n')}\n\n请先移除上述规则中的引用。`);
       setErrorModalOpen(true);
       return;
     }
@@ -288,11 +286,11 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
   const handleToggleEnabled = async (s: any) => {
     const newEnabled = s.enabled === false;
     if (!newEnabled) {
-      const tag = (s.tag || '').trim();
+      const id = (s.id || '').trim();
       const refs = s.id ? await window.ipcRenderer.db.getDnsServerRefs(s.id) : [];
       if (refs.length > 0) {
-        const lines = refs.map((r) => `#${r.index} ${r.name}（${r.source === 'dns' ? 'DNS 策略' : '路由策略'}）`);
-        setErrorMessage(`「${tag}」正在被以下规则引用，无法禁用：\n\n${lines.join('\n')}\n\n请先移除上述规则中的引用。`);
+        const lines = refs.map((r) => `#${r.index} ${r.name}（${getSourceLabel(r.source)}）`);
+        setErrorMessage(`「${id}」正在被以下规则引用，无法禁用：\n\n${lines.join('\n')}\n\n请先移除上述规则中的引用。`);
         setErrorModalOpen(true);
         return;
       }
@@ -328,9 +326,23 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
     await onRegenerateConfig?.();
   };
 
-  const needsServerField = ['udp', 'tcp', 'tls', 'https', 'h3', 'quic'].includes(form.type || '');
-  const needsPathField = ['https', 'h3'].includes(form.type || '');
+  const needsServerField = ['udp', 'tls', 'https'].includes(form.type || '');
+  const needsPathField = form.type === 'https';
   const defaultPort = DEFAULT_PORTS[(form.type || 'udp') as DnsServerType] ?? 53;
+  
+  /** 判断服务器地址是否为域名 */
+  const isServerDomain = (addr: string | undefined): boolean => {
+    if (!addr?.trim()) return false;
+    const s = addr.trim();
+    // IPv4 地址
+    if (/^(\d{1,3}\.){3}\d{1,3}$/.test(s)) return false;
+    // IPv6 地址（带或不带方括号）
+    if (/^\[([0-9a-fA-F:]+)\]$/.test(s)) return false;
+    if (/^[0-9a-fA-F:]+$/.test(s)) return false;
+    return true;
+  };
+  
+  const needsDomainResolver = needsServerField && isServerDomain(form.server);
 
   return (
     <div className="max-w-5xl space-y-5">
@@ -372,12 +384,12 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
             </div>
           ) : (
             <table className="data-table w-full">
-              <thead className="border-b border-[rgba(39,44,54,0.08)] bg-[rgba(248,249,251,0.95)]">
+              <thead className="border-b border-[rgba(39,44,54,0.08)]">
                 <tr className="h-9">
                   <th className="w-12 shrink-0 pl-4 pr-2 py-2 text-center text-[11px] font-medium text-[var(--app-text-quaternary)]">序号</th>
                   <th className="w-[72px] shrink-0 px-2 py-2 text-center text-[11px] font-medium text-[var(--app-text-quaternary)]">类型</th>
                   <th className="min-w-[100px] px-2 py-2 text-left text-[11px] font-medium text-[var(--app-text-quaternary)]">名称</th>
-                  <th className="min-w-[140px] px-2 py-2 text-left text-[11px] font-medium text-[var(--app-text-quaternary)]">地址 / 配置</th>
+                  <th className="min-w-[140px] px-2 py-2 text-left text-[11px] font-medium text-[var(--app-text-quaternary)]">地址</th>
                   <th className="w-[140px] shrink-0 pl-2 pr-4 py-2 text-right text-[11px] font-medium text-[var(--app-text-quaternary)]">操作</th>
                 </tr>
               </thead>
@@ -392,7 +404,7 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
                     </td>
                     <td className="min-w-[100px] px-2 py-2 align-middle">
                       <div className="flex items-center gap-2 min-w-0">
-                        <span className={`font-medium truncate ${s.enabled === false ? 'text-[var(--app-text-tertiary)] line-through' : 'text-[var(--app-text)]'}`}>{s.tag}</span>
+                        <span className={`font-medium truncate ${s.enabled === false ? 'text-[var(--app-text-tertiary)] line-through' : 'text-[var(--app-text)]'}`}>{s.id}</span>
                         {s.is_default && (
                           <span className="inline-flex items-center gap-1 text-[11px] text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full shrink-0">
                             <CircleDot className="w-3 h-3 fill-emerald-600" />
@@ -403,14 +415,12 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
                     </td>
                     <td className="min-w-[140px] px-2 py-2 align-middle">
                       <span className="text-[12px] text-[var(--app-text-tertiary)] truncate block">
-                        {s.server && (
+                        {s.raw_data ? null : s.server ? (
                           <>
                             {s.server}
                             {s.server_port && s.server_port !== DEFAULT_PORTS[s.type as DnsServerType] && `:${s.server_port}`}
                           </>
-                        )}
-                        {!s.server && s.type === 'fakeip' && s.inet4_range && s.inet4_range}
-                        {!s.server && s.type === 'hosts' && s.predefined && Object.keys(s.predefined).length > 0 && `${Object.keys(s.predefined).length} 条`}
+                        ) : null}
                       </span>
                     </td>
                     <td className="w-[140px] shrink-0 pl-2 pr-4 py-2 text-right align-middle">
@@ -493,8 +503,8 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
           <div>
             <label className="block text-[12px] font-medium text-[var(--app-text-secondary)] mb-1.5">名称</label>
             <Input
-              value={form.tag}
-              onChange={(e) => setForm((f) => ({ ...f, tag: e.target.value }))}
+              value={form.id}
+              onChange={(e) => setForm((f) => ({ ...f, id: e.target.value }))}
               placeholder="例如: local, remote, doh"
               className="w-full"
             />
@@ -509,9 +519,7 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
                   value={form.server}
                   onChange={(e) => setForm((f) => ({ ...f, server: e.target.value }))}
                   placeholder={
-                    form.type === 'https' || form.type === 'h3'
-                      ? 'https://cloudflare-dns.com/dns-query'
-                      : '8.8.8.8 或 dns.example.com'
+                      '8.8.8.8 或 dns.example.com'
                   }
                   className="w-full"
                 />
@@ -540,85 +548,78 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
             </div>
           )}
 
-          {needsServerField && (
-            <>
-              <div>
-                <label className="block text-[12px] font-medium text-[var(--app-text-secondary)] mb-1.5">出站</label>
-                <Select
-                  value={form.detour || ''}
-                  onChange={(e) => setForm((f) => ({ ...f, detour: e.target.value }))}
-                  className="w-full"
-                >
-                  <option value="">不指定</option>
-                  {DETOUR_OPTIONS.map(({ value, label }) => (
-                    <option key={value} value={value}>
-                      {label}
+          {needsDomainResolver && (
+            <div>
+              <label className="block text-[12px] font-medium text-[var(--app-text-secondary)] mb-1.5">
+                域名解析 <span className="text-red-500">*</span>
+              </label>
+              <Select
+                value={form.domain_resolver || ''}
+                onChange={(e) => setForm((f) => ({ ...f, domain_resolver: e.target.value }))}
+                className="w-full"
+              >
+                <option value="">请选择 DNS 服务器</option>
+                {dnsServers
+                  .filter((s) => s.id !== editingId && s.enabled !== false)
+                  .map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.id} ({s.type})
                     </option>
                   ))}
-                </Select>
-                <p className="text-[11px] text-[var(--app-text-quaternary)] mt-1">可选，直连 / 拦截 / 代理</p>
-              </div>
-            </>
+              </Select>
+              <p className="text-[11px] text-[var(--app-text-quaternary)] mt-1">
+                服务器地址为域名时必须指定，用于解析服务器的域名
+              </p>
+            </div>
+          )}
+
+          {needsServerField && (
+            <OutboundSelector
+              value={form.detour || null}
+              onChange={(tag) => setForm((f) => ({ ...f, detour: tag || '' }))}
+              label="订阅出站节点"
+              placeholder="不指定"
+              hint="可选，选择连接此 DNS 服务器的出站节点（当前订阅有效）"
+              filterDirectBlock={true}
+            />
           )}
 
           {form.type === 'local' && (
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="prefer_go"
-                checked={form.prefer_go ?? false}
-                onChange={(e) => setForm((f) => ({ ...f, prefer_go: e.target.checked }))}
-                className="rounded border-[rgba(39,44,54,0.2)]"
-              />
-              <label htmlFor="prefer_go" className="text-[13px] text-[var(--app-text-secondary)]">
-                prefer_go（优先使用 Go 解析）
-              </label>
-            </div>
-          )}
-
-          {form.type === 'fakeip' && (
-            <>
-              <div>
-                <label className="block text-[12px] font-medium text-[var(--app-text-secondary)] mb-1.5">IPv4 范围</label>
-                <Input
-                  value={form.inet4_range}
-                  onChange={(e) => setForm((f) => ({ ...f, inet4_range: e.target.value }))}
-                  placeholder="198.18.0.0/15"
-                  className="w-full"
-                />
-              </div>
-              <div>
-                <label className="block text-[12px] font-medium text-[var(--app-text-secondary)] mb-1.5">IPv6 范围</label>
-                <Input
-                  value={form.inet6_range}
-                  onChange={(e) => setForm((f) => ({ ...f, inet6_range: e.target.value }))}
-                  placeholder="fc00::/18"
-                  className="w-full"
-                />
-              </div>
-            </>
-          )}
-
-          {form.type === 'hosts' && (
             <div>
-              <label className="block text-[12px] font-medium text-[var(--app-text-secondary)] mb-1.5">
-                Predefined（预定义 hosts）
-              </label>
-              <textarea
-                value={hostsPredefinedText}
-                onChange={(e) => setHostsPredefinedText(e.target.value)}
-                placeholder={`格式与 Windows hosts 文件相同，每行：IP 地址 + 空格/制表符 + 域名
-# 注释以 # 开头
-127.0.0.1   localhost
-::1         localhost
-127.0.0.1   www.example.com`}
-                rows={10}
-                className="w-full px-3 py-2 text-[13px] font-mono border rounded-[10px] resize-y focus:outline-none focus:ring-2 focus:ring-[var(--app-accent)] focus:border-transparent bg-white text-[var(--app-text)] placeholder:text-[var(--app-text-quaternary)] border-[rgba(39,44,54,0.12)]"
-              />
+              <label className="block text-[12px] font-medium text-[var(--app-text-secondary)] mb-1.5">解析方式</label>
+              <Select
+                value={form.prefer_go ? 'true' : 'false'}
+                onChange={(e) => setForm((f) => ({ ...f, prefer_go: e.target.value === 'true' }))}
+                className="w-full"
+              >
+                <option value="false">系统原生解析</option>
+                <option value="true">Go 解析（prefer_go）</option>
+              </Select>
               <p className="text-[11px] text-[var(--app-text-quaternary)] mt-1">
-                每行格式：IP 地址 + 空格/制表符 + 一个或多个域名，支持 # 注释
+                Go 解析可避免部分系统 DNS 问题，但可能稍慢
               </p>
             </div>
+          )}
+
+          {form.type === 'raw' && (
+            <JsonEditor
+              value={rawJsonText}
+              onChange={setRawJsonText}
+              placeholder={`输入 sing-box DNS 服务器 JSON 配置，例如：
+{
+  "type": "udp",
+  "tag": "my-dns",
+  "server": "8.8.8.8",
+  "server_port": 53,
+  "detour": "proxy"
+}`}
+              rows={12}
+              hint="输入完整的JSON 配置，其中tag字段会被名称覆盖"
+              onFormatError={(err) => {
+                setErrorMessage(err);
+                setErrorModalOpen(true);
+              }}
+            />
           )}
         </div>
       </Modal>

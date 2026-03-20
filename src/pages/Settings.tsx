@@ -295,9 +295,9 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
     await regenerateConfigIfNeeded();
   };
 
-  // 保存 TUN 排除地址配置（数组存储）
+  // 保存 TUN 排除地址配置（数组存储，原样保存不修改内容，解析时再处理）
   const handleSaveTunExcludeAddress = async () => {
-    const lines = tunExcludeAddressText.split(/\r?\n/).filter(line => line.trim() !== '');
+    const lines = tunExcludeAddressText.split(/\r?\n/);
     await window.ipcRenderer.db.setSetting('tun-exclude-address', JSON.stringify(lines));
     setTunExcludeAddressSaved(true);
     setTimeout(() => setTunExcludeAddressSaved(false), 3000);
@@ -618,7 +618,7 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
                 <ListRow>
                   <div>
                     <div className="list-row-title">自定义分流策略</div>
-                    <div className="list-row-description">使用应用内置的分流规则替换订阅中的规则</div>
+                    <div className="list-row-description">使用自定义的分流策略替换订阅中的规则</div>
                   </div>
                   <Switch
                     checked={overrideRules}
@@ -660,17 +660,18 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
                 <ListRow className="flex-col items-stretch gap-2 py-3">
                   <div>
                     <div className="list-row-title">Hosts 配置</div>
-                    <div className="list-row-description">类似 Windows hosts，每行：IP + 空格/制表符 + 域名，支持 IPv4/IPv6（如 ::1）及泛解析（*.example.com）</div>
+                    <div className="list-row-description">类似 hosts格式，每行：IP + 空格/制表符 + 域名，支持 IPv4/IPv6（如 ::1）及泛解析（*.example.com）</div>
                   </div>
                   <div className="w-full">
                     <textarea
                       value={hostsText}
                       onChange={(e) => setHostsText(e.target.value)}
-                      placeholder={`127.0.0.1   localhost
+                      placeholder={`# 支持注释
+127.0.0.1   localhost
 ::1         localhost
 127.0.0.1   *.example.com`}
-                      rows={12}
-                      className="w-full px-3 py-2 text-[13px] font-mono border rounded-[10px] resize-y focus:outline-none focus:ring-2 focus:ring-[var(--app-accent)] focus:border-transparent bg-white text-[var(--app-text)] placeholder:text-[var(--app-text-quaternary)] border-[rgba(39,44,54,0.12)]"
+                      rows={6}
+                      className="w-full px-3 py-2 text-[13px] font-mono rounded-[10px] resize-y bg-white text-[var(--app-text)] placeholder:text-[var(--app-text-quaternary)] input-field focus:border-[var(--app-stroke-strong)] focus:outline-none"
                     />
                     <div className="flex items-center gap-2 mt-2 justify-end">
                       {hostsSaved && (
@@ -695,12 +696,13 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
                     <textarea
                       value={tunExcludeAddressText}
                       onChange={(e) => setTunExcludeAddressText(e.target.value)}
-                      placeholder={`192.168.0.0/16
+                      placeholder={`# 支持注释
+192.168.0.0/16
 10.0.0.0/8
 172.16.0.0/12
 fc00::/7`}
                       rows={6}
-                      className="w-full px-3 py-2 text-[13px] font-mono border rounded-[10px] resize-y focus:outline-none focus:ring-2 focus:ring-[var(--app-accent)] focus:border-transparent bg-white text-[var(--app-text)] placeholder:text-[var(--app-text-quaternary)] border-[rgba(39,44,54,0.12)]"
+                      className="w-full px-3 py-2 text-[13px] font-mono rounded-[10px] resize-y bg-white text-[var(--app-text)] placeholder:text-[var(--app-text-quaternary)] input-field focus:border-[var(--app-stroke-strong)] focus:outline-none"
                     />
                     <div className="flex items-center gap-2 mt-2 justify-end">
                       {tunExcludeAddressSaved && (
@@ -716,6 +718,105 @@ fc00::/7`}
                   </div>
                 </ListRow>
 
+              </div>
+            </Card>
+        </div>
+        )}
+
+        {/* DNS 服务器 Tab */}
+        {activeTab === 'dns' && (
+          <DnsServersTab isActive={isActive} onRegenerateConfig={regenerateConfigIfNeeded} />
+        )}
+
+        {/* 关于 Tab */}
+        {activeTab === 'about' && (
+          <div className="max-w-5xl space-y-5">
+            <Card>
+              <SectionHeader>
+                <div>
+                  <h2 className="text-[12px] font-semibold uppercase tracking-[0.18em] text-[var(--app-text-quaternary)]">关于</h2>
+                  <p className="text-[12px] text-[var(--app-text-quaternary)] mt-1">应用版本、主目录与配置备份。</p>
+                </div>
+              </SectionHeader>
+              <div className="panel-section">
+                <ListRow>
+                  <div>
+                    <div className="list-row-title">应用名称</div>
+                    <div className="list-row-description font-medium">Rover</div>
+                  </div>
+                </ListRow>
+                <ListRow>
+                  <div>
+                    <div className="list-row-title">应用版本</div>
+                    <div className="list-row-description">
+                      <div className="flex flex-col gap-0.5">
+                        <div className="font-medium">{appVersion}</div>
+                        {buildTime && <div className="text-xs text-[var(--app-text-quaternary)]">{buildTime}</div>}
+                      </div>
+                    </div>
+                  </div>
+                </ListRow>
+                <ListRow>
+                  <div>
+                    <div className="list-row-title">内核版本</div>
+                    <div className="list-row-description">{singboxVersion}</div>
+                  </div>
+                </ListRow>
+                <ListRow>
+                  <div>
+                    <div className="list-row-title">项目链接</div>
+                    <div className="list-row-description">GitHub 开源仓库</div>
+                  </div>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => window.ipcRenderer.core.openExternalUrl('https://github.com/roverlab/rover')}
+                  >
+                    <ExternalLink className="w-3.5 h-3.5 mr-1" />
+                    打开
+                  </Button>
+                </ListRow>
+                <ListRow>
+                  <div>
+                    <div className="list-row-title">主目录</div>
+                    <div className="list-row-description">UserData folder</div>
+                  </div>
+                  <Button variant="secondary" size="sm" onClick={() => window.ipcRenderer.core.openUserDataPath()}>打开</Button>
+                </ListRow>
+                <ListRow>
+                  <div>
+                    <div className="list-row-title">导出/导入配置</div>
+                    <div className="list-row-description">备份或恢复数据</div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={handleExportConfig}
+                      disabled={configExporting}
+                    >
+                      <Download className="w-3.5 h-3.5 mr-1" />
+                      导出
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={handleImportConfig}
+                      disabled={configImporting}
+                    >
+                      <Upload className="w-3.5 h-3.5 mr-1" />
+                      导入
+                    </Button>
+                    {configImporting && configImportStep && configImportStep !== 'done' && (
+                      <span className="text-[12px] text-[var(--app-text-secondary)]">
+                        {CONFIG_IMPORT_STEP_LABELS[configImportStep] || configImportStep}
+                      </span>
+                    )}
+                    {(configImportError || configExportError) && (
+                      <span className="text-[11px] text-red-600">{configImportError || configExportError}</span>
+                    )}
+                  </div>
+                </ListRow>
               </div>
             </Card>
 
@@ -802,105 +903,6 @@ fc00::/7`}
                 </div>
               </Card>
             )}
-        </div>
-        )}
-
-        {/* DNS 服务器 Tab */}
-        {activeTab === 'dns' && (
-          <DnsServersTab isActive={isActive} onRegenerateConfig={regenerateConfigIfNeeded} />
-        )}
-
-        {/* 关于 Tab */}
-        {activeTab === 'about' && (
-          <div className="max-w-5xl">
-            <Card>
-              <SectionHeader>
-                <div>
-                  <h2 className="text-[12px] font-semibold uppercase tracking-[0.18em] text-[var(--app-text-quaternary)]">关于</h2>
-                  <p className="text-[12px] text-[var(--app-text-quaternary)] mt-1">应用版本、主目录与配置备份。</p>
-                </div>
-              </SectionHeader>
-              <div className="panel-section">
-                <ListRow>
-                  <div>
-                    <div className="list-row-title">应用名称</div>
-                    <div className="list-row-description font-medium">Rover</div>
-                  </div>
-                </ListRow>
-                <ListRow>
-                  <div>
-                    <div className="list-row-title">应用版本</div>
-                    <div className="list-row-description">
-                      <div className="flex flex-col gap-0.5">
-                        <div className="font-medium">{appVersion}</div>
-                        {buildTime && <div className="text-xs text-[var(--app-text-quaternary)]">{buildTime}</div>}
-                      </div>
-                    </div>
-                  </div>
-                </ListRow>
-                <ListRow>
-                  <div>
-                    <div className="list-row-title">内核版本</div>
-                    <div className="list-row-description">{singboxVersion}</div>
-                  </div>
-                </ListRow>
-                <ListRow>
-                  <div>
-                    <div className="list-row-title">项目链接</div>
-                    <div className="list-row-description">GitHub 开源仓库</div>
-                  </div>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => window.ipcRenderer.core.openExternalUrl('https://github.com/roverlab/rover')}
-                  >
-                    <ExternalLink className="w-3.5 h-3.5 mr-1" />
-                    打开
-                  </Button>
-                </ListRow>
-                <ListRow>
-                  <div>
-                    <div className="list-row-title">主目录</div>
-                    <div className="list-row-description">UserData folder</div>
-                  </div>
-                  <Button variant="secondary" size="sm" onClick={() => window.ipcRenderer.core.openUserDataPath()}>打开</Button>
-                </ListRow>
-                <ListRow>
-                  <div>
-                    <div className="list-row-title">导出/导入配置</div>
-                    <div className="list-row-description">备份或恢复 database.json（ZIP 格式，含格式版本）</div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={handleExportConfig}
-                      disabled={configExporting}
-                    >
-                      <Download className="w-3.5 h-3.5 mr-1" />
-                      导出
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={handleImportConfig}
-                      disabled={configImporting}
-                    >
-                      <Upload className="w-3.5 h-3.5 mr-1" />
-                      导入
-                    </Button>
-                    {configImporting && configImportStep && configImportStep !== 'done' && (
-                      <span className="text-[12px] text-[var(--app-text-secondary)]">
-                        {CONFIG_IMPORT_STEP_LABELS[configImportStep] || configImportStep}
-                      </span>
-                    )}
-                    {(configImportError || configExportError) && (
-                      <span className="text-[11px] text-red-600">{configImportError || configExportError}</span>
-                    )}
-                  </div>
-                </ListRow>
-              </div>
-            </Card>
           </div>
         )}
       </div>

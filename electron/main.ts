@@ -224,6 +224,10 @@ ipcMain.handle('db:updateDnsPoliciesOrder', (_, orders) => dbUtils.updateDnsPoli
 // Profile DNS Policies
 ipcMain.handle('db:getProfileDnsPolicyByPolicyId', (_, profileId, dnsPolicyId) => dbUtils.getProfileDnsPolicyByPolicyId(profileId, dnsPolicyId));
 ipcMain.handle('db:setProfileDnsPolicy', (_, profileId, dnsPolicyId, dnsServerId) => dbUtils.setProfileDnsPolicy(profileId, dnsPolicyId, dnsServerId));
+// Profile DNS Server Detours
+ipcMain.handle('db:getProfileDnsServerDetour', (_, profileId, dnsServerId) => dbUtils.getProfileDnsServerDetour(profileId, dnsServerId));
+ipcMain.handle('db:setProfileDnsServerDetour', (_, profileId, dnsServerId, detour) => dbUtils.setProfileDnsServerDetour(profileId, dnsServerId, detour));
+ipcMain.handle('db:getAllProfileDnsServerDetours', (_, profileId) => dbUtils.getAllProfileDnsServerDetours(profileId));
 ipcMain.handle('db:getDnsServers', () => dbUtils.getDnsServers());
 ipcMain.handle('db:getDnsServerRefs', (_, tag: string) => dbUtils.getDnsServerRefs(tag));
 ipcMain.handle('db:addDnsServer', (_, server: any) => dbUtils.addDnsServer(server));
@@ -648,8 +652,8 @@ ipcMain.handle('roverservice:getInstallationStatus', async () => {
     return roverservice.getInstallationStatus();
 });
 
-ipcMain.handle('roverservice:install', async (_, helperPath?: string) => {
-    const result = await roverservice.installHelper(helperPath);
+ipcMain.handle('roverservice:install', async () => {
+    const result = await roverservice.installHelper();
     // 安装成功后更新缓存
     if (result.success) {
         const isLoaded = roverservice.isServiceLoaded();

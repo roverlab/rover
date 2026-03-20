@@ -16,7 +16,7 @@ interface DnsPoliciesProps {
 
 export function DnsPolicies({ isActive = true }: DnsPoliciesProps) {
     const [policies, setPolicies] = useState<DnsPolicy[]>([]);
-    const [dnsServers, setDnsServers] = useState<Array<{ id: string; tag: string }>>([]);
+    const [dnsServers, setDnsServers] = useState<Array<{ id: string }>>([]);
     const [availableOutbounds, setAvailableOutbounds] = useState<Array<{ tag: string; type: string }>>([]);
     const [profileDnsPolicies, setProfileDnsPolicies] = useState<Record<string, string>>({});
     const [loading, setLoading] = useState(true);
@@ -42,7 +42,7 @@ export function DnsPolicies({ isActive = true }: DnsPoliciesProps) {
                 window.ipcRenderer.core.getSelectedProfile(),
             ]);
             setPolicies(data || []);
-            setDnsServers((servers || []).map((s: any) => ({ id: s.id, tag: s.tag })));
+            setDnsServers((servers || []).map((s: any) => ({ id: s.id })));
             setAvailableOutbounds((outbounds as Array<{ tag: string; type: string }>) || []);
             
             // 从 profile.dnsPolicies 加载（已嵌入 profile）

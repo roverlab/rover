@@ -3,13 +3,12 @@
  * 包含配置文件读取、写入、合并设置、生成完整 config
  */
 
-import path from 'node:path';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import yaml from 'js-yaml';
 import * as dbUtils from './db';
 import * as singbox from './core-controller';
-import { getConfigPath, getProfilesDir, resolveDataPath } from './paths';
+import { getConfigPath, resolveDataPath } from './paths';
 import type {
     SingboxConfig,
     ConvertOptions,
@@ -18,12 +17,7 @@ import type {
     DnsPlainRule,
     RuleSetConfig,
     OutboundConfig,
-    InboundConfig,
-    DnsConfig,
-    RouteConfig,
     DnsServer,
-    LogConfig,
-    ExperimentalConfig
 } from '../src/types/singbox';
 import type { MihomoConfig } from '../src/types/clash';
 import { convertClashToSingbox } from '../src/services/singbox';
@@ -31,10 +25,9 @@ import * as subscription from './subscription';
 import {
     buildProvidersForConfig,
     getPolicyFinalOutbound,
-    ensureLocalRuleSetFiles,
     POLICY_FINAL_OUTBOUND_VALUES
 } from './route-policy';
-import { policiesToSingboxConfig, getPolicyMatchableFields } from '../src/services/policy';
+import { policiesToSingboxConfig } from '../src/services/policy';
 import { dnsPoliciesToSingboxConfig } from '../src/services/dns-policy';
 
 /** 判断是否为 IPv6 地址 */
@@ -419,7 +412,14 @@ export function mergeSettingsIntoConfig(config: any): SingboxConfig {
         let userExcludeAddresses: string[] = [];
         try {
             const arr = JSON.parse(tunExcludeAddressVal);
-            userExcludeAddresses = Array.isArray(arr) ? arr.filter((s: unknown) => typeof s === 'string' && s.trim() !== '') : [];
+            if (Array.isArray(arr)) {
+                // 解析时忽略注释行和空行（以#开头的行视为注释）
+                userExcludeAddresses = arr.filter((s: unknown) => {
+                    if (typeof s !== 'string') return false;
+                    const trimmed = s.trim();
+                    return trimmed !== '' && !trimmed.startsWith('#');
+                });
+            }
         } catch {
             /* ignore */
         }
@@ -440,16 +440,14 @@ export function mergeSettingsIntoConfig(config: any): SingboxConfig {
             type: 'tun',
             tag: 'tun_in',
             mtu: 1600,
+            stack: 'mixed',
             address: [
                 '172.19.0.1/30',
                 'fdfe:dcba:9876::1/126'
             ],
-            auto_route: true,
-            strict_route: true,
-            stack: 'mixed',
             route_exclude_address: routeExcludeAddress,
-            // sniff: true,
-            // sniff_override_destination: true,
+            auto_route: true,
+            strict_route: true
         });
     }
 
@@ -469,15 +467,20 @@ export function mergeSettingsIntoConfig(config: any): SingboxConfig {
     const enabledDnsServers = dnsServers.filter(s => s.enabled !== false);
     if (enabledDnsServers.length > 0) {
         const servers = enabledDnsServers.map((s) => {
+            // raw 类型直接使用 raw_data，不做任何覆盖
+            if (s.type === 'raw' && s.raw_data) {
+                return s.raw_data as Record<string, any>;
+            }
+            
             const obj: any = { type: s.type, tag: s.id };
             if (s.server) obj.server = s.server;
             if (s.server_port != null) obj.server_port = s.server_port;
             if (s.path) obj.path = s.path;
-            if (s.detour) obj.detour = s.detour;
             if (s.prefer_go != null) obj.prefer_go = s.prefer_go;
             if (s.inet4_range) obj.inet4_range = s.inet4_range;
             if (s.inet6_range) obj.inet6_range = s.inet6_range;
             if (s.predefined && Object.keys(s.predefined).length > 0) obj.predefined = s.predefined;
+            if (s.domain_resolver) obj.domain_resolver = s.domain_resolver;
             return obj;
         });
         const defaultServer = enabledDnsServers.find(s => s.is_default);
@@ -523,32 +526,6 @@ export function mergeSettingsIntoConfig(config: any): SingboxConfig {
                 }
                 return inbound;
             });
-        }
-    }
-
-    // 高级配置 hosts-override 转为 dns 配置：单域名用 hosts 服务器，泛域名用 rule 的 predefined
-    const hostsOverrideVal = settings['hosts-override'] || '[]';
-    let hostsOverrideLines: string[] = [];
-    try {
-        const arr = JSON.parse(hostsOverrideVal);
-        hostsOverrideLines = Array.isArray(arr) ? arr.filter((s: unknown) => typeof s === 'string') : [];
-    } catch {
-        /* ignore */
-    }
-    if (hostsOverrideLines.length > 0) {
-        const { server: hostsServer, rules: hostsRules } = hostsOverrideToDnsConfig(hostsOverrideLines);
-        if (hostsServer || hostsRules.length > 0) {
-            if (!config.dns) config.dns = { servers: [], rules: [] };
-            if (!Array.isArray(config.dns.servers)) config.dns.servers = [];
-            if (hostsServer) {
-                config.dns.servers = config.dns.servers.filter((s: any) => s?.tag !== 'dns_hosts');
-                config.dns.servers.unshift(hostsServer);
-            }
-            if (hostsRules.length > 0) {
-                const existingRules = Array.isArray(config.dns.rules) ? config.dns.rules : [];
-                config.dns.rules = [...hostsRules, ...existingRules];
-            }
-            console.log('[Config] Applied hosts-override to DNS (single domains -> hosts, wildcards -> predefined rules)');
         }
     }
 
@@ -622,6 +599,14 @@ function ensureDnsDirectOutExists(config: SingboxConfig): void {
     const hasDnsDirectOut = config.dns.servers.some((s: DnsServer) => s?.tag === 'dns_direct_out');
     if (!hasDnsDirectOut) {
         config.dns.servers.push({ tag: 'dns_direct_out', type: 'local' });
+    }
+    if (!config.dns.final) {
+        config.dns.final = 'dns_direct_out';
+    }
+    // 始终将 default_domain_resolver 与 dns.final 同步（默认 DNS 服务器）
+    config.route.default_domain_resolver = config.dns.final;
+    if (config.route.auto_detect_interface === undefined) {
+        config.route.auto_detect_interface = true;
     }
 }
 
@@ -718,52 +703,238 @@ function addProxyServerRules(config: SingboxConfig): void {
     }
 }
 
-/** 确保 route 默认值已设置（sing-box 要求及常用配置） */
-function ensureRouteDefaults(config: SingboxConfig): void {
-    if (!config.route) return;
-    // 确保 dns.final 有值（与 route.default_domain_resolver.server 保持一致）
-    if (!config.dns) config.dns = { servers: [] };
-    if (!config.dns.final) {
-        config.dns.final = 'dns_direct_out';
-    }
-    // 始终将 default_domain_resolver.server 与 dns.final 同步（默认 DNS 服务器）
-    config.route.default_domain_resolver = { ...config.route.default_domain_resolver, server: config.dns.final };
-    if (config.route.auto_detect_interface === undefined) {
-        config.route.auto_detect_interface = true;
-    }
-}
 
-/** 应用自定义分流模式：策略规则（不处理 rule_set，后续统一处理） */
-function applyOverrideRulesRoute(config: SingboxConfig): any[] {
-    const policies = dbUtils.getPolicies().filter((p: any) => p.enabled);
+/** 应用路由策略规则到 config */
+function applyRoutePolicies(config: SingboxConfig, policies: any[]): void {
     const ruleProviders = dbUtils.getRuleProviders();
     const providersForConfig = buildProvidersForConfig(ruleProviders);
     providersForConfig.forEach(p => { p.path = resolveDataPath(p.path); });
 
     const { rules } = policiesToSingboxConfig(policies, providersForConfig);
     const finalOutbound = getPolicyFinalOutbound();
+    
     if (!config.route) config.route = {};
     config.route.rules = rules;
     config.route.final = finalOutbound;
+}
+
+/** 应用 profile 的 DNS 策略偏好服务器覆盖 */
+function applyDnsPolicyPreferredServers(
+    config: SingboxConfig,
+    profileId: string
+): void {
+    const profileDnsPolicies = dbUtils.getProfileById(profileId)?.dnsPolicies ?? [];
+    if (profileDnsPolicies.length === 0 || !config.dns?.rules) return;
+
+    // 构建 preferred_server 映射
+    const preferredServerMap = new Map<string, string>();
+    for (const p of profileDnsPolicies) {
+        if (p.preferred_server) {
+            preferredServerMap.set(p.dns_policy_id, p.preferred_server);
+        }
+    }
+    if (preferredServerMap.size === 0) return;
+
+    // 获取排序后的 DNS 策略列表（与生成 rules 时的顺序一致）
+    const allDnsPolicies = dbUtils.getDnsPolicies();
+    const sortedPolicies = allDnsPolicies
+        .filter(p => p.enabled)
+        .sort((a, b) => a.order - b.order);
+
+    // 通过 index 匹配 rule 和 policy，覆盖 server
+    for (let i = 0; i < sortedPolicies.length && i < config.dns.rules.length; i++) {
+        const policy = sortedPolicies[i];
+        const preferredServer = preferredServerMap.get(policy.id);
+        if (preferredServer) {
+            (config.dns.rules[i] as any).server = preferredServer;
+        }
+    }
+    console.log(`[Config] Applied ${preferredServerMap.size} preferred_server from profile.dnsPolicies`);
+}
+
+/** 应用 profile 的路由策略偏好出站覆盖 */
+function applyRoutePolicyPreferredOutbounds(
+    config: SingboxConfig,
+    profileId: string,
+    enabledPolicies: any[]
+): void {
+    const profile = dbUtils.getProfileById(profileId);
+    const profilePolicies = profile?.policies ?? [];
+    if (profilePolicies.length === 0 || !config.route?.rules) return;
+
+    // 构建 policy_id -> preferred_outbound 映射（单选模式，取第一个）
+    const preferredOutboundMap = new Map<string, string>();
+    for (const pp of profilePolicies) {
+        if (pp.policy_id && pp.preferred_outbound) {
+            preferredOutboundMap.set(pp.policy_id, pp.preferred_outbound);
+        }
+    }
+    if (preferredOutboundMap.size === 0) return;
+
+    // 构建 policy_id 到 rule index 的映射（按 order 排序后的策略顺序与 rules 顺序一致）
+    const sortedPolicies = [...enabledPolicies].sort((a, b) => a.order - b.order);
+    const policyIdToRuleIndex = new Map<string, number>();
+    sortedPolicies.forEach((policy, index) => {
+        policyIdToRuleIndex.set(policy.id, index);
+    });
+
+    // 获取现有出站节点
+    const existingOutboundTags = new Set(
+        (config.outbounds || []).map((o: OutboundConfig) => o.tag).filter(Boolean)
+    );
+
+    // 更新策略规则的出站
+    let rulesUpdated = 0;
+    for (const [policyId, preferredOutbound] of preferredOutboundMap.entries()) {
+        // 检查节点是否存在
+        if (!existingOutboundTags.has(preferredOutbound)) {
+            console.log(`[Config] 跳过策略 ${policyId}: 节点 ${preferredOutbound} 不存在`);
+            continue;
+        }
+
+        // 找到对应的 rule index
+        const ruleIndex = policyIdToRuleIndex.get(policyId);
+        if (ruleIndex === undefined || ruleIndex < 0 || ruleIndex >= config.route.rules.length) {
+            console.log(`[Config] 跳过策略 ${policyId}: 找不到对应的规则`);
+            continue;
+        }
+
+        const rule = config.route.rules[ruleIndex];
+        // 跳过逻辑规则
+        if ('type' in rule && rule.type === 'logical') {
+            console.log(`[Config] 跳过策略 ${policyId}: 逻辑规则不支持 preferred_outbound`);
+            continue;
+        }
+
+        const oldOutbound = rule.outbound;
+        rule.outbound = preferredOutbound;
+        rulesUpdated++;
+        console.log(`[Config] 更新策略规则出站: ${policyId} (${oldOutbound}) -> ${preferredOutbound}`);
+    }
+
+    console.log(`[Config] 成功更新 ${rulesUpdated} 条规则的出站`);
+}
+
+/** 应用 profile 的 DNS 服务器 detour 设置 */
+function applyDnsServerDetours(config: SingboxConfig, profileId: string): void {
+    const profileDnsDetours = dbUtils.getAllProfileDnsServerDetours(profileId);
+    if (profileDnsDetours.length === 0 || !config.dns?.servers) return;
+
+    const dnsDetourMap = new Map(profileDnsDetours.map(d => [d.dns_server_id, d.detour]));
+    let appliedCount = 0;
+
+    for (const server of config.dns.servers) {
+        const serverId = server.tag;
+        const detour = dnsDetourMap.get(serverId);
+        if (detour) {
+            server.detour = detour;
+            appliedCount++;
+            console.log(`[Config] DNS 服务器 ${serverId} 设置 detour: ${detour}`);
+        }
+    }
+
+    console.log(`[Config] 应用了 ${appliedCount} 个 DNS 服务器的 detour 设置`);
+}
+
+/** 应用自定义分流模式：策略规则（不处理 rule_set，后续统一处理） */
+function applyOverrideRulesRoute(config: SingboxConfig, profileId: string): any[] {
+    // 1. 获取启用的路由策略并应用
+    const policies = dbUtils.getPolicies().filter((p: any) => p.enabled);
+    applyRoutePolicies(config, policies);
+
+    // 2. 应用 DNS 服务器 detour 设置
+    applyDnsServerDetours(config, profileId);
+
+    // 3. 应用 DNS 策略偏好服务器
+    applyDnsPolicyPreferredServers(config, profileId);
+
+    // 4. 应用路由策略偏好出站
+    applyRoutePolicyPreferredOutbounds(config, profileId, policies);
+
     return policies;
 }
 
-/** 应用默认路由模式（不处理 rule_set，后续统一处理） */
-function applyDefaultRoute(_config: SingboxConfig): void {
-    // rule_set 路径解析等由后续统一处理
+
+function addSystemRouteRules(config: SingboxConfig, settings: Record<string, string>): void {
+    const isTunMode = settings['dashboard-tun-mode'] === 'true';
+
+    let appendRules: DnsPlainRule[] = [
+      {
+        "protocol": "dns",
+        "action": "hijack-dns"
+      },
+      {
+        "inbound": "proxy_in",
+        "action": "sniff"
+      },
+    ]
+
+    if(isTunMode) {
+        appendRules = [
+            {
+                "inbound": "tun_in",
+                "action": "sniff"
+            },
+            ...appendRules
+        ]
+            
+    }
+    config.route.rules = [
+        ...appendRules,
+        ...config.route.rules,
+    ]
+
+
+    const mergedConfig = config;
+
+   // 为代理节点生成直连规则
+    addProxyServerRules(mergedConfig);
+
+     // 高级配置 hosts-override 转为 dns 配置：单域名用 hosts 服务器，泛域名用 rule 的 predefined
+    const hostsOverrideVal = settings['hosts-override'] || '[]';
+    let hostsOverrideLines: string[] = [];
+    try {
+        const arr = JSON.parse(hostsOverrideVal);
+        hostsOverrideLines = Array.isArray(arr) ? arr.filter((s: unknown) => typeof s === 'string') : [];
+    } catch {
+        /* ignore */
+    }
+    if (hostsOverrideLines.length > 0) {
+        const { server: hostsServer, rules: hostsRules } = hostsOverrideToDnsConfig(hostsOverrideLines);
+        if (hostsServer || hostsRules.length > 0) {
+            if (!mergedConfig.dns) mergedConfig.dns = { servers: [], rules: [] };
+            if (!Array.isArray(mergedConfig.dns.servers)) mergedConfig.dns.servers = [];
+            if (hostsServer) {
+                mergedConfig.dns.servers = mergedConfig.dns.servers.filter((s: any) => s?.tag !== 'dns_hosts');
+                mergedConfig.dns.servers.unshift(hostsServer);
+            }
+            if (hostsRules.length > 0) {
+                const existingRules = Array.isArray(mergedConfig.dns.rules) ? mergedConfig.dns.rules : [];
+                mergedConfig.dns.rules = [...hostsRules, ...existingRules];
+            }
+            console.log('[Config] Applied hosts-override to DNS (single domains -> hosts, wildcards -> predefined rules)');
+        }
+    }
 }
+
 
 /** 根据 dashboard-mode 覆盖 route（直连/全局/规则） */
 function applyDashboardMode(config: SingboxConfig, settings: Record<string, string>): void {
     const dashboardMode = settings['dashboard-mode'] || 'rule';
+    if(dashboardMode === 'rule') {
+        return;
+    }
+
+    config.route.rules = [];
+    config.route.rule_set = [];
+    config.dns.rules = [];
+
     if (dashboardMode === 'direct') {
-        if (!config.route) config.route = {};
-        config.route.rules = [];
         config.route.final = 'direct_out';
+        config.route.default_domain_resolver = 'dns_direct_out';
+        config.dns.final = 'dns_direct_out';
         console.log('[Config] Outbound mode: direct (all traffic direct)');
     } else if (dashboardMode === 'global') {
-        if (!config.route) config.route = {};
-        config.route.rules = [];
         config.route.final = 'selector_out';
         console.log('[Config] Outbound mode: global (all traffic via proxy)');
     }
@@ -919,44 +1090,28 @@ export async function writeConfigFileOnly(
 
     // 应用路由规则
     if (overrideRules) {
-        applyOverrideRulesRoute(mergedConfig);
-    } else {
-        applyDefaultRoute(mergedConfig);
+        applyOverrideRulesRoute(mergedConfig, profileId);
+        // 应用自定义代理分组
+        const customProxyGroupsEnabled = settings['custom-proxy-groups'] === 'true';
+        if (customProxyGroupsEnabled) {
+            applyCustomProxyGroups(mergedConfig, profileId, true);
+        }
     }
 
     // 构建和分配规则集
     buildAndAssignRuleSets(mergedConfig);
+
+    // 设置route和dns的默认值
     ensureDnsDirectOutExists(mergedConfig);
-    ensureRouteDefaults(mergedConfig);
 
-    // 应用自定义代理分组
-    const customProxyGroupsEnabled = settings['custom-proxy-groups'] === 'true';
-    if (overrideRules && customProxyGroupsEnabled) {
-        applyCustomProxyGroups(mergedConfig, profileId, true);
-    }
-
-    // 添加额外的出站节点
+    // 添加默认使用的出站节点
     appendExtraOutbounds(mergedConfig);
 
-    // 为代理服务器地址生成直连规则
-    addProxyServerRules(mergedConfig);
-
-    // 应用仪表板模式设置
+    // 应用仪表板模式设置（清空多余的规则）
     applyDashboardMode(mergedConfig, settings);
 
-    // 如果启用覆盖规则，创建自定义 urltest 出站节点
-    if (overrideRules) {
-        const profile = dbUtils.getProfileById(profileId);
-        const policies = (profile?.policies ?? []).map((pp) => ({
-            profile_id: profileId,
-            policy_id: pp.policy_id,
-            preferred_outbounds: pp.preferred_outbounds,
-        }));
-        createCustomUrltestOutbounds(mergedConfig, [], policies);
-    }
-
-    // 确保本地规则集文件存在
-    await ensureLocalRuleSetFiles(mergedConfig);
+    // 系统默认的规则(route 和 dns)
+    addSystemRouteRules(mergedConfig,settings);
 
     // 获取配置文件路径并写入文件
     const configPath = getConfigPath();
@@ -984,91 +1139,6 @@ export function getAvailableOutbounds(): { tag: string; type: string; all?: stri
             type: o.type,
             all: o.type === 'selector' ? o.outbounds || [] : undefined
         }));
-}
-
-/** 更新 config 文件（mode、tun 等） */
-/**
- * 基于profilePolicies更新策略规则的出站
- * 不创建新的分组，直接使用用户选择的节点作为出站
- */
-function createCustomUrltestOutbounds(
-    config: SingboxConfig, 
-    policies: any[], 
-    profilePolicies: any[]
-): void {
-    if (!config.outbounds) config.outbounds = [];
-    
-    // 获取profilePolicies映射：policy_id -> preferred_outbounds（单选模式，取第一个）
-    const policyOutboundsMap = new Map<string, string>();
-    for (const pp of profilePolicies) {
-        if (pp.policy_id && pp.preferred_outbounds && pp.preferred_outbounds.length > 0) {
-            // 单选模式：只取第一个节点
-            policyOutboundsMap.set(pp.policy_id, pp.preferred_outbounds[0]);
-        }
-    }
-    
-    console.log(`[Config] 正在更新策略规则出站，找到 ${policyOutboundsMap.size} 个策略的优先出站配置`);
-    
-    let rulesUpdated = 0;
-    const existingOutboundTags = new Set(config.outbounds.map((o: OutboundConfig) => o.tag));
-    
-    // 为每个有preferred_outbound的策略更新规则出站
-    for (const policy of policies) {
-        const preferredOutbound = policyOutboundsMap.get(policy.id);
-        if (!preferredOutbound) {
-            continue;
-        }
-        
-        // 检测节点有效性
-        if (!existingOutboundTags.has(preferredOutbound)) {
-            console.log(`[Config] 策略 "${policy.name}" 的优选节点 "${preferredOutbound}" 不存在，跳过`);
-            continue;
-        }
-        
-        // 直接更新策略规则的出站为用户选择的节点
-        if (config.route && config.route.rules) {
-            for (const rule of config.route.rules) {
-                if (isRuleFromPolicy(rule, policy)) {
-                    const oldOutbound = rule.outbound;
-                    rule.outbound = preferredOutbound;
-                    rulesUpdated++;
-                    console.log(`[Config] 更新策略规则出站: ${policy.name} (${oldOutbound} -> ${preferredOutbound})`);
-                }
-            }
-        }
-    }
-    
-    console.log(`[Config] 成功更新 ${rulesUpdated} 条规则的出站`);
-}
-
-/** 检查规则是否属于指定策略 */
-function isRuleFromPolicy(rule: RouteRule, policy: any): boolean {
-    // 逻辑规则不直接匹配字段
-    if ('type' in rule && rule.type === 'logical') return false;
-    
-    const plainRule = rule as import('../src/types/singbox').RoutePlainRule;
-    const fields = getPolicyMatchableFields(policy);
-    if (plainRule.rule_set && Array.isArray(fields.rule_set) && fields.rule_set.length > 0) {
-        const ruleRuleSets = new Set(plainRule.rule_set);
-        const policyRuleSets = new Set(fields.rule_set);
-        if (Array.from(ruleRuleSets).some((rs: string) => policyRuleSets.has(rs))) {
-            return true;
-        }
-    }
-    return (
-        (plainRule.domain && fields.domain && arraysOverlap(plainRule.domain, fields.domain)) ||
-        (plainRule.domain_keyword && fields.domain_keyword && arraysOverlap(plainRule.domain_keyword, fields.domain_keyword)) ||
-        (plainRule.domain_suffix && fields.domain_suffix && arraysOverlap(plainRule.domain_suffix, fields.domain_suffix)) ||
-        (plainRule.ip_cidr && fields.ip_cidr && arraysOverlap(plainRule.ip_cidr, fields.ip_cidr)) ||
-        (plainRule.process_name && fields.process_name && arraysOverlap(plainRule.process_name, fields.process_name))
-    );
-}
-
-/** 检查两个数组是否有重叠元素 */
-function arraysOverlap(arr1: any[], arr2: any[]): boolean {
-    if (!arr1 || !arr2 || arr1.length === 0 || arr2.length === 0) return false;
-    const set1 = new Set(arr1);
-    return arr2.some(item => set1.has(item));
 }
 
 // 防抖重新生成配置的定时器和回调队列

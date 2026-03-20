@@ -205,13 +205,11 @@ export interface OutboundConfig {
 }
 
 export interface RouteConfig {
-    rules?: RouteRule[];
+    rules?: DnsPlainRule[];
     rule_set?: RuleSetConfig[];
     auto_detect_interface?: boolean;
     final?: string;
-    default_domain_resolver?: {
-        server: string;
-    };
+    default_domain_resolver?: string;
 }
 
 /**
@@ -241,35 +239,35 @@ export interface DnsServer {
  * 包含所有匹配字段，不含 type/mode/rules
  */
 export interface HeadlessPlainRule {
-    domain?: string[];
-    domain_suffix?: string[];
-    domain_keyword?: string[];
-    domain_regex?: string[];
-    ip_cidr?: string[];
-    source_ip_cidr?: string[];
+    domain?: string[] | string;
+    domain_suffix?: string[] | string;
+    domain_keyword?: string[] | string;
+    domain_regex?: string[] | string;
+    ip_cidr?: string[] | string;
+    source_ip_cidr?: string[] | string;
     source_port?: number[];
     /** 源端口范围 */
-    source_port_range?: string[];
+    source_port_range?: string[] | string;
     port?: number[];
-    port_range?: string[];
-    process_name?: string[];
-    process_path?: string[];
+    port_range?: string[] | string;
+    process_name?: string[] | string;
+    process_path?: string[] | string;
     /** 进程路径正则 */
-    process_path_regex?: string[];
+    process_path_regex?: string[] | string;
     /** 包名 (Android) */
-    package_name?: string[];
+    package_name?: string[] | string;
     /** DNS 查询类型 */
     query_type?: (string | number)[];
     /** 网络协议 tcp/udp */
-    network?: string[];
+    network?: string[] | string;
     /** 网络类型 wifi/cellular/ethernet/other */
-    network_type?: string[];
+    network_type?: string[] | string;
     /** 默认接口地址 */
-    default_interface_address?: string[];
+    default_interface_address?: string[] | string;
     /** WiFi SSID */
-    wifi_ssid?: string[];
+    wifi_ssid?: string[] | string;
     /** WiFi BSSID */
-    wifi_bssid?: string[];
+    wifi_bssid?: string[] | string;
     /** 网络计费 */
     network_is_expensive?: boolean;
     /** 低数据模式 */
@@ -278,7 +276,6 @@ export interface HeadlessPlainRule {
     network_interface_address?: Record<string, string[]>;
     ip_is_private?: boolean;
 }
-
 /**
  * sing-box 逻辑规则（支持嵌套）
  * 用于逻辑组合规则
@@ -316,6 +313,17 @@ export interface RouteLogicRule extends HeadlessLogicRule {
     rules: HeadlessRule[];
 }
 
+
+export interface OriginRouteRule extends RoutePlainRule , RouteLogicRule {
+    outbound?: string;
+    /** 规则集引用 */
+    rule_set?: string[];
+    /** 路由动作 */
+    action?: string;
+    /** 协议 */
+    protocol?: string | string[];
+}
+
 /**
  * sing-box 路由规则（可以是纯规则或逻辑规则）
  */
@@ -326,13 +334,15 @@ export type RouteRule = RoutePlainRule | RouteLogicRule;
  */
 export interface DnsPlainRule extends HeadlessPlainRule {
     server?: string;
-    protocol?: string[];
+    protocol?: string[] | string;
     action?: string;
     rcode?: string;
     answer?: string[];
     ip_accept_any?: boolean;
     /** 规则集引用 */
     rule_set?: string[];
+    outbound?: string;
+    inbound?: string;
 }
 
 /**
@@ -362,6 +372,7 @@ export interface RuleSetConfig {
     url?: string;
     path?: string;
     download_detour?: string;
+    update_interval?: string;
 }
 
 /** 转换选项 */

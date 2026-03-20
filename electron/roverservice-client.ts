@@ -11,6 +11,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { createLogger } from './logger';
+import { getBuiltinResourcesPath } from './paths';
 
 const log = createLogger('RoverService');
 
@@ -484,54 +485,18 @@ export async function getInstallationStatus(): Promise<InstallationStatus> {
 /**
  * Install the privileged helper (requires user to authorize)
  * Uses kardianos/service's built-in install command
- * 
- * @param helperPath - Optional path to the helper binary directory
- *                      If not provided, will look in app resources
  */
-export async function installHelper(helperPath?: string): Promise<{ success: boolean; error?: string; isUserCanceled?: boolean }> {
+export async function installHelper(): Promise<{ success: boolean; error?: string; isUserCanceled?: boolean }> {
     if (!isSupported()) {
         return { success: false, error: 'RoverService is not supported on this platform' };
     }
 
     log.info('Installing RoverService...');
 
-    // Find the source binary
-    let sourceBinary: string | null = null;
+    const sourceBinary = path.join(getBuiltinResourcesPath(), TARGET_NAME);
+    log.info(`Helper binary path: ${sourceBinary}`);
 
-    if (helperPath) {
-        const binaryName = process.platform === 'win32' ? 'roverservice.exe' : 'roverservice';
-        const candidate1 = path.join(helperPath, binaryName);
-        const candidate2 = path.join(helperPath, TARGET_NAME);
-        if (fs.existsSync(candidate1)) {
-            sourceBinary = candidate1;
-        } else if (fs.existsSync(candidate2)) {
-            sourceBinary = candidate2;
-        }
-    }
-
-    // If not found, try to find from app resources
-    if (!sourceBinary) {
-        const { app } = require('electron');
-        const binaryName = process.platform === 'win32' ? 'roverservice.exe' : 'roverservice';
-        const possiblePaths = [
-            // Packaged app: resources/
-            path.join(process.resourcesPath, binaryName),
-            // Development: roverservice/
-            path.join(app.getAppPath(), 'roverservice', binaryName),
-            // Development: resources/
-            path.join(app.getAppPath(), 'resources', binaryName),
-        ];
-
-        for (const p of possiblePaths) {
-            if (fs.existsSync(p)) {
-                sourceBinary = p;
-                log.info(`Found helper binary at: ${p}`);
-                break;
-            }
-        }
-    }
-
-    if (!sourceBinary) {
+    if (!fs.existsSync(sourceBinary)) {
         log.error('RoverService binary not found');
         return { success: false, error: 'RoverService binary not found. Please build it first.' };
     }

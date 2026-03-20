@@ -121,14 +121,14 @@ export function DnsPolicyEditModalContainer({
                 addNotification,
             }) => {
                 // DNS服务器列表
-                const [dnsServers, setDnsServers] = React.useState<Array<{ id: string; tag: string; type: string }>>([]);
+                const [dnsServers, setDnsServers] = React.useState<Array<{ id: string; type: string }>>([]);
 
                 const policy = editingPolicy as unknown as DnsPolicy | null;
 
                 React.useEffect(() => {
                     if (open) {
                         window.ipcRenderer.db.getDnsServers().then((servers) => {
-                            setDnsServers((servers as Array<{ id: string; tag: string; type: string }>) || []);
+                            setDnsServers((servers as Array<{ id: string; type: string }>) || []);
                         });
                         // 加载已保存的dnsServerId
                         if (policy) {
@@ -150,7 +150,7 @@ export function DnsPolicyEditModalContainer({
                 const dynamicDnsServerOptions = React.useMemo(() => {
                     return dnsServers.map(s => ({
                         value: s.id,
-                        label: `${s.tag} (${s.type})`,
+                        label: `${s.id} (${s.type})`,
                     }));
                 }, [dnsServers]);
 
@@ -167,7 +167,7 @@ export function DnsPolicyEditModalContainer({
                                 <option value="">不指定</option>
                                 {dnsServers.map((server) => (
                                     <option key={server.id} value={server.id}>
-                                        {server.tag} ({server.type})
+                                        {server.id} ({server.type})
                                     </option>
                                 ))}
                             </Select>

@@ -154,7 +154,7 @@ export function dnsPoliciesToSingboxConfig(policies: DnsPolicy[]): {
     rules: SingboxDnsRuleItem[];
 } {
     const rules: SingboxDnsRuleItem[] = [];
-    
+
     const sortedPolicies = [...policies]
         .filter(p => p.enabled)
         .sort((a, b) => a.order - b.order);

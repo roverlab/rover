@@ -61,6 +61,10 @@ contextBridge.exposeInMainWorld('ipcRenderer', {
         // Profile DNS Policies
         getProfileDnsPolicyByPolicyId: (profileId: string, dnsPolicyId: string) => ipcRenderer.invoke('db:getProfileDnsPolicyByPolicyId', profileId, dnsPolicyId),
         setProfileDnsPolicy: (profileId: string, dnsPolicyId: string, dnsServerId: string | null) => ipcRenderer.invoke('db:setProfileDnsPolicy', profileId, dnsPolicyId, dnsServerId),
+        // Profile DNS Server Detours
+        getProfileDnsServerDetour: (profileId: string, dnsServerId: string) => ipcRenderer.invoke('db:getProfileDnsServerDetour', profileId, dnsServerId),
+        setProfileDnsServerDetour: (profileId: string, dnsServerId: string, detour: string | null) => ipcRenderer.invoke('db:setProfileDnsServerDetour', profileId, dnsServerId, detour),
+        getAllProfileDnsServerDetours: (profileId: string) => ipcRenderer.invoke('db:getAllProfileDnsServerDetours', profileId),
         // Custom Proxy Groups
         getProfileCustomGroups: (profileId: string) => ipcRenderer.invoke('db:getProfileCustomGroups', profileId),
         setProfileCustomGroups: (profileId: string, groups: any[]) => ipcRenderer.invoke('db:setProfileCustomGroups', profileId, groups),
