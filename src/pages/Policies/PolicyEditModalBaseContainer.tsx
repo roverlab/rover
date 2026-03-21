@@ -1,12 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import type { RuleSetGroupItem } from './PolicyAllRuleSetModal';
 import type { PolicyEditFormStateBase } from './PolicyEditModalBase';
-import type { RuleTreeNode } from './types/ruleFields';
 import type { RouteLogicRule } from '../../types/singbox';
-import {
-    ruleTreeNodeToSingboxLogical,
-    singboxLogicalToRuleTreeNodeRoot,
-} from './utils/ruleTreeNodeConversion';
 
 export type PolicyType = 'default' | 'raw';
 
@@ -73,42 +68,24 @@ export interface PolicyEditModalBaseContainerProps<T extends PolicyEditFormState
         unavailableAclRefs: string[];
         ruleSetAdvancedConflict: boolean;
         showRuleSetModal: boolean;
-        showRuleFieldsEditorModal: boolean;
         onClose: () => void;
         onFormChange: (updates: Partial<T>) => void;
         setShowRuleSetModal: (v: boolean) => void;
-        setShowRuleFieldsEditorModal: (v: boolean) => void;
         onSave: () => void;
         addNotification: (message: string, type?: 'success' | 'error' | 'info') => void;
     }) => React.ReactNode;
 }
 
-/** 创建空的规则树节点 */
-export function makeEmptyRuleTreeNode(): RuleTreeNode {
-    return { id: crypto.randomUUID(), type: 'all', rules: [{ id: crypto.randomUUID(), type: 'domain', value: '' }] };
-}
-
-/** Policy 转为 RuleTreeNode，从 logical_rule 读取 */
-export function policyToRuleGroupsTree<P extends BasePolicy>(policy: P | null): RuleTreeNode | null {
+/** Policy 转为 RouteLogicRule，从 logical_rule 读取 */
+export function policyToLogicalRule<P extends BasePolicy>(policy: P | null): RouteLogicRule | null {
     if (!policy || policy.type === 'raw') {
         return null;
     }
     const lr = policy.logical_rule;
-    if (!lr || !lr.rules?.length) {
+    if (!lr) {
         return null;
     }
-    return singboxLogicalToRuleTreeNodeRoot(lr);
-}
-
-/** RuleTreeNode 转为 policy，所有规则数据直接存 logical_rule */
-export function ruleGroupsTreeToPolicyFields(tree: RuleTreeNode): {
-    logical_rule?: RouteLogicRule;
-} {
-    const converted = ruleTreeNodeToSingboxLogical(tree);
-    if (!converted || converted.rules!.length === 0) {
-        return {};
-    }
-    return { logical_rule: converted };
+    return lr;
 }
 
 /** 创建初始表单状态的工厂函数 */
@@ -124,7 +101,7 @@ export function createGetInitialFormState<T extends PolicyEditFormStateBase>(
                 ? JSON.stringify(editingPolicy.raw_data, null, 2)
                 : '',
             selectedRuleSetIds,
-            ruleGroupsTree: policyToRuleGroupsTree(editingPolicy),
+            ruleGroupsTree: policyToLogicalRule(editingPolicy),
         };
 
         if (!editingPolicy) {
@@ -208,12 +185,8 @@ export function createBuildPolicyData<T extends PolicyEditFormStateBase>(
                     ruleSetValue.push(id);
                 }
             }
-            const { logical_rule: treeLogical } = ruleGroupsTreeToPolicyFields(
-                (form.ruleGroupsTree ?? makeEmptyRuleTreeNode()) as RuleTreeNode
-            );
-            const subRules = treeLogical?.rules ?? [];
             const hasRuleSet = ruleSetValue.length > 0;
-            const hasAdvancedRules = subRules.length > 0;
+            const hasAdvancedRules = form.ruleGroupsTree !== null;
             if (hasRuleSet && hasAdvancedRules) {
                 addNotification('规则集和高级规则只能二选一，请清空其中一项后再保存', 'error');
                 return null;
@@ -221,9 +194,7 @@ export function createBuildPolicyData<T extends PolicyEditFormStateBase>(
             if (editingPolicy && unavailableAclRefs.length > 0) {
                 addNotification(`已自动剔除 ${unavailableAclRefs.length} 个不可用规则集`, 'info');
             }
-            const logical_rule = subRules.length > 0
-                ? { type: 'logical' as const, mode: treeLogical?.mode ?? 'and' as const, rules: subRules }
-                : undefined;
+            const logical_rule = form.ruleGroupsTree ?? undefined;
             return {
                 type: 'default',
                 name: form.name.trim(),
@@ -255,7 +226,6 @@ export function PolicyEditModalBaseContainer<T extends PolicyEditFormStateBase, 
     const [form, setForm] = useState<T>(() => getInitialFormState(null, new Set()));
     const [ruleSetGroups, setRuleSetGroups] = useState<RuleSetGroupItem[]>([]);
     const [showRuleSetModal, setShowRuleSetModal] = useState(false);
-    const [showRuleFieldsEditorModal, setShowRuleFieldsEditorModal] = useState(false);
     const [extraData, setExtraData] = useState<Record<string, unknown>>({});
 
     useEffect(() => {
@@ -264,7 +234,6 @@ export function PolicyEditModalBaseContainer<T extends PolicyEditFormStateBase, 
             const initialIds = new Set(ruleSetIds.filter((v): v is string => typeof v === 'string'));
             setForm(getInitialFormState(editingPolicy, initialIds));
             setShowRuleSetModal(false);
-            setShowRuleFieldsEditorModal(false);
 
             const loadData = async () => {
                 try {
@@ -346,11 +315,8 @@ export function PolicyEditModalBaseContainer<T extends PolicyEditFormStateBase, 
         for (const id of form.selectedRuleSetIds) {
             if (customGroupIds.has(id) || builtinIds.has(id)) ruleSetValue.push(id);
         }
-        const { logical_rule } = ruleGroupsTreeToPolicyFields(
-            (form.ruleGroupsTree ?? makeEmptyRuleTreeNode()) as RuleTreeNode
-        );
-        const subRules = logical_rule?.rules ?? [];
-        return ruleSetValue.length > 0 && subRules.length > 0;
+        const hasAdvancedRules = form.ruleGroupsTree !== null;
+        return ruleSetValue.length > 0 && hasAdvancedRules;
     }, [form.policyType, form.selectedRuleSetIds, form.ruleGroupsTree, customGroupIds, builtinIds]);
 
     const onFormChange = (updates: Partial<T>) => {
@@ -411,11 +377,9 @@ export function PolicyEditModalBaseContainer<T extends PolicyEditFormStateBase, 
                 unavailableAclRefs,
                 ruleSetAdvancedConflict,
                 showRuleSetModal,
-                showRuleFieldsEditorModal,
                 onClose,
                 onFormChange,
                 setShowRuleSetModal,
-                setShowRuleFieldsEditorModal,
                 onSave: handleSave,
                 addNotification,
             })}

@@ -1,62 +1,70 @@
 {
-    "rules": [
-      {
-        "rule_set_build_in": ["clash:applications"],
-        "outbound": "direct",
-        "name": "📝 直连应用"
-      },
-      {
-        "rule_set_build_in": ["clash:private"],
-        "outbound": "direct",
-        "name": "🔒 私有网络"
-      },
-      {
-        "rule_set_build_in": ["clash:reject"],
-        "outbound": "block",
-        "name": "🛑 广告拦截"
-      },
-      {
-        "rule_set_build_in": ["clash:apple","clash:icloud"],
-        "outbound": "direct",
-        "name": "🍎 苹果服务"
-      },
-      {
-        "rule_set_build_in": ["clash:google"],
-        "outbound": "currentSelected",
-        "name": "🌏 Google"
-      },
-      {
-        "rule_set_build_in": ["clash:proxy"],
-        "outbound": "currentSelected",
-        "name": "🛠 常用国外域名"
-      },
-      {
-        "rule_set_build_in": ["clash:telegramcidr"],
-        "outbound": "currentSelected",
-        "name": "📲 Telegram"
-      },
-      {
-        "rule_set_build_in": ["clash:direct"],
-        "outbound": "direct",
-        "name": "📝 直连域名"
-      },
-      {
-        "name": "🔍 未匹配域名DNS解析",
-        "raw_data": {
-          "action": "resolve"
-        }
-      },
-      {
-        "rule_set_build_in": ["clash:lancidr"],
-        "outbound": "direct",
-        "name": "🏠 局域网 IP"
-      },
-      {
-        "rule_set_build_in": ["clash:cncidr"],
-        "outbound": "direct",
-        "name": "🎯 中国大陆IP"
+  "dns_servers": [
+    {
+      "name": "Google",
+      "type": "tls",
+      "server": "8.8.8.8",
+      "detour": "selector_out"
+    }
+  ],
+  "rules": [
+    {
+      "rule_set_build_in": ["clash:applications"],
+      "outbound": "direct_out",
+      "name": "📝 直连应用"
+    },
+    {
+      "rule_set_build_in": ["clash:private"],
+      "outbound": "direct_out",
+      "name": "🔒 私有网络"
+    },
+    {
+      "rule_set_build_in": ["clash:reject"],
+      "outbound": "block_out",
+      "name": "🛑 广告拦截"
+    },
+    {
+      "rule_set_build_in": ["clash:apple","clash:icloud"],
+      "outbound": "direct_out",
+      "name": "🍎 苹果服务"
+    },
+    {
+      "rule_set_build_in": ["clash:google"],
+      "outbound": "selector_out",
+      "name": "🌏 Google"
+    },
+    {
+      "rule_set_build_in": ["clash:proxy"],
+      "outbound": "selector_out",
+      "name": "🛠 常用国外域名"
+    },
+    {
+      "rule_set_build_in": ["clash:telegramcidr"],
+      "outbound": "selector_out",
+      "name": "📲 Telegram"
+    },
+    {
+      "rule_set_build_in": ["clash:direct"],
+      "outbound": "direct_out",
+      "name": "📝 直连域名"
+    },
+    {
+      "name": "🔍 域名DNS解析",
+      "raw_data": {
+        "action": "resolve"
       }
-    ],
-    "tun": false,
-    "default_dns_server": "dns_direct_out"
-  }
+    },
+    {
+      "rule_set_build_in": ["clash:lancidr"],
+      "outbound": "direct_out",
+      "name": "🏠 局域网 IP"
+    },
+    {
+      "rule_set_build_in": ["clash:cncidr"],
+      "outbound": "direct_out",
+      "name": "🎯 中国大陆IP"
+    }
+  ],
+  "tun": false,
+  "default_dns_server": "Google"
+}

@@ -51,21 +51,33 @@ export function Connections({ isActive = true }: ConnectionsProps) {
   const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
-    // 只有页面激活时才建立 WebSocket 连接
+    // 用于追踪当前 effect 是否仍然有效
+    let isMounted = true;
+    let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+
+    // 页面不激活时不建立连接
     if (!isActive) {
       return;
     }
 
     const connectWs = () => {
+      // 检查组件是否仍然挂载且页面激活
+      if (!isMounted) {
+        return;
+      }
+      
       try {
         const wsUrl = getWsUrl(apiUrl, '/connections', apiSecret);
         const ws = new WebSocket(wsUrl);
 
         ws.onopen = () => {
-          setIsConnected(true);
+          if (isMounted) {
+            setIsConnected(true);
+          }
         };
 
         ws.onmessage = (event) => {
+          if (!isMounted) return;
           try {
             const data = JSON.parse(event.data);
             if (data.connections) {
@@ -100,23 +112,37 @@ export function Connections({ isActive = true }: ConnectionsProps) {
         };
 
         ws.onerror = () => {
-          setIsConnected(false);
+          if (isMounted) {
+            setIsConnected(false);
+          }
         };
 
         ws.onclose = () => {
-          setIsConnected(false);
-          setTimeout(connectWs, 5000);
+          if (isMounted) {
+            setIsConnected(false);
+            // 只有组件仍然挂载时才尝试重连
+            reconnectTimeout = setTimeout(connectWs, 5000);
+          }
         };
 
         wsRef.current = ws;
       } catch (err: any) {
-        setIsConnected(false);
+        if (isMounted) {
+          setIsConnected(false);
+        }
       }
     };
 
     connectWs();
 
     return () => {
+      isMounted = false;
+      // 清除待执行的重连定时器
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
+        reconnectTimeout = null;
+      }
+      // 关闭 WebSocket 连接
       if (wsRef.current) {
         wsRef.current.close();
         wsRef.current = null;
@@ -196,7 +222,7 @@ export function Connections({ isActive = true }: ConnectionsProps) {
         </div>
         <div className="table-scroll-x flex-1 min-w-0 min-h-0">
           <table className="data-table text-[12px] min-w-[700px]">
-          <thead className="sticky top-0 z-10 text-[12px] font-semibold text-[var(--app-text-secondary)] bg-[rgba(255,255,255,0.7)]">
+          <thead className="sticky top-0 z-10 text-[12px] font-semibold text-[var(--app-text-secondary)] !bg-[rgba(255,255,255,0.9)]">
             <tr>
               <th className="px-5 py-2.5">进程</th>
               <th className="px-5 py-2.5">地址</th>

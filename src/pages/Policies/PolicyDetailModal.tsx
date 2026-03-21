@@ -9,9 +9,7 @@ import type { Policy } from '../../types/policy';
 import { getPolicyRuleSet, getPolicyMatchableFields } from '../../services/policy';
 import type { RuleProvider } from '../../types/rule-providers';
 import { getRuleSetBadgeClass, getOutboundLabel, getOutboundTone, getPolicyOutbound } from './utils';
-import { RuleTreeView } from './components/RuleTreeView';
-import { singboxLogicalToRuleTreeNodeRoot } from './utils/ruleTreeNodeConversion';
-import { RULE_FIELD_CONFIG } from './utils/ruleFieldConfig';
+import { RuleEditorView } from '../../components/AdvancedRuleEditor';
 
 interface PolicyDetailModalProps {
     open: boolean;
@@ -319,9 +317,8 @@ export function PolicyDetailModal({
                                     <span className="w-1 h-4 bg-indigo-500 rounded-full" />
                                     规则嵌套视图
                                 </h3>
-                                <RuleTreeView
-                                    node={singboxLogicalToRuleTreeNodeRoot((detailPolicy as any).logical_rule)}
-                                    formConfig={RULE_FIELD_CONFIG}
+                                <RuleEditorView
+                                    value={(detailPolicy as any).logical_rule}
                                 />
                             </div>
                     </div>

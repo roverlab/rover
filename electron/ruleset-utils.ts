@@ -12,7 +12,16 @@ import * as jschardet from 'jschardet';
 import * as singbox from './core-controller';
 import {  clashRuleSetToSingbox } from './clash-rule-set';
 import { getRulesetsDir } from './paths';
-import type { LocalRuleSetData } from '../src/types/rule-providers';
+import type { RouteLogicRule } from '../src/types/singbox';
+
+/**
+ * 本地规则集数据结构
+ * 符合 sing-box rule-set 格式
+ */
+interface LocalRuleSetData {
+    version: number;
+    rules: any[];
+}
 
 // 从共享模块导入并重新导出（保持向后兼容）
 import { isBuiltinRuleSet, getRuleProviderFileBaseName } from '../src/shared/ruleset';
@@ -239,4 +248,23 @@ export function compileLocalRuleSet(
         console.error('Failed to compile local rule set:', err.message);
         return { srsPath: null, error: `编译失败: ${err.message}` };
     }
+}
+
+/**
+ * 编译本地规则集 logical_rule 为 SRS 文件
+ * @param providerId 规则集 ID
+ * @param logicRule 逻辑规则
+ * @returns { srsPath: string | null, error: string | null }
+ */
+export function compileLocalRuleSetFromLogicRule(
+    providerId: string,
+    logicRule: RouteLogicRule
+): { srsPath: string | null; error: string | null } {
+    // 直接使用 logical_rule 作为规则数据（符合 sing-box rule-set 格式）
+    const ruleSetData = {
+        version: 3,
+        rules: [logicRule]
+    };
+    // 复用现有的编译逻辑
+    return compileLocalRuleSet(providerId, ruleSetData);
 }

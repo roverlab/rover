@@ -2,12 +2,13 @@
  * 出站节点选择器组件
  * 封装了选择器触发器和 PolicyPreferredOutboundModal 弹窗
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { cn } from './Sidebar';
 import { OutboundSelectorModal } from './OutboundSelectorModal';
+import { POLICY_FINAL_OPTIONS } from '../pages/Policies/utils';
 
-export type OutboundItem = { tag: string; type: string; all?: string[] };
+export type OutboundItem = { tag: string; type: string; all?: string[]; delay?: number };
 
 export interface OutboundSelectorProps {
     /** 当前选中的出站节点 tag，null 或空字符串表示未选择 */
@@ -20,8 +21,6 @@ export interface OutboundSelectorProps {
     label?: string;
     /** 提示文本 */
     hint?: string;
-    /** 预传入的出站列表，如果不传则自动从后端获取 */
-    outbounds?: OutboundItem[];
     /** 是否过滤掉 direct 和 block 类型的出站 */
     filterDirectBlock?: boolean;
     /** 是否禁用 */
@@ -30,27 +29,19 @@ export interface OutboundSelectorProps {
     className?: string;
 }
 
+// 静态定义内置标签，避免每次渲染创建新数组
+const BUILTIN_TAGS = POLICY_FINAL_OPTIONS.map(o => o.value);
+
 /**
  * 出站节点选择器
- * 
+ *
  * 示例用法：
  * ```tsx
- * // 自动加载出站列表（默认过滤 direct 和 block）
  * <OutboundSelector
  *   value={form.detour}
  *   onChange={(tag) => setForm(f => ({ ...f, detour: tag || '' }))}
  *   label="出站"
  *   hint="可选，选择用于连接此 DNS 服务器的出站节点"
- * />
- * 
- * // 使用预传入的出站列表
- * <OutboundSelector
- *   value={form.preferredOutbound}
- *   onChange={(tag) => onFormChange({ preferredOutbound: tag })}
- *   outbounds={availableOutbounds}
- *   label="订阅出站节点"
- *   placeholder="请选择节点"
- *   filterDirectBlock={false}
  * />
  * ```
  */
@@ -60,31 +51,72 @@ export function OutboundSelector({
     placeholder = '请选择节点',
     label,
     hint,
-    outbounds: propOutbounds,
     filterDirectBlock = true,
     disabled = false,
     className,
 }: OutboundSelectorProps) {
     const [showModal, setShowModal] = useState(false);
-    const [autoOutbounds, setAutoOutbounds] = useState<OutboundItem[]>([]);
+    const [outbounds, setOutbounds] = useState<OutboundItem[]>([]);
+    const [loading, setLoading] = useState(false);
 
-    // 如果没有传入 outbounds，则自动加载
-    useEffect(() => {
-        if (propOutbounds !== undefined) return;
-        
-        window.ipcRenderer.core.getAvailableOutbounds().then((data) => {
-            let list = (data as OutboundItem[]) || [];
-            if (filterDirectBlock) {
-                list = list.filter(
-                    (o) => !['direct', 'block'].includes(o.type?.toLowerCase())
-                );
+    // 使用 ref 跟踪是否已加载
+    const loadedRef = useRef(false);
+
+    // 加载出站列表（不获取延迟，延迟在点击测试时才获取）
+    const loadOutbounds = useCallback(async () => {
+        setLoading(true);
+        try {
+            // 从配置文件读取代理节点
+            const result = await window.ipcRenderer.core.getSelectedProfile();
+            if (!result) {
+                setOutbounds([]);
+                return;
             }
-            setAutoOutbounds(list);
-        });
-    }, [propOutbounds, filterDirectBlock]);
 
-    // 优先使用传入的 outbounds，否则使用自动加载的
-    const outbounds = propOutbounds !== undefined ? propOutbounds : autoOutbounds;
+            const { config } = result;
+            const configOutbounds = config.outbounds || [];
+
+            // 过滤并构建出站列表
+            const list: OutboundItem[] = [];
+
+            // 遍历所有出站，获取非分组类型的实际节点
+            for (const outbound of configOutbounds) {
+                // 跳过内置标签
+                if (BUILTIN_TAGS.includes(outbound.tag)) continue;
+
+                // 过滤掉 direct 和 block 类型
+                if (filterDirectBlock && ['direct', 'block'].includes(outbound.type?.toLowerCase())) continue;
+
+                list.push({
+                    tag: outbound.tag,
+                    type: outbound.type
+                });
+            }
+
+            setOutbounds(list);
+        } catch (err) {
+            console.error('Failed to load outbounds:', err);
+            setOutbounds([]);
+        } finally {
+            setLoading(false);
+        }
+    }, [filterDirectBlock]);
+
+    // 仅在组件首次挂载时加载一次
+    useEffect(() => {
+        if (!loadedRef.current) {
+            loadedRef.current = true;
+            loadOutbounds();
+        }
+    }, [loadOutbounds]);
+
+    // 打开弹窗时刷新数据
+    const handleOpenModal = () => {
+        if (!disabled) {
+            loadOutbounds();
+            setShowModal(true);
+        }
+    };
 
     const handleConfirm = (tag: string | null) => {
         onChange(tag);
@@ -104,7 +136,7 @@ export function OutboundSelector({
                     disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer",
                     "border-[rgba(39,44,54,0.12)]"
                 )}
-                onClick={() => !disabled && setShowModal(true)}
+                onClick={handleOpenModal}
             >
                 {!value ? (
                     <span className="text-[13px] text-[var(--app-text-quaternary)]">{placeholder}</span>
@@ -118,7 +150,7 @@ export function OutboundSelector({
             {hint && (
                 <p className="text-[11px] text-[var(--app-text-quaternary)]">{hint}</p>
             )}
-            
+
             {/* 出站选择弹窗 */}
             <OutboundSelectorModal
                 open={showModal}

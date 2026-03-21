@@ -33,6 +33,7 @@ function useTrafficData(isRunning: boolean, apiUrl: string, apiSecret: string, p
     const [trafficHistory, setTrafficHistory] = useState<TrafficData[]>([]);
 
     useEffect(() => {
+        // 页面不激活时不建立连接
         if (!isRunning || !apiUrl || pauseConnections) {
             setCurrentTraffic({ up: 0, down: 0 });
             return;
@@ -68,7 +69,8 @@ function useTrafficData(isRunning: boolean, apiUrl: string, apiSecret: string, p
                         
                         setTrafficHistory(prev => {
                             const next = [...prev, { up: data.up, down: data.down, time: now }];
-                            if (next.length > 60) next.shift();
+                            // 优化：减少历史数据点数量，降低内存占用
+                            if (next.length > 40) next.shift();
                             return next;
                         });
                         lastUpdate = now;
@@ -104,6 +106,8 @@ function useTrafficData(isRunning: boolean, apiUrl: string, apiSecret: string, p
             if (reconnectTimeout) clearTimeout(reconnectTimeout);
             if (ws) ws.close();
         };
+    // 注意：isActive 检查在调用方 useTrafficData 的参数中处理
+    // 当 Dashboard 不激活时，pauseConnections 会被设为 true
     }, [isRunning, apiUrl, apiSecret, pauseConnections]);
 
     return { currentTraffic, totalTraffic, trafficHistory };
@@ -182,7 +186,8 @@ export function Dashboard({ isActive }: DashboardProps) {
     const [pausingStatusCheck, setPausingStatusCheck] = useState(false); // 暂停健康检测
 
     // 使用自定义Hook管理流量数据（切换 TUN/内核操作时暂停，避免重连干扰端口释放）
-    const pauseTrafficConnections = tunLoading || coreLoading;
+    // 页面不激活时也暂停，关闭轮询功能
+    const pauseTrafficConnections = !isActive || tunLoading || coreLoading;
     const { currentTraffic, totalTraffic, trafficHistory } = useTrafficData(isRunning, apiUrl, apiSecret, pauseTrafficConnections);
     const tunModeDisplayRef = useRef(false); // 操作期间冻结显示，避免 Switch 先改变
     const coreActionLockRef = useRef(false); // 同步锁，防止短时间多次触发
@@ -393,12 +398,19 @@ export function Dashboard({ isActive }: DashboardProps) {
         // 如果正在暂停状态检测，则不运行
         if (pausingStatusCheck) return;
 
+        // 页面不激活时不运行轮询
+        if (!isActive) return;
+
         checkStatus();
         const timer = setInterval(() => checkStatus(), 5000); // 从3秒改为5秒，减少性能开销
         return () => clearInterval(timer);
-    }, [settingsLoaded, apiUrl, apiSecret, pausingStatusCheck]); // 注意：不要加入 startTime，否则会循环触发
+    }, [settingsLoaded, apiUrl, apiSecret, pausingStatusCheck, isActive]); // 注意：不要加入 startTime，否则会循环触发
 
+    // 运行时间计时器
     useEffect(() => {
+        // 页面不激活时不运行
+        if (!isActive) return;
+
         let interval: NodeJS.Timeout;
         if (isRunning) {
             interval = setInterval(() => {
@@ -413,7 +425,7 @@ export function Dashboard({ isActive }: DashboardProps) {
             setUptime('');
         }
         return () => clearInterval(interval);
-    }, [isRunning, startTime]);
+    }, [isRunning, startTime, isActive]);
 
 
     const runStopService = async () => {

@@ -7,11 +7,10 @@ import { X, ChevronDown, Settings2, Code2, ChevronUp } from 'lucide-react';
 import { cn } from '../../components/Sidebar';
 import type { RuleSetGroupItem } from './PolicyAllRuleSetModal';
 import { PolicyAllRuleSetModal } from './PolicyAllRuleSetModal';
-import { RuleFieldsEditorModal } from './components/RuleFieldsEditorModal';
 import { JsonEditor } from '../../components/JsonEditor';
-import { RuleTreeView } from './components/RuleTreeView';
-import { RULE_FIELD_CONFIG } from './utils/ruleFieldConfig';
-import type { RuleFieldConfig } from './types/ruleFields';
+import { RuleEditorField } from '../../components/AdvancedRuleEditor';
+import type { RuleFieldConfig } from '../../components/AdvancedRuleEditor';
+import type { RouteLogicRule } from '../../types/singbox';
 
 export type PolicyType = 'default' | 'raw';
 
@@ -20,8 +19,8 @@ export interface PolicyEditFormStateBase {
     name: string;
     rawDataContent: string;
     selectedRuleSetIds: Set<string>;
-    /** 规则组树（最小单位为规则组，逻辑字段表示嵌套关系） */
-    ruleGroupsTree?: import('./RuleFieldsEditor').RuleGroupTreeNode | null;
+    /** 高级规则（logical_rule 格式） */
+    ruleGroupsTree?: RouteLogicRule | null;
 }
 
 /** 选项配置 */
@@ -50,11 +49,11 @@ export interface PolicyEditModalBaseProps<T extends PolicyEditFormStateBase> {
     /** 规则集与高级规则同时有值时为 true */
     ruleSetAdvancedConflict?: boolean;
     showRuleSetModal: boolean;
-    showRuleFieldsEditorModal: boolean;
+    showRuleFieldsEditorModal?: boolean;
     onClose: () => void;
     onFormChange: (updates: Partial<T>) => void;
     setShowRuleSetModal: (v: boolean) => void;
-    setShowRuleFieldsEditorModal: (v: boolean) => void;
+    setShowRuleFieldsEditorModal?: (v: boolean) => void;
     onSave: () => void;
     /** 用于显示格式化错误等提示 */
     addNotification?: (message: string, type?: 'success' | 'error' | 'info') => void;
@@ -79,15 +78,13 @@ export function PolicyEditModalBase<T extends PolicyEditFormStateBase>({
     unavailableAclRefs = [],
     ruleSetAdvancedConflict = false,
     showRuleSetModal,
-    showRuleFieldsEditorModal,
     onClose,
     onFormChange,
     setShowRuleSetModal,
-    setShowRuleFieldsEditorModal,
     onSave,
     addNotification,
     fieldConfig,
-    ruleFieldConfig = RULE_FIELD_CONFIG,
+    ruleFieldConfig,
     ruleFieldsEditorTitle = '规则集编辑器',
     extraFields,
     ruleSetMaxVisible = 3,
@@ -329,35 +326,17 @@ export function PolicyEditModalBase<T extends PolicyEditFormStateBase>({
                                             <p className="text-[11px] text-[var(--app-text-quaternary)] pl-1">点击选择规则集，内置与自定义已合并展示</p>
                                         </div>
 
-                                        {/* 规则查看器 + 高级规则编辑器 */}
-                                        <div className="space-y-1.5">
-                                            <div className="flex items-center justify-between gap-2 pl-1">
-                                                <label className="text-[12px] font-medium text-[var(--app-text-secondary)]">高级规则</label>
-                                                <div className="flex items-center gap-2">
-                                                    {form.ruleGroupsTree && (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => onFormChange({ ruleGroupsTree: null } as Partial<T>)}
-                                                            className="px-3 py-1.5 rounded-[8px] border border-[rgba(39,44,54,0.12)] bg-white hover:bg-red-50 hover:border-red-200 hover:text-red-600 transition-colors text-[12px] text-[var(--app-text-tertiary)]"
-                                                        >
-                                                            清空规则
-                                                        </button>
-                                                    )}
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setShowRuleFieldsEditorModal?.(true)}
-                                                        className="px-3 py-1.5 rounded-[8px] border border-[rgba(39,44,54,0.12)] bg-white hover:bg-[var(--app-hover)] transition-colors text-[12px] text-[var(--app-text)]"
-                                                    >
-                                                        打开规则编辑器
-                                                    </button>
-                                                </div>
-                                            </div>
-                                            <RuleTreeView
-                                                node={form.ruleGroupsTree ?? null}
-                                                formConfig={ruleFieldConfig}
-                                            />
-                                            <p className="text-[11px] text-[var(--app-text-quaternary)] pl-1">点击打开高级规则编辑器，支持复杂规则逻辑</p>
-                                        </div>
+                                        {/* 高级规则编辑器 */}
+                                        <RuleEditorField
+                                            value={form.ruleGroupsTree}
+                                            onChange={(logicRule) => {
+                                                onFormChange({ ruleGroupsTree: logicRule } as Partial<T>);
+                                            }}
+                                            label="高级规则"
+                                            hint="点击打开高级规则编辑器，支持复杂规则逻辑"
+                                            modalTitle={ruleFieldsEditorTitle}
+                                            fieldConfig={ruleFieldConfig}
+                                        />
                                         {ruleSetAdvancedConflict && (
                                             <p className="text-[12px] text-red-500 pl-1">规则集和高级规则只能二选一，请清空其中一项后再保存</p>
                                         )}
@@ -382,18 +361,6 @@ export function PolicyEditModalBase<T extends PolicyEditFormStateBase>({
                 onConfirm={handleRuleSetConfirm}
                 onClose={() => setShowRuleSetModal(false)}
             />
-            
-            {/* 规则字段编辑器弹窗 */}
-            {showRuleFieldsEditorModal && (
-                <RuleFieldsEditorModal
-                    open={showRuleFieldsEditorModal}
-                    form={form as any}
-                    onFormChange={updates => onFormChange(updates as Partial<T>)}
-                    onClose={() => setShowRuleFieldsEditorModal?.(false)}
-                    formConfig={ruleFieldConfig}
-                    title={ruleFieldsEditorTitle}
-                />
-            )}
         </>
     );
 }

@@ -4,7 +4,6 @@ import { cn } from '../components/Sidebar';
 import { Zap, Search, MoreVertical, RefreshCw, Activity, X, LayoutGrid, List, ArrowUpDown, AlignLeft, Monitor, ArrowLeft, Settings } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { useApi } from '../contexts/ApiContext';
-import { useProfile } from '../contexts/ProfileContext';
 import { selectProxy, getProxyDelay, fetchProxies } from '../services/api';
 import { useNotificationState, NotificationList } from '../components/ui/Notification';
 
@@ -13,6 +12,10 @@ interface Node {
   name: string;
   type: string;
   delay?: number;
+  /** 从 API history 获取的延迟时间（初始化时显示） */
+  historyDelay?: number;
+  /** 节点所属的组类型（用于判断是否可选） */
+  groupType?: string;
 }
 
 interface ProxyGroup {
@@ -52,6 +55,8 @@ interface NodeCardProps {
   sizeClasses: string;
   onSelect: () => void;
   getDelayClass: (delay?: number) => string;
+  /** URLTest 类型组的当前选择节点名称 */
+  currentNode?: string;
 }
 
 const NodeCard = memo(function NodeCard({
@@ -63,8 +68,11 @@ const NodeCard = memo(function NodeCard({
   testState,
   sizeClasses,
   onSelect,
-  getDelayClass
+  getDelayClass,
+  currentNode
 }: NodeCardProps) {
+  // Selector 和 URLTest 类型显示当前选择的节点
+  const showCurrentNode = type === 'selector' || type === 'Selector' || type === 'urltest' || type === 'URLTest';
   return (
     <div
       onClick={onSelect}
@@ -97,21 +105,32 @@ const NodeCard = memo(function NodeCard({
           ) : testState === 'queued' ? (
             '...'
           ) : (
-            delay ? `${delay} ms` : 'Timeout'
+            delay !== undefined && delay > 0 ? `${delay} ms` : 'Timeout'
           )}
         </div>
       ) : null}
 
       <div className="mt-auto flex items-center text-[var(--app-text-quaternary)]">
-        <span className="text-[11px] font-medium flex-1">{type}</span>
+        <span className="text-[11px] font-medium flex-1">
+          {type}
+          {/* Selector 和 URLTest 类型显示当前选择的节点 */}
+          {showCurrentNode && currentNode && (
+            <span className="ml-1 text-[var(--app-text-quaternary)]">
+              ({currentNode})
+            </span>
+          )}
+        </span>
       </div>
     </div>
   );
 });
 
-export function Proxies() {
+interface ProxiesProps {
+  isActive?: boolean;
+}
+
+export function Proxies({ isActive = true }: ProxiesProps) {
   const { apiUrl, apiSecret } = useApi();
-  const { seed } = useProfile();
   const { notifications, addNotification, removeNotification } = useNotificationState();
   const [groups, setGroups] = useState<ProxyGroup[]>([]);
   const [activeTab, setActiveTab] = useState<string>('');
@@ -137,6 +156,47 @@ export function Proxies() {
   const isTestRunningRef = useRef(false); // 防止测试重复触发
   const activeTabRef = useRef<string>(''); // 用于存储当前 activeTab，避免循环依赖
   const MAX_CONCURRENT_TESTS = 20; // 最大并发测试数量
+
+  // 异步获取 API 数据（延迟和当前选择状态）
+  const fetchApiDataAsync = useCallback(async (currentGroups: ProxyGroup[]) => {
+    if (!apiUrl || currentGroups.length === 0) return;
+
+    try {
+      const apiData = await fetchProxies(apiUrl, apiSecret);
+      const proxies = apiData?.proxies || {};
+
+      // 更新当前选择状态
+      const newSelected: Record<string, string> = {};
+      for (const g of currentGroups) {
+        const p = proxies[g.name];
+        if (p && typeof p.now === 'string' && p.now) {
+          newSelected[g.name] = p.now;
+        }
+      }
+
+      // 更新延迟数据
+      const newHistoryDelays: Record<string, number> = {};
+      for (const [proxyName, proxyData] of Object.entries(proxies)) {
+        const pData = proxyData as { history?: Array<{ time: string; delay: number }> };
+        if (Array.isArray(pData.history) && pData.history.length > 0) {
+          const latestHistory = pData.history[pData.history.length - 1];
+          if (latestHistory && typeof latestHistory.delay === 'number') {
+            newHistoryDelays[proxyName] = latestHistory.delay;
+          }
+        }
+      }
+
+      // 批量更新状态
+      if (!switchingRef.current && Object.keys(newSelected).length > 0) {
+        setSelectedNodes(prev => ({ ...prev, ...newSelected }));
+      }
+      // 即使没有延迟数据也要更新，确保状态一致性
+      setNodeDelays(prev => ({ ...prev, ...newHistoryDelays }));
+    } catch (err) {
+      // API 不可用时静默失败，但记录错误便于调试
+      console.log('[Proxies] API 数据获取失败:', err);
+    }
+  }, [apiUrl, apiSecret]);
 
   const loadProxies = useCallback(async (force = false) => {
     // 如果正在切换节点且不是强制刷新，跳过本次轮询
@@ -212,24 +272,7 @@ export function Proxies() {
         }
       }
 
-      // 从 Clash API 获取运行时真实选择状态（按节点名称，非序号）
-      // 配置文件不会被 API 更新，outbounds[0] 可能已过时
-      if (apiUrl && newGroups.length > 0) {
-        try {
-          const apiData = await fetchProxies(apiUrl, apiSecret);
-          const proxies = apiData?.proxies || {};
-          for (const g of newGroups) {
-            const p = proxies[g.name];
-            if (p && typeof p.now === 'string' && p.now) {
-              // API 的 now 是当前选中的节点名称，优先使用
-              newSelected[g.name] = p.now;
-            }
-          }
-        } catch {
-          // API 不可用时继续使用配置文件中的值
-        }
-      }
-
+      // 立即显示节点（不等待 API）
       setGroups(newGroups);
       if (!switchingRef.current) {
         setSelectedNodes(newSelected);
@@ -239,6 +282,9 @@ export function Proxies() {
         const main = newGroups.find(g => g.name === 'PROXIES' || g.name === 'Proxy') || newGroups[0];
         setActiveTab(main.name);
       }
+
+      // 异步获取 API 数据（延迟和当前选择状态）
+      fetchApiDataAsync(newGroups);
     } catch (err: any) {
       // 读取失败，显示空白
       setGroups([]);
@@ -246,12 +292,14 @@ export function Proxies() {
     } finally {
       setInitialLoading(false);
     }
-  }, [apiUrl, apiSecret]);
+  }, [fetchApiDataAsync]);
 
-  // 组件挂载时和 seed 变化时加载代理数据
+  // 页面激活时加载代理数据（每次进入页面刷新）
   useEffect(() => {
-    loadProxies();
-  }, [loadProxies, seed]);
+    if (isActive) {
+      loadProxies();
+    }
+  }, [isActive]);
 
   // 从数据库加载代理页设置
   useEffect(() => {
@@ -440,6 +488,7 @@ export function Proxies() {
   }, [groups, activeTab, searchActiveGroup, isSearchMode, searchQuery, displayedSearchNodes, nodeTestState, processQueue, apiUrl, apiSecret, addNotification]);
 
   const getDelayClass = useCallback((delay?: number) => {
+    if (delay === undefined) return 'text-red-500';
     if (!delay || delay === 0) return 'text-red-500';
     if (delay < 200) return 'text-green-500';
     if (delay < 500) return 'text-yellow-600';
@@ -664,6 +713,7 @@ export function Proxies() {
                       sizeClasses={sizeClasses}
                       onSelect={() => handleSelectNode(group.name, node.name, group.type === 'select' || group.type === 'Selector')}
                       getDelayClass={getDelayClass}
+                      currentNode={selectedNodes[node.name]}
                     />
                   ))
                 ) : (
@@ -688,6 +738,7 @@ export function Proxies() {
                       sizeClasses={sizeClasses}
                       onSelect={() => handleSelectNode(group.name, node.name, group.type === 'select' || group.type === 'Selector')}
                       getDelayClass={getDelayClass}
+                      currentNode={selectedNodes[node.name]}
                     />
                   );
                 })
@@ -740,6 +791,7 @@ export function Proxies() {
                   sizeClasses={sizeClasses}
                   onSelect={() => handleNodeSelect(node.name)}
                   getDelayClass={getDelayClass}
+                  currentNode={(node.type === 'urltest' || node.type === 'URLTest') ? selectedNodes[node.name] : undefined}
                 />
               ))}
             </div>

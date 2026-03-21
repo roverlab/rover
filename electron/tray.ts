@@ -132,25 +132,6 @@ export function createTray(mainWindow: BrowserWindow) {
                 label: '显示',
                 click: () => mainWindow.show()
             },
-            {
-                label: isRunning ? '停止' : '启动',
-                click: async () => {
-                    if (isRunning) {
-                        console.log('[Tray] 停止服务');
-                        mainWindow.webContents.send('tray-stop-service');
-                    } else {
-                        console.log('[Tray] 启动服务');
-                        mainWindow.webContents.send('tray-start-service');
-                    }
-                }
-            },
-            ...(isRunning ? [{
-                label: '重启',
-                click: () => {
-                    console.log('[Tray] 重启服务');
-                    mainWindow.webContents.send('tray-restart-service');
-                }
-            }] : []),
             { type: 'separator' },
             {
                 label: '规则',

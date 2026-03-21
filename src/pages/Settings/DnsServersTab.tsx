@@ -27,6 +27,7 @@ export interface DnsServerConfig {
   server?: string;
   server_port?: number;
   path?: string;
+  /** DNS 服务器的 detour（固定选项：selector_out 或不选） */
   detour?: string;
   prefer_go?: boolean;
   /** 域名解析器，当 server 为域名时必须指定 */
@@ -72,13 +73,14 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
   const [errorMessage, setErrorMessage] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState<Partial<DnsServerConfig>>({
+  const [form, setForm] = useState<Partial<DnsServerConfig> & { preferred_detour: string }>({
     type: 'udp',
     id: '',
     server: '',
     server_port: 53,
     path: '',
     detour: '',
+    preferred_detour: '',
     domain_resolver: '',
     enabled: true,
     is_default: false,
@@ -179,8 +181,14 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
     if (form.domain_resolver?.trim()) {
       server.domain_resolver = form.domain_resolver.trim();
     }
-    // detour 不再保存到 DNS 服务器本身，而是保存到 profile 关联
-    // 在 handleSubmit 中处理
+    // detour 保存到 DNS 服务器本身（空字符串表示直连，需显式设置为 undefined 以清除原值）
+    if (form.detour?.trim()) {
+      server.detour = form.detour.trim();
+    } else {
+      // 显式设置为 undefined，确保数据库能正确清除原值
+      server.detour = undefined;
+    }
+    // preferred_detour 保存到 profile 关联，在 handleSubmit 中处理
     if (type === 'local' && form.prefer_go !== undefined) server.prefer_go = form.prefer_go;
     return server;
   };
@@ -194,6 +202,7 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
       server_port: 53,
       path: getDefaultPath('https'),
       detour: '',
+      preferred_detour: '',
       domain_resolver: '',
       enabled: true,
       is_default: false,
@@ -205,8 +214,8 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
   const openEditModal = async (s: any) => {
     setEditingId(s.id);
     const id = s.id || '';
-    // 从 profile 获取 detour，而不是从 DNS 服务器本身
-    const detourVal = await getDnsServerDetour(s.id);
+    // 从 profile 获取 preferred_detour
+    const preferredDetourVal = await getDnsServerDetour(s.id);
     // 判断是否为 raw 类型（存储时有 raw_data 字段）
     const isRaw = !!s.raw_data;
     setForm({
@@ -215,7 +224,8 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
       server: s.server || '',
       server_port: s.server_port ?? DEFAULT_PORTS[(s.type || 'udp') as DnsServerType],
       path: s.path ?? getDefaultPath((s.type || 'https') as DnsServerType),
-      detour: detourVal,
+      detour: s.detour || '',
+      preferred_detour: preferredDetourVal,
       prefer_go: s.prefer_go,
       domain_resolver: s.domain_resolver || '',
       raw_data: s.raw_data,
@@ -232,7 +242,7 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
       return;
     }
     const serverData = buildServerFromForm();
-    const detourVal = form.detour?.trim() || null;
+    const preferredDetourVal = form.preferred_detour?.trim() || null;
 
     let serverId: string;
     if (editingId) {
@@ -242,10 +252,10 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
       serverId = await window.ipcRenderer.db.addDnsServer(serverData);
     }
 
-    // 保存 detour 到 profile 关联（与订阅相关）
+    // 保存 preferred_detour 到 profile 关联（与订阅相关）
     if (profileId) {
       try {
-        await window.ipcRenderer.db.setProfileDnsServerDetour(profileId, serverId, detourVal);
+        await window.ipcRenderer.db.setProfileDnsServerDetour(profileId, serverId, preferredDetourVal);
       } catch (e) {
         console.error('Failed to save DNS server detour to profile:', e);
       }
@@ -386,25 +396,26 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
             <table className="data-table w-full">
               <thead className="border-b border-[rgba(39,44,54,0.08)]">
                 <tr className="h-9">
-                  <th className="w-12 shrink-0 pl-4 pr-2 py-2 text-center text-[11px] font-medium text-[var(--app-text-quaternary)]">序号</th>
-                  <th className="w-[72px] shrink-0 px-2 py-2 text-center text-[11px] font-medium text-[var(--app-text-quaternary)]">类型</th>
-                  <th className="min-w-[100px] px-2 py-2 text-left text-[11px] font-medium text-[var(--app-text-quaternary)]">名称</th>
-                  <th className="min-w-[140px] px-2 py-2 text-left text-[11px] font-medium text-[var(--app-text-quaternary)]">地址</th>
-                  <th className="w-[140px] shrink-0 pl-2 pr-4 py-2 text-right text-[11px] font-medium text-[var(--app-text-quaternary)]">操作</th>
+                  <th className="w-12 shrink-0 pl-4 pr-2 py-1.5 text-center text-[11px] font-medium text-[var(--app-text-quaternary)]">序号</th>
+                  <th className="w-[72px] shrink-0 px-2 py-1.5 text-center text-[11px] font-medium text-[var(--app-text-quaternary)]">类型</th>
+                  <th className="min-w-[100px] px-2 py-1.5 text-left text-[11px] font-medium text-[var(--app-text-quaternary)]">名称</th>
+                  <th className="min-w-[140px] px-2 py-1.5 text-left text-[11px] font-medium text-[var(--app-text-quaternary)]">地址</th>
+                  <th className="w-[60px] shrink-0 px-2 py-1.5 text-center text-[11px] font-medium text-[var(--app-text-quaternary)]">出站</th>
+                  <th className="w-[140px] shrink-0 pl-2 pr-4 py-1.5 text-right text-[11px] font-medium text-[var(--app-text-quaternary)]">操作</th>
                 </tr>
               </thead>
               <tbody>
                 {dnsServers.map((s, index) => (
                   <tr key={s.id} className="border-b border-[rgba(39,44,54,0.06)] hover:bg-[rgba(0,0,0,0.02)]">
-                    <td className="w-12 shrink-0 pl-4 pr-2 py-2 text-center text-[12px] text-[var(--app-text-quaternary)] align-middle">
+                    <td className="w-12 shrink-0 pl-4 pr-2 py-1.5 text-center text-[11px] text-[var(--app-text-quaternary)] align-middle">
                       {index + 1}
                     </td>
-                    <td className="w-[72px] shrink-0 px-2 py-2 text-center align-middle">
+                    <td className="w-[72px] shrink-0 px-2 py-1.5 text-center align-middle">
                       <span className={`badge shrink-0 ${s.enabled === false ? 'badge-neutral opacity-50' : 'badge-neutral'}`}>{s.type}</span>
                     </td>
-                    <td className="min-w-[100px] px-2 py-2 align-middle">
+                    <td className="min-w-[100px] px-2 py-1.5 align-middle">
                       <div className="flex items-center gap-2 min-w-0">
-                        <span className={`font-medium truncate ${s.enabled === false ? 'text-[var(--app-text-tertiary)] line-through' : 'text-[var(--app-text)]'}`}>{s.id}</span>
+                        <span className={`text-[13px] font-medium truncate ${s.enabled === false ? 'text-[var(--app-text-tertiary)] line-through' : 'text-[var(--app-text)]'}`}>{s.id}</span>
                         {s.is_default && (
                           <span className="inline-flex items-center gap-1 text-[11px] text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full shrink-0">
                             <CircleDot className="w-3 h-3 fill-emerald-600" />
@@ -413,7 +424,7 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
                         )}
                       </div>
                     </td>
-                    <td className="min-w-[140px] px-2 py-2 align-middle">
+                    <td className="min-w-[140px] px-2 py-1.5 align-middle">
                       <span className="text-[12px] text-[var(--app-text-tertiary)] truncate block">
                         {s.raw_data ? null : s.server ? (
                           <>
@@ -423,7 +434,12 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
                         ) : null}
                       </span>
                     </td>
-                    <td className="w-[140px] shrink-0 pl-2 pr-4 py-2 text-right align-middle">
+                    <td className="w-[60px] shrink-0 px-2 py-1.5 text-center align-middle">
+                      <span className={`badge text-[10px] ${s.detour ? 'badge-accent' : 'badge-neutral'}`}>
+                        {s.detour ? '代理' : '直连'}
+                      </span>
+                    </td>
+                    <td className="w-[140px] shrink-0 pl-2 pr-4 py-1.5 text-right align-middle">
                       <div className="flex items-center justify-end gap-0.5">
                         <Button
                           variant="ghost"
@@ -574,14 +590,32 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
           )}
 
           {needsServerField && (
-            <OutboundSelector
-              value={form.detour || null}
-              onChange={(tag) => setForm((f) => ({ ...f, detour: tag || '' }))}
-              label="订阅出站节点"
-              placeholder="不指定"
-              hint="可选，选择连接此 DNS 服务器的出站节点（当前订阅有效）"
-              filterDirectBlock={true}
-            />
+            <>
+              {/* 出站字段：只有 selector_out 或不选 */}
+              <div>
+                <label className="block text-[12px] font-medium text-[var(--app-text-secondary)] mb-1.5">出站</label>
+                <Select
+                  value={form.detour || ''}
+                  onChange={(e) => setForm((f) => ({ ...f, detour: e.target.value }))}
+                  className="w-full"
+                >
+                  <option value="">直连</option>
+                  <option value="selector_out">代理</option>
+                </Select>
+                <p className="text-[11px] text-[var(--app-text-quaternary)] mt-1">
+                  可选，指定连接此 DNS 服务器的出站
+                </p>
+              </div>
+              {/* 订阅出站节点 */}
+              <OutboundSelector
+                value={form.preferred_detour || null}
+                onChange={(tag) => setForm((f) => ({ ...f, preferred_detour: tag || '' }))}
+                label="订阅出站节点"
+                placeholder="不指定"
+                hint="选择后将覆盖上面的出站（当前订阅有效）"
+                filterDirectBlock={true}
+              />
+            </>
           )}
 
           {form.type === 'local' && (

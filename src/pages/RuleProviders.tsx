@@ -7,57 +7,13 @@ import { cn } from '../components/Sidebar';
 import { Plus, Trash2, Edit2, X, RefreshCw, Layers, MoreVertical, Eye, Copy, Search, Settings, Code2, Cloud, Box } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import type { RuleProvider, RuleProviderType, LocalRuleSetData } from '../types/rule-providers';
-import type { HeadlessRule } from '../types/singbox';
-import { RuleFieldsEditorModal } from './Policies/components/RuleFieldsEditorModal';
-import { RuleTreeView } from './Policies/components/RuleTreeView';
-import { RULE_FIELD_CONFIG } from './Policies/utils/ruleFieldConfig';
-import type { RuleTreeNode, LogicGroup } from './Policies/types/ruleFields';
-import { getDefaultRuleTreeNode } from './Policies/utils/ruleFieldsUtils';
-import { singboxLogicalToRuleTreeNodeRoot, ruleTreeNodeToSingboxLogical } from './Policies/utils/ruleTreeNodeConversion';
-import type { HeadlessPlainRule, RouteLogicRule } from '../types/singbox';
+import type { RuleProvider, RuleProviderType } from '../types/rule-providers';
+import type { RouteLogicRule } from '../types/singbox';
+import { RuleEditorField } from '../components/AdvancedRuleEditor';
 import { useNotificationState, NotificationList, useConfirm } from '../components/ui/Notification';
 import { Modal } from '../components/ui/Modal';
 import { formatRelativeTime } from '../shared/date-utils';
 import { getDisplayErrorMessage } from '../shared/error-utils';
-
-/** 将 HeadlessRule[] 转换为 RuleTreeNode */
-function localRulesToRuleTreeNode(rules: HeadlessRule[]): RuleTreeNode {
-    if (!rules || rules.length === 0) {
-        return getDefaultRuleTreeNode();
-    }
-    // HeadlessRule 结构和 HeadlessPlainRule 兼容
-    const logicalRule: RouteLogicRule = {
-        type: 'logical',
-        mode: 'or', // 多条规则之间是 OR 关系
-        rules: rules as unknown as HeadlessPlainRule[],
-    };
-    return singboxLogicalToRuleTreeNodeRoot(logicalRule) ?? getDefaultRuleTreeNode();
-}
-
-/** 将 RuleTreeNode 转换为 HeadlessRule[] */
-function ruleTreeNodeToLocalRules(node: RuleTreeNode): HeadlessRule[] {
-    const result = ruleTreeNodeToSingboxLogical(node);
-    if (!result || !result.rules || result.rules.length === 0) {
-        return [];
-    }
-    const localRules: HeadlessRule[] = [];
-    function extractRules(lr: RouteLogicRule) {
-        for (const rule of lr.rules) {
-            if ('type' in rule && rule.type === 'logical') {
-                localRules.push(rule as unknown as HeadlessRule);
-            } else {
-                localRules.push(rule as unknown as HeadlessRule);
-            }
-        }
-    }
-    if (result.mode === 'or') {
-        extractRules(result);
-    } else {
-        localRules.push(result as unknown as HeadlessRule);
-    }
-    return localRules;
-}
 
 interface RuleProvidersProps {
     /** 页面是否处于激活状态，用于进入时重新加载 */
@@ -86,9 +42,7 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
     const [showSettingsModal, setShowSettingsModal] = useState(false);
     const [ruleProviderUpdateInterval, setRuleProviderUpdateInterval] = useState(86400);
     const settingsIntervalInputRef = useRef<HTMLInputElement | null>(null);
-    const [showRuleEditor, setShowRuleEditor] = useState(false);
-    const [ruleEditorForm, setRuleEditorForm] = useState<{ ruleGroupsTree: RuleTreeNode | null }>({ ruleGroupsTree: null });
-    const [editingLocalProviderId, setEditingLocalProviderId] = useState<string | null>(null);
+    const [logicRule, setLogicRule] = useState<RouteLogicRule | null>(null);
 
     // Notification state
     const { notifications, addNotification, removeNotification } = useNotificationState();
@@ -160,7 +114,7 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
         setName('');
         setUrl('');
         setType('clash');
-        setRuleEditorForm({ ruleGroupsTree: null });
+        setLogicRule(null);
         setShowModal(true);
     };
 
@@ -169,150 +123,59 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
         setName(provider.name);
         setUrl(provider.url);
         setType(provider.type || 'clash');
-        // 本地类型：从 raw_data 初始化规则树，以便 RuleTreeView 首次打开时可见
+        // 本地类型：从 logical_rule 初始化规则树
         if (provider.type === 'local') {
-            const rules = provider.raw_data?.rules || [];
-            const treeNode = localRulesToRuleTreeNode(rules);
-            setRuleEditorForm({ ruleGroupsTree: treeNode });
+            setLogicRule(provider.logical_rule || null);
         } else {
-            setRuleEditorForm({ ruleGroupsTree: null });
+            setLogicRule(null);
         }
         setShowModal(true);
     };
 
-    // 打开本地规则集编辑器（编辑已有规则集）
-    const handleOpenRuleEditor = (provider: RuleProvider) => {
-        const rules = provider.raw_data?.rules || [];
-        const treeNode = localRulesToRuleTreeNode(rules);
-        setRuleEditorForm({ ruleGroupsTree: treeNode });
-        setEditingLocalProviderId(provider.id);
-        setShowRuleEditor(true);
-    };
-
-    // 打开高级规则编辑器（新建时使用草稿）
-    const handleOpenRuleEditorForNew = () => {
-        const draft = ruleEditorForm.ruleGroupsTree ?? getDefaultRuleTreeNode();
-        setRuleEditorForm({ ruleGroupsTree: draft });
-        setEditingLocalProviderId(null); // null 表示草稿模式
-        setShowRuleEditor(true);
-    };
-
-    // 保存本地规则集（编辑已有）或关闭弹窗（新建草稿）
-    const handleSaveRuleEditor = async () => {
-        if (editingLocalProviderId && ruleEditorForm.ruleGroupsTree) {
-            const localRules = ruleTreeNodeToLocalRules(ruleEditorForm.ruleGroupsTree);
-            const data: LocalRuleSetData = {
-                version: 3,
-                rules: localRules,
-            };
-            try {
-                await window.ipcRenderer.core.saveLocalRuleProvider(editingLocalProviderId, data);
-                setShowRuleEditor(false);
-                setEditingLocalProviderId(null);
-                loadProviders();
-                addNotification('规则集已保存');
-            } catch (err: any) {
-                addNotification(`保存失败: ${err?.message || '未知错误'}`, 'error');
-            }
-        } else {
-            // 草稿模式：仅关闭弹窗，规则已通过 onFormChange 更新到 ruleEditorForm
-            setShowRuleEditor(false);
-            setEditingLocalProviderId(null);
-        }
-    };
 
     const handleSave = async () => {
-        // 本地类型：只需要名称，但必须有规则内容
+        if (!name.trim()) return;
+        if (type !== 'local' && !url.trim()) return;
+
+        // 本地类型需要检查规则内容
         if (type === 'local') {
-            if (!name.trim()) return;
-
-            // 检查是否有规则内容
-            const localRules = ruleEditorForm.ruleGroupsTree
-                ? ruleTreeNodeToLocalRules(ruleEditorForm.ruleGroupsTree)
-                : [];
-
             // 对于新建的本地规则集，必须有规则内容
-            if (!editingProvider && localRules.length === 0) {
+            if (!editingProvider && !logicRule) {
                 addNotification('本地规则集必须包含至少一条规则', 'error');
                 return;
             }
 
             // 对于编辑已有的本地规则集，检查现有规则是否为空
             if (editingProvider) {
-                const existingRules = editingProvider.raw_data?.rules || [];
-                const hasRules = localRules.length > 0 || existingRules.length > 0;
+                const hasRules = logicRule?.rules?.length || editingProvider.logical_rule?.rules?.length;
                 if (!hasRules) {
                     addNotification('本地规则集必须包含至少一条规则', 'error');
                     return;
                 }
             }
-
-            try {
-                if (editingProvider) {
-                    await window.ipcRenderer.db.updateRuleProvider(editingProvider.id, {
-                        name: name.trim(),
-                    });
-                    // 如果有新规则，保存规则数据
-                    if (localRules.length > 0) {
-                        const data: LocalRuleSetData = {
-                            version: 3,
-                            rules: localRules,
-                        };
-                        await window.ipcRenderer.core.saveLocalRuleProvider(editingProvider.id, data);
-                    }
-                } else {
-                    const providerId = await window.ipcRenderer.core.addLocalRuleProvider({
-                        name: name.trim(),
-                        enabled: true
-                    });
-                    // 新建时保存规则数据
-                    if (localRules.length > 0) {
-                        const data: LocalRuleSetData = {
-                            version: 3,
-                            rules: localRules,
-                        };
-                        await window.ipcRenderer.core.saveLocalRuleProvider(providerId, data);
-                    }
-                }
-                setShowModal(false);
-                loadProviders();
-                addNotification('规则集已保存');
-            } catch (err: any) {
-                addNotification(`操作失败: ${err?.message || '未知错误'}`, 'error');
-            }
-            return;
         }
 
-        if (!name.trim() || !url.trim()) return;
-
         try {
-            if (editingProvider) {
-                await window.ipcRenderer.db.updateRuleProvider(editingProvider.id, {
-                    name: name.trim(),
-                    url: url.trim(),
-                    type
-                });
-                setShowModal(false);
-                loadProviders();
-            } else {
-                try {
-                    await window.ipcRenderer.core.addRuleProviderWithDownload({
-                        name: name.trim(),
-                        url: url.trim(),
-                        type,
-                        enabled: true
-                    });
-                    setShowModal(false);
-                    loadProviders();
-                    addNotification('规则集已添加');
-                } catch (dlErr: any) {
-                    addNotification(`添加失败: ${dlErr?.message || '未知错误'}`, 'error');
-                } finally {
-                    loadProviders();
-                }
-            }
+            // 统一调用后端接口，由后端根据 type 判断处理方式
+            const providerData = {
+                id: editingProvider?.id,
+                name: name.trim(),
+                url: url.trim(),
+                type,
+                enabled: true,
+                logical_rule: type === 'local' ? logicRule : undefined,
+            };
+            
+            await window.ipcRenderer.core.saveRuleProvider(providerData);
+            
+            setShowModal(false);
+            loadProviders();
+            addNotification(editingProvider ? '规则集已保存' : '规则集已添加');
+            
+            // 触发配置生成
+            window.ipcRenderer.core.generateConfig();
         } catch (err: any) {
-            console.error('Failed to save rule provider:', err);
+            addNotification(`操作失败: ${err?.message || '未知错误'}`, 'error');
         }
     };
 
@@ -549,14 +412,14 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
 
     const filteredProviders = useMemo(() => {
         const query = searchQuery.trim().toLowerCase();
-        const list = providers.filter((p) => {
+        return providers.filter((p) => {
             if (statusFilter === 'enabled' && p.enabled === false) return false;
             if (statusFilter === 'disabled' && p.enabled !== false) return false;
             if (statusFilter === 'selected' && !selectedProviderIds.has(p.id)) return false;
             if (!query) return true;
             return p.name.toLowerCase().includes(query) || p.url.toLowerCase().includes(query);
         });
-        return [...list].sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
+        // 保持后端返回的顺序（后添加的在前）
     }, [providers, searchQuery, statusFilter, selectedProviderIds]);
 
     const providerStats = useMemo(() => ({
@@ -665,10 +528,10 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
                     </div>
 
                     <div className="overflow-x-auto">
-                                <table className="w-full text-[13px]">
+                                <table className="w-full">
                                     <thead>
-                                        <tr className="border-b border-[var(--app-divider)] bg-[var(--app-bg-secondary)]/50">
-                                            <th className="w-8 shrink-0 pl-4 pr-2 py-2.5 text-left">
+                                        <tr className="sticky top-0 z-10 border-b border-[var(--app-divider)] bg-[rgba(248,249,251,0.95)]">
+                                            <th className="w-8 shrink-0 pl-4 pr-2 py-1.5 text-left">
                                                 {filteredProviders.length > 0 && (
                                                     <input
                                                         type="checkbox"
@@ -695,12 +558,12 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
                                                     />
                                                 )}
                                             </th>
-                                            <th className="text-left py-2.5 px-3 font-medium text-[var(--app-text-secondary)] w-[44px]">#</th>
-                                            <th className="text-left py-2.5 px-3 font-medium text-[var(--app-text-secondary)] w-[1%]">启用</th>
-                                            <th className="text-left py-2.5 px-3 font-medium text-[var(--app-text-secondary)] min-w-[140px]">名称</th>
-                                            <th className="text-left py-2.5 px-3 font-medium text-[var(--app-text-secondary)] w-[70px]">类型</th>
-                                            <th className="text-left py-2.5 px-3 font-medium text-[var(--app-text-secondary)] w-[110px]">最后更新</th>
-                                            <th className="text-right py-2.5 px-3 font-medium text-[var(--app-text-secondary)] w-[90px]">操作</th>
+                                            <th className="text-left py-1.5 px-3 text-[11px] font-medium text-[var(--app-text-quaternary)] w-[44px]">#</th>
+                                            <th className="text-left py-1.5 px-3 text-[11px] font-medium text-[var(--app-text-quaternary)] w-[1%]">启用</th>
+                                            <th className="text-left py-1.5 px-3 text-[11px] font-medium text-[var(--app-text-quaternary)] min-w-[140px]">名称</th>
+                                            <th className="text-left py-1.5 px-3 text-[11px] font-medium text-[var(--app-text-quaternary)] w-[70px]">类型</th>
+                                            <th className="text-left py-1.5 px-3 text-[11px] font-medium text-[var(--app-text-quaternary)] w-[110px]">最后更新</th>
+                                            <th className="text-right py-1.5 px-3 text-[11px] font-medium text-[var(--app-text-quaternary)] w-[90px]">操作</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -733,7 +596,7 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
                                                     }
                                                 }}
                                             >
-                                                <td className="w-8 shrink-0 pl-4 pr-2 py-2 align-middle" onClick={(e) => e.stopPropagation()}>
+                                                <td className="w-8 shrink-0 pl-4 pr-2 py-1.5 align-middle" onClick={(e) => e.stopPropagation()}>
                                                     <input
                                                         type="checkbox"
                                                         checked={selectedProviderIds.has(provider.id)}
@@ -742,33 +605,33 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
                                                         aria-label={`选择 ${provider.name}`}
                                                     />
                                                 </td>
-                                                <td className="py-2 px-3 text-[var(--app-text-quaternary)] text-[12px] tabular-nums">
+                                                <td className="py-1.5 px-3 text-[var(--app-text-quaternary)] text-[11px] tabular-nums">
                                                     {index + 1}
                                                 </td>
-                                                <td className="py-2 px-3 align-middle">
+                                                <td className="py-1.5 px-3 align-middle">
                                                     <Switch
                                                         checked={provider.enabled !== false}
                                                         onCheckedChange={() => handleToggleEnabled(provider)}
                                                         className="scale-90"
                                                     />
                                                 </td>
-                                                <td className={cn("py-2 px-3", provider.enabled === false && "opacity-60")}>
-                                                    <span className="font-medium text-[var(--app-text)] truncate block max-w-[160px]" title={provider.name}>
+                                                <td className={cn("py-1.5 px-3", provider.enabled === false && "opacity-60")}>
+                                                    <span className="text-[13px] font-medium text-[var(--app-text)] truncate block max-w-[160px]" title={provider.name}>
                                                         {provider.name}
                                                     </span>
                                                 </td>
-                                                <td className={cn("py-2 px-3", provider.enabled === false && "opacity-60")}>
+                                                <td className={cn("py-1.5 px-3", provider.enabled === false && "opacity-60")}>
                                                     <Badge tone="accent" className="text-[10px] px-1.5 py-0 !bg-[rgba(85,96,111,0.2)]">
                                                         {provider.type || 'clash'}
                                                     </Badge>
                                                 </td>
-                                                <td className={cn("py-2 px-3 text-[var(--app-text-quaternary)] text-[11px]", provider.enabled === false && "opacity-60")}>
+                                                <td className={cn("py-1.5 px-3 text-[var(--app-text-quaternary)] text-[11px]", provider.enabled === false && "opacity-60")}>
                                                     {provider.last_update ? 
                                                         formatRelativeTime(provider.last_update) : 
                                                         '—'
                                                     }
                                                 </td>
-                                                <td className="py-2 px-3 text-right">
+                                                <td className="py-1.5 px-3 text-right">
                                                     <div className="flex items-center justify-end gap-0.5">
                                                         {provider.type !== 'local' && (
                                                         <Button
@@ -831,18 +694,6 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
                                         <Edit2 className="w-3.5 h-3.5 mr-2" />
                                         编辑
                                     </button>
-                                    {provider.type === 'local' && (
-                                        <button
-                                            className="flex items-center px-3 py-1.5 text-[12px] text-[var(--app-text-secondary)] hover:bg-[var(--app-bg-secondary)] hover:text-[var(--app-text)] transition-colors text-left w-full"
-                                            onClick={() => {
-                                                setOpenDropdownId(null);
-                                                handleOpenRuleEditor(provider);
-                                            }}
-                                        >
-                                            <Code2 className="w-3.5 h-3.5 mr-2" />
-                                            高级规则编辑
-                                        </button>
-                                    )}
                                     <div className="mx-2 my-1 border-t border-[rgba(39,44,54,0.06)]" />
                                     <button
                                         className="flex items-center px-3 py-1.5 text-[12px] text-red-500 hover:bg-red-50 transition-colors text-left"
@@ -1090,23 +941,13 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
                                 </div>
                                 )}
                                 {type === 'local' && (
-                                <div className="space-y-1.5">
-                                    <div className="flex items-center justify-between gap-2 pl-1">
-                                        <label className="text-[12px] font-medium text-[var(--app-text-secondary)]">规则内容</label>
-                                        <button
-                                            type="button"
-                                            onClick={() => editingProvider ? handleOpenRuleEditor(editingProvider) : handleOpenRuleEditorForNew()}
-                                            className="px-3 py-1.5 rounded-[8px] border border-[rgba(39,44,54,0.12)] bg-white hover:bg-[var(--app-hover)] transition-colors text-[12px] text-[var(--app-text)]"
-                                        >
-                                            打开规则编辑器
-                                        </button>
-                                    </div>
-                                    <RuleTreeView
-                                        node={ruleEditorForm.ruleGroupsTree ?? null}
-                                        formConfig={RULE_FIELD_CONFIG}
-                                    />
-                                    <p className="text-[11px] text-[var(--app-text-quaternary)] pl-1">点击打开规则编辑器，支持域名、IP、端口等多种匹配规则</p>
-                                </div>
+                                <RuleEditorField
+                                    value={logicRule}
+                                    onChange={setLogicRule}
+                                    label="规则内容"
+                                    modalTitle={editingProvider ? `编辑规则集: ${editingProvider.name}` : '添加本地规则集'}
+                                    showClearButton={false}
+                                />
                                 )}
                             </div>
 
@@ -1115,7 +956,7 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
                                 <Button
                                     variant="primary"
                                     onClick={handleSave}
-                                    disabled={!name.trim() || (type !== 'local' && !url.trim()) || (type === 'local' && !editingProvider && !ruleEditorForm.ruleGroupsTree)}
+                                    disabled={!name.trim() || (type !== 'local' && !url.trim()) || (type === 'local' && !editingProvider && !logicRule)}
                                 >
                                     保存
                                 </Button>
@@ -1127,21 +968,6 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
                 document.body
             )}
 
-            {/* 规则编辑器（用于本地类型规则集） */}
-            <RuleFieldsEditorModal
-                open={showRuleEditor}
-                onClose={() => {
-                    setShowRuleEditor(false);
-                    setEditingLocalProviderId(null);
-                }}
-                onConfirm={handleSaveRuleEditor}
-                form={ruleEditorForm}
-                onFormChange={(changes) => {
-                    setRuleEditorForm(prev => ({ ...prev, ...changes }));
-                }}
-                formConfig={RULE_FIELD_CONFIG}
-                title="编辑本地规则集"
-            />
         </div>
     );
 }

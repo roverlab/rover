@@ -252,15 +252,11 @@ export function policiesToSingboxConfig(
     };
 }
 
-const PRESET_OUTBOUND_MAP: Record<string, string> = {
-    direct: 'direct_out',
-    block: 'block_out',
-    currentSelected: 'selector_out',
-};
+
 
 /**
  * 从 cn.json 规则转换为策略
- * 预设中的出站值映射为 direct_out / block_out / selector_out
+ * 直接使用模板中的 outbound 值，不进行转换
  * 如果存在 raw_data 字段，则策略类型为 raw，raw_data 写入策略的 raw_data 字段
  * 对于 action 类型的规则（如 sniff, hijack-dns, resolve），不添加 outbound 字段
  */
@@ -278,7 +274,10 @@ export function cnJsonRuleToPolicy(rule: CnJsonRule, order: number): Omit<Policy
                 outbound: ''
             };
         }
-        const outbound = PRESET_OUTBOUND_MAP[rule.outbound ?? ''] ?? rule.outbound ?? 'selector_out';
+        // 优先使用 raw_data 中的 outbound，其次使用顶层的 outbound，直接使用不转换
+        const rawOutbound = (rule.raw_data as Record<string, unknown>)?.outbound as string | undefined;
+        const sourceOutbound = rawOutbound ?? rule.outbound;
+        const outbound = sourceOutbound ?? 'selector_out';
         const rawData = { ...rule.raw_data, outbound };
         return {
             type: 'raw',
@@ -290,7 +289,8 @@ export function cnJsonRuleToPolicy(rule: CnJsonRule, order: number): Omit<Policy
         };
     }
 
-    const outbound = PRESET_OUTBOUND_MAP[rule.outbound ?? ''] ?? rule.outbound ?? 'selector_out';
+    // 直接使用模板中的 outbound 值，不进行转换
+    const outbound = rule.outbound ?? 'selector_out';
     const subRules: HeadlessPlainRule[] = [];
     const hasPackage = rule.package?.length;
     const hasProcess = rule.processName?.length;

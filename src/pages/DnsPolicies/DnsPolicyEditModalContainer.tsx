@@ -14,9 +14,7 @@ import {
     type BasePolicy,
     type PolicyFieldDataConfig,
 } from '../Policies/PolicyEditModalBaseContainer';
-import { useProfile } from '../../contexts/ProfileContext';
 import { cn } from '../../components/Sidebar';
-import { DNS_RULE_FIELD_CONFIG } from '../Policies/utils/dnsRuleFieldConfig';
 import { Select } from '../../components/ui/Field';
 
 export interface DnsPolicyEditFormState extends PolicyEditFormStateBase {
@@ -67,7 +65,6 @@ export function DnsPolicyEditModalContainer({
     onSaved,
     addNotification,
 }: DnsPolicyEditModalContainerProps) {
-    const { seed } = useProfile();
 
     return (
         <PolicyEditModalBaseContainer<DnsPolicyEditFormState, BasePolicy>
@@ -112,11 +109,9 @@ export function DnsPolicyEditModalContainer({
                 unavailableAclRefs,
                 ruleSetAdvancedConflict,
                 showRuleSetModal,
-                showRuleFieldsEditorModal,
                 onClose,
                 onFormChange,
                 setShowRuleSetModal,
-                setShowRuleFieldsEditorModal,
                 onSave,
                 addNotification,
             }) => {
@@ -144,7 +139,7 @@ export function DnsPolicyEditModalContainer({
                             });
                         }
                     }
-                }, [open, policy?.id, seed]);
+                }, [open, policy?.id]);
 
                 // 构建动态的DNS服务器选项（统一使用 id）
                 const dynamicDnsServerOptions = React.useMemo(() => {
@@ -192,15 +187,12 @@ export function DnsPolicyEditModalContainer({
                         unavailableAclRefs={unavailableAclRefs}
                         ruleSetAdvancedConflict={ruleSetAdvancedConflict}
                         showRuleSetModal={showRuleSetModal}
-                        showRuleFieldsEditorModal={showRuleFieldsEditorModal}
                         onClose={onClose}
                         onFormChange={onFormChange}
                         setShowRuleSetModal={setShowRuleSetModal}
-                        setShowRuleFieldsEditorModal={setShowRuleFieldsEditorModal}
                         onSave={onSave}
                         addNotification={addNotification}
                         fieldConfig={dynamicFieldConfig}
-                        ruleFieldConfig={DNS_RULE_FIELD_CONFIG}
                         ruleFieldsEditorTitle="规则编辑器"
                         extraFields={extraFields}
                     />

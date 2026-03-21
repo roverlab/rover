@@ -14,7 +14,6 @@ import {
     type BasePolicy,
     type PolicyFieldDataConfig,
 } from './PolicyEditModalBaseContainer';
-import { useProfile } from '../../contexts/ProfileContext';
 import { OutboundSelector } from '../../components/OutboundSelector';
 
 export interface PolicyEditFormState extends PolicyEditFormStateBase {
@@ -65,7 +64,6 @@ export function PolicyEditModalContainer({
     onSaved,
     addNotification,
 }: PolicyEditModalContainerProps) {
-    const { seed } = useProfile();
 
     return (
         <PolicyEditModalBaseContainer<PolicyEditFormState, BasePolicy>
@@ -112,11 +110,9 @@ export function PolicyEditModalContainer({
                 unavailableAclRefs,
                 ruleSetAdvancedConflict,
                 showRuleSetModal,
-                showRuleFieldsEditorModal,
                 onClose,
                 onFormChange,
                 setShowRuleSetModal,
-                setShowRuleFieldsEditorModal,
                 onSave,
                 addNotification,
             }) => {
@@ -137,7 +133,7 @@ export function PolicyEditModalContainer({
                             });
                         }
                     }
-                }, [open, policy?.id, seed]);
+                }, [open, policy?.id]);
 
                 // 订阅出站节点选择器（单选模式，不过滤 direct 和 block）
                 const extraFields = (
@@ -161,11 +157,9 @@ export function PolicyEditModalContainer({
                         unavailableAclRefs={unavailableAclRefs}
                         ruleSetAdvancedConflict={ruleSetAdvancedConflict}
                         showRuleSetModal={showRuleSetModal}
-                        showRuleFieldsEditorModal={showRuleFieldsEditorModal}
                         onClose={onClose}
                         onFormChange={onFormChange}
                         setShowRuleSetModal={setShowRuleSetModal}
-                        setShowRuleFieldsEditorModal={setShowRuleFieldsEditorModal}
                         onSave={onSave}
                         addNotification={addNotification}
                         fieldConfig={POLICY_FIELD_CONFIG}

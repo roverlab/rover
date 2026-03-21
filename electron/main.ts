@@ -32,8 +32,7 @@ import {
     writeConfigFileOnly,
     getCurrentConfigRules,
     getAvailableOutbounds,
-    POLICY_FINAL_OUTBOUND_VALUES,
-    regenerateConfigForRuleProviderIfNeeded
+    POLICY_FINAL_OUTBOUND_VALUES
 } from './config-file';
 import {
     loadPresetRulesets,
@@ -62,6 +61,9 @@ import {
 import { clearAllDns } from './dns-macos';
 
 const log = createLogger('Main');
+
+// sing-box 日志文件当前行数（启动时初始化，避免前端读取旧日志）
+let singboxLogInitialLineCount = 0;
 
 // 从 subscription 模块重新导出辅助函数
 const { readProfileContent } = subscription;
@@ -101,11 +103,27 @@ ipcMain.handle('config:export', async (event) => exportConfig(event));
 ipcMain.handle('config:import', async (event) => importConfig(event, sendToRenderer));
 
 
-scheduler.setRuleProviderUpdatedHook(async (providerId) => {
+scheduler.setRuleProviderUpdatedHook(async () => {
+
     try {
-        await regenerateConfigForRuleProviderIfNeeded(providerId, 'rule provider auto-updated by scheduler', sendToRenderer, log);
+        // 1. 获取当前选中的订阅
+        const selectedProfile = dbUtils.getSelectedProfile();
+
+        // 2. 检查更新的是否为当前选中的订阅且存在
+        if (selectedProfile) {
+            try {
+                // 3. 重新生成配置文件
+                await generateConfigFile(selectedProfile.id, sendToRenderer);
+
+                // 4. 通知前端刷新
+                sendToRenderer('ruleProvider-updated');
+            } catch (err: any) {
+                console.error('Failed to generate config:', err.message);
+                throw err; // 抛出给外层 catch 统一记录日志
+            }
+        }
     } catch (err: any) {
-        log.error(`[Config] regenerate after scheduler update failed: ${err?.message || err}`);
+        log.error(`[Config] regenerate after ruleProviders update failed: ${err?.message || err}`);
     }
 });
 
@@ -316,19 +334,26 @@ ipcMain.handle('core:getTemplatePolicies', async (_, templatePath: string) => {
     }
 });
 
-// 查看规则集内容：统一返回反编译后的 JSON
+// 查看规则集内容：本地类型直接返回 logical_rule，远程类型反编译 SRS
 ipcMain.handle('core:getRuleProviderViewContent', async (_, providerId: string) => {
     const provider = dbUtils.getRuleProviderById(providerId);
     if (!provider) throw new Error('规则集不存在');
+
+    // 本地类型：直接返回数据库中的 logical_rule
+    if (provider.type === 'local') {
+        const logicalRule = (provider as any).logical_rule;
+        if (logicalRule) {
+            return { content: JSON.stringify(logicalRule, null, 2), error: '' };
+        }
+        // 如果没有 logical_rule，尝试从 SRS 反编译
+    }
+
     const filePath = provider.path ? resolveDataPath(provider.path) : null;
     if (!filePath || !fs.existsSync(filePath)) {
         throw new Error('规则集文件不存在，请先刷新下载');
     }
 
-
-      
-        const content = decompileSrsToJson(filePath);
-
+    const content = decompileSrsToJson(filePath);
     return { content: content, error: '' };
 });
 
@@ -597,6 +622,11 @@ ipcMain.handle('logger:clearAllLogs', () => clearAllLogs());
 ipcMain.handle('logger:log', (_event, level: LogLevel, module: string, message: string) => loggerLog(level, module, message));
 ipcMain.handle('logger:logBatch', (_event, entries: LogEntry[]) => logBatch(entries));
 
+// 获取 sing-box 日志文件的初始行数（应用启动时已记录的行数）
+ipcMain.handle('singbox:getInitialLogLineCount', () => {
+    return { lineCount: singboxLogInitialLineCount };
+});
+
 // 读取 sing-box 内核日志文件（本地文件，不调接口）
 // 容错：编码回退、移除不可打印字符、读取异常时返回空
 ipcMain.handle('singbox:readLog', async (_event, options?: { fromLine?: number }) => {
@@ -636,6 +666,8 @@ ipcMain.handle('singbox:clearLog', async () => {
     const logPath = getSingboxLogPath();
     try {
         fs.writeFileSync(logPath, '', 'utf-8');
+        // 清空日志后重置初始行数
+        singboxLogInitialLineCount = 0;
         return { success: true };
     } catch (err) {
         log.error(`清理 sing-box 日志失败: ${(err as Error).message}`);
@@ -731,19 +763,32 @@ app.whenReady().then(async () => {
     setCachedIsServiceInstalled(isInstalled);
     log.info(`[RoverService] 检测结果: 二进制=${binaryInstalled}, 服务运行=${serviceRunning}, 缓存=${isInstalled ? '服务已安装' : '服务未安装'}`);
 
-    // 清理无效的 profile.policies / profile.dnsPolicies 条目
-    dbUtils.cleanupProfilePolicies();
-    dbUtils.cleanupProfileDnsPolicies();
+// 清理无效的 profile.policies / profile.dnsPolicies 条目
+dbUtils.cleanupProfilePolicies();
+dbUtils.cleanupProfileDnsPolicies();
+dbUtils.cleanupProfileDnsServerDetours();
 
     // 简化逻辑：TUN 模式需要 RootService 服务
     // 如果开启 TUN 但 RootService 未安装，提示用户安装
     const tunModeEnabled = dbUtils.getSetting('dashboard-tun-mode') === 'true';
     const isServiceInstalledCached = getCachedIsServiceInstalled();
     
-    log.info(`[启动检测] TUN模式: ${tunModeEnabled}, RootService已安装: ${isServiceInstalledCached}`);
+    log.info('[启动检测] TUN模式: ${tunModeEnabled}, RootService已安装: ${isServiceInstalledCached}');
     
     if (tunModeEnabled && !isServiceInstalledCached) {
         log.warn('[启动检测] TUN模式已启用但RootService未安装，请安装RootService以使用TUN模式');
+    }
+
+    // 初始化 sing-box 日志文件的当前行数，避免前端读取旧日志
+    const singboxLogPath = getSingboxLogPath();
+    try {
+        if (fs.existsSync(singboxLogPath)) {
+            const content = fs.readFileSync(singboxLogPath, 'utf8');
+            singboxLogInitialLineCount = content.split(/\r?\n/).length;
+            log.info(`[启动] sing-box 日志文件当前行数: ${singboxLogInitialLineCount}`);
+        }
+    } catch (err) {
+        log.warn(`[启动] 读取 sing-box 日志文件行数失败: ${(err as Error).message}`);
     }
 
     createWindow();

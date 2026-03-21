@@ -6,7 +6,6 @@ import { Input } from '../components/ui/Field';
 import { Card, ListRow, SectionHeader } from '../components/ui/Surface';
 import { Modal } from '../components/ui/Modal';
 import { useApi } from '../contexts/ApiContext';
-import { useProfile } from '../contexts/ProfileContext';
 import { Settings as SettingsIcon, Sliders, Check, Globe, Download, Upload, Info, ExternalLink } from 'lucide-react';
 import { DnsServersTab } from './Settings/DnsServersTab';
 import { useOverrideRules } from '../contexts/OverrideRulesContext';
@@ -21,7 +20,6 @@ interface SettingsProps {
 export function Settings({ isActive = true, initialTab, onTabConsumed }: SettingsProps = {}) {
   const { apiUrl, apiSecret, setApiUrl, setApiSecret } = useApi();
   const { refreshOverrideRules } = useOverrideRules();
-  const { refreshSeed } = useProfile();
 
   // App Settings
   const [lang, setLang] = useState('en');
@@ -258,8 +256,6 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
       if (key === 'ipv6') setIpv6(value);
       if (key === 'custom-proxy-groups') {
         setCustomProxyGroups(value);
-        // 刷新代理页面以显示更新后的代理组
-        refreshSeed();
       }
 
       // 订阅 User-Agent 和启动自动打开内核 不影响 config.json，无需重新生成

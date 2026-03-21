@@ -7,7 +7,6 @@ import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Field';
 import { Badge, Card } from '../components/ui/Surface';
 import { useNotificationState, NotificationList, useConfirm } from '../components/ui/Notification';
-import { useProfile } from '../contexts/ProfileContext';
 import { formatRelativeTime } from '../shared/date-utils';
 import { GroupEditor } from './Profiles/components/GroupEditor';
 
@@ -65,14 +64,18 @@ function formatExpire(expire: number): string {
   return `${y}-${m}-${d}`;;
 }
 
-export function Profiles() {
+interface ProfilesProps {
+  isActive?: boolean;
+}
+
+export function Profiles({ isActive = true }: ProfilesProps) {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [urlInput, setUrlInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const { notifications, addNotification, removeNotification } = useNotificationState();
   const { confirm, ConfirmDialog } = useConfirm();
-  const { refreshSeed, seed } = useProfile();
+  const [refreshSeed, setRefreshSeed] = useState(0);
 
   const [editingProfile, setEditingProfile] = useState<Profile | null>(null);
   const [editName, setEditName] = useState('');
@@ -101,6 +104,13 @@ export function Profiles() {
     return () => document.removeEventListener('click', handleClickOutside);
   }, []);
 
+  // 页面激活时刷新数据
+  useEffect(() => {
+    if (isActive) {
+      setRefreshSeed(prev => prev + 1);
+    }
+  }, [isActive]);
+
   const handleOpenDropdown = (e: React.MouseEvent, profileId: string) => {
     e.stopPropagation();
     const button = dropdownButtonRefs.current[profileId];
@@ -125,7 +135,7 @@ export function Profiles() {
 
   useEffect(() => {
     loadProfiles();
-  }, [seed]);
+  }, [refreshSeed]);
 
   const handleSelect = async (id: string) => {
     // 检查是否已经在选中状态，如果已选中则不做任何操作
@@ -141,8 +151,8 @@ export function Profiles() {
         selected: p.id === id ? 1 : 0
       })));
 
-      // 更新 seed，触发代理页面刷新
-      refreshSeed();
+      // 触发代理页面刷新
+      setRefreshSeed(prev => prev + 1);
 
       // Regenerate config.json when switching profiles（写入时若内核运行中会自动重启）
       window.ipcRenderer.core.generateConfig();
@@ -190,7 +200,7 @@ export function Profiles() {
         await window.ipcRenderer.db.selectProfile(profileId);
         await loadProfiles();
         window.ipcRenderer.core.generateConfig();
-        refreshSeed(); // 触发代理、策略等页面刷新
+        setRefreshSeed(prev => prev + 1); // 触发代理、策略等页面刷新
       }
       addNotification('订阅已添加');
     } catch (err) {
@@ -249,7 +259,7 @@ export function Profiles() {
         await window.ipcRenderer.db.selectProfile(firstId);
         window.ipcRenderer.core.generateConfig();
       }
-      if (deletedWasSelected) refreshSeed(); // 删除的是当前选中配置时，触发代理、策略等页面刷新
+      if (deletedWasSelected) setRefreshSeed(prev => prev + 1); // 删除的是当前选中配置时，触发代理、策略等页面刷新
       await loadProfiles();
       addNotification('Profile deleted');
     } catch (err) {
@@ -658,7 +668,7 @@ export function Profiles() {
           onClose={() => setEditingGroupProfile(null)}
           onSave={() => {
             // 刷新 profiles 列表
-            refreshSeed();
+            setRefreshSeed(prev => prev + 1);
             loadProfiles();
           }}
         />

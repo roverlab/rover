@@ -7,7 +7,6 @@ import { cn } from '../../components/Sidebar';
 import type { Policy } from '../../types/policy';
 import { getOutboundLabel, getOutboundTone, getPolicyOutbound, getPolicyRuleSets, getPolicyMatchCount, isOutboundDisplayable } from './utils';
 import { PolicyRowDropdown } from './PolicyRowDropdown';
-import { useProfile } from '../../contexts/ProfileContext';
 
 interface PolicyListCardProps {
     policies: Policy[];
@@ -36,7 +35,6 @@ export function PolicyListCard({
     onBatchDisable,
     onBatchDelete,
 }: PolicyListCardProps) {
-    const { seed } = useProfile();
     const [searchQuery, setSearchQuery] = useState('');
     const [statusFilter, setStatusFilter] = useState<'all' | 'enabled' | 'disabled' | 'selected'>('all');
     const [selectedPolicyIds, setSelectedPolicyIds] = useState<Set<string>>(new Set());
@@ -86,7 +84,7 @@ export function PolicyListCard({
         };
 
         loadProfilePolicies();
-    }, [policies, seed]);
+    }, [policies]);
 
     useEffect(() => {
         const handleClickOutside = (e: MouseEvent) => {

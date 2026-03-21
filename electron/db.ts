@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import { getDbPath, getDataDir, toDataRelativePath } from './paths';
-import type { RuleProvider, LocalRuleSetData } from '../src/types/rule-providers';
+import type { RuleProvider } from '../src/types/rule-providers';
 import type { Policy } from '../src/types/policy';
 import type { DnsPolicy } from '../src/types/dns-policy';
 import { getPolicyRuleSet } from '../src/services/policy';
@@ -32,7 +32,7 @@ export interface ProfileDnsPolicyItem {
 /** 嵌入在 Profile 内的 DNS 服务器 detour 偏好（不含 profile_id） */
 export interface ProfileDnsServerItem {
     dns_server_id: string;
-    detour: string | null;
+    preferred_detour: string | null;
 }
 
 /** 自定义代理分组的单个分组配置 */
@@ -107,12 +107,11 @@ export interface DnsServer {
     server?: string;
     server_port?: number;
     path?: string;
+    /** DNS 服务器的 detour */
     detour?: string;
     prefer_go?: boolean;
-    inet4_range?: string;
-    inet6_range?: string;
-    predefined?: Record<string, string | string[]>;
-    [key: string]: unknown;
+    domain_resolver?: string;
+    raw_data?: object;
 }
 
 interface DbData {
@@ -272,7 +271,7 @@ export function getDnsServers(): DnsServer[] {
     return withDb((data) => [...(data.dnsServers ?? [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)));
 }
 
-export function addDnsServer(server: Omit<DnsServer, 'id' | 'order'> & { order?: number }): string {
+export function addDnsServer(server: Omit<DnsServer, 'order'> & { order?: number }): string {
     return withDb((data) => {
         const dnsServers = data.dnsServers ?? [];
         const maxOrder = dnsServers.reduce((m, s) => Math.max(m, s.order ?? 0), -1);
@@ -315,36 +314,6 @@ export function updateDnsServer(id: string, updates: Partial<DnsServer>): void {
             const { id: _unusedId, ...rest } = updates;
             arr[idx] = { ...server, ...rest, id: newId };
 
-            // 迁移 profile.dnsPolicies[].preferred_server
-            for (const profile of data.profiles) {
-                const items = profile.dnsPolicies ?? [];
-                for (const p of items) {
-                    if (p.preferred_server === oldId) p.preferred_server = newId;
-                }
-            }
-
-            // 迁移 dnsPolicies.server
-            const dnsPolicies = data.dnsPolicies ?? [];
-            for (const p of dnsPolicies) {
-                if ((p.server || '').trim() === oldId) p.server = newId;
-            }
-
-            // 迁移 policies（路由规则）中 raw_data.server
-            const policies = data.policies ?? [];
-            for (const p of policies) {
-                const raw = (p as { raw_data?: { server?: string } }).raw_data;
-                if (raw?.server && typeof raw.server === 'string' && raw.server.trim() === oldId) {
-                    raw.server = newId;
-                }
-            }
-
-            // 迁移 profile.dnsServerDetours
-            for (const profile of data.profiles) {
-                const detours = profile.dnsServerDetours ?? [];
-                for (const d of detours) {
-                    if (d.dns_server_id === oldId) d.dns_server_id = newId;
-                }
-            }
         } else {
             // id 未变更，仅应用其他字段（不允许通过 updates 修改 id）
             const { id: _unusedId, ...rest } = updates;
@@ -362,7 +331,7 @@ export function updateDnsServer(id: string, updates: Partial<DnsServer>): void {
                     delete cleanedServer[key];
                 }
             }
-            arr[idx] = { ...cleanedServer, ...cleanedRest } as DnsServer;
+            arr[idx] = { ...cleanedServer, ...cleanedRest } as unknown as DnsServer;
         }
     });
 }
@@ -409,12 +378,12 @@ export function clearDefaultDnsServer(): void {
 }
 
 /**
- * 按 tag 作为 id 插入或更新 DNS 服务器（重复 tag 则覆盖）
- * 注意：模板中的 tag 会作为 id 使用
+ * 按 name 作为 id 插入或更新 DNS 服务器（重复 tag 则覆盖）
+ * 注意：模板中的 name 会作为 id 使用
  * 当服务器包含 raw_data 字段时，使用 raw 类型保存
  */
 export function upsertDnsServerByTag(serverFromTemplate: Record<string, unknown>, order: number): string {
-    const tag = serverFromTemplate?.tag;
+    const tag = serverFromTemplate?.name;
     if (typeof tag !== 'string' || !tag.trim()) {
         throw new Error('DNS server must have a valid tag');
     }
@@ -716,13 +685,13 @@ export function updateRuleProviderContent(id: string, filePath: string, lastUpda
 }
 
 /**
- * 更新本地规则集的 raw_data 和 srs 文件路径
+ * 更新本地规则集的 logical_rule 和 srs 文件路径
  */
-export function updateLocalRuleProviderData(id: string, rawData: LocalRuleSetData, srsPath?: string) {
+export function updateLocalRuleProviderData(id: string, logicalRule: any, srsPath?: string) {
     withDb((data) => {
         const p = data.ruleProviders.find((x) => x.id === id);
         if (p) {
-            p.raw_data = rawData;
+            p.logical_rule = logicalRule;
             if (srsPath) {
                 p.path = toDataRelativePath(srsPath);
             }
@@ -1023,7 +992,7 @@ export function getProfileDnsServerDetour(profileId: string, dnsServerId: string
     return withDb((data) => {
         const profile = data.profiles.find((p) => p.id === profileId);
         const item = profile?.dnsServerDetours?.find((d) => d.dns_server_id === dnsServerId);
-        return item?.detour ?? null;
+        return item?.preferred_detour ?? null;
     });
 }
 
@@ -1035,13 +1004,13 @@ export function setProfileDnsServerDetour(profileId: string, dnsServerId: string
         const idx = detours.findIndex((d) => d.dns_server_id === dnsServerId);
         if (idx >= 0) {
             if (detour) {
-                detours[idx].detour = detour;
+                detours[idx].preferred_detour = detour;
             } else {
                 // 如果 detour 为 null，移除该条目
                 detours.splice(idx, 1);
             }
         } else if (detour) {
-            detours.push({ dns_server_id: dnsServerId, detour });
+            detours.push({ dns_server_id: dnsServerId, preferred_detour: detour });
         }
         profile.dnsServerDetours = detours;
     });
@@ -1136,6 +1105,32 @@ export function updateDnsPoliciesOrder(orders: Array<{ id: string; order: number
 export function clearDnsPolicies(): void {
     withDb((data) => {
         data.dnsPolicies = [];
+    });
+}
+
+/**
+ * 清空所有 profile 的 dnsServerDetours
+ */
+export function clearAllProfileDnsServerDetours(): void {
+    withDb((data) => {
+        for (const profile of data.profiles) {
+            profile.dnsServerDetours = [];
+        }
+    });
+}
+
+/**
+ * 清空所有策略相关数据（用于导入模板前清理）
+ */
+export function clearAllPolicyData(): void {
+    withDb((data) => {
+        data.policies = [];
+        data.dnsPolicies = [];
+        for (const profile of data.profiles) {
+            profile.policies = [];
+            profile.dnsPolicies = [];
+            profile.dnsServerDetours = [];
+        }
     });
 }
 
@@ -1240,6 +1235,25 @@ export function cleanupProfileDnsPolicies(): void {
         }
         if (cleanedCount > 0) {
             console.log(`[DB] Cleaned up ${cleanedCount} invalid profile.dnsPolicies entries`);
+        }
+    });
+}
+
+/**
+ * 清理无效的 profile.dnsServerDetours 条目
+ * 移除 dns_server_id 不存在的条目
+ */
+export function cleanupProfileDnsServerDetours(): void {
+    withDb((data) => {
+        const validDnsServerIds = new Set(data.dnsServers.map((s) => s.id));
+        let cleanedCount = 0;
+        for (const profile of data.profiles) {
+            const before = (profile.dnsServerDetours ?? []).length;
+            profile.dnsServerDetours = (profile.dnsServerDetours ?? []).filter((d) => validDnsServerIds.has(d.dns_server_id));
+            cleanedCount += before - (profile.dnsServerDetours?.length ?? 0);
+        }
+        if (cleanedCount > 0) {
+            console.log(`[DB] Cleaned up ${cleanedCount} invalid profile.dnsServerDetours entries`);
         }
     });
 }

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Trash2, Pause, Play, Activity, Search, MoreVertical, FileX2, X } from 'lucide-react';
+import { Trash2, Pause, Play, Activity, Search, MoreVertical, FileX2, X, ArrowUp } from 'lucide-react';
 import { cn } from '../components/Sidebar';
 import { Button } from '../components/ui/Button';
 import { Input, Select } from '../components/ui/Field';
@@ -20,17 +20,21 @@ interface LogsProps {
   isActive?: boolean;
 }
 
-const POLL_INTERVAL_MS = 1500;
-const MAX_DISPLAY_LOGS = 500;
+// 优化：降低轮询频率，减少内存占用
+const POLL_INTERVAL_MS = 2000;
+const MAX_DISPLAY_LOGS = 300;
 
 /** 移除 ANSI 转义序列，支持常见格式 */
 function stripAnsi(str: string): string {
   if (typeof str !== 'string') return '';
   return str
-    .replace(/\x1b\[[0-9;]*m/g, '')           // 颜色/样式
+    .replace(/\x1b\[[0-9;]*m/g, '')           // 标准 ANSI 颜色/样式
     .replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '')   // 光标控制等
     .replace(/\x1b\]8;;[^\x07]*\x07/g, '')   // OSC 8 超链接
-    .replace(/\x1b\][^\x07\x1b]*[\x07\x1b]?/g, '');  // 其他 OSC
+    .replace(/\x1b\][^\x07\x1b]*[\x07\x1b]?/g, '')  // 其他 OSC
+    // 处理已经失去 \x1b 前缀的残留 ANSI 码（如 [36m、[0m、[1;31m）
+    // 只匹配 CSI 风格的残留码：数字+字母结尾（常见字母：m K A B C D s u J H f）
+    .replace(/\[(?:[0-9]{1,3}(?:;[0-9]{1,3})*)?[mKHfABCDsJu]/g, '');
 }
 
 /** 从配置解析错误消息中提取友好提示 */
@@ -114,41 +118,40 @@ export function Logs({ isActive = true }: LogsProps) {
   const [isPaused, setIsPaused] = useState(false);
   const [levelFilter, setLevelFilter] = useState<string>('all');
   const [searchText, setSearchText] = useState('');
-  const recordedLineCountRef = useRef(0);
+  const [fromLine, setFromLine] = useState<number | null>(null);
   const idCounter = useRef(0);
-  const [initialRecorded, setInitialRecorded] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const moreButtonRef = useRef<HTMLButtonElement>(null);
   const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0 });
   const { confirm, ConfirmDialog } = useConfirm();
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
+  // 初始化：从后端获取启动时已记录的日志行数
   useEffect(() => {
     if (!isActive) {
-      setInitialRecorded(false);
+      setFromLine(null);
       return;
     }
 
     const loadInitial = async () => {
       try {
-        const { totalLines } = await window.ipcRenderer.singbox.readLog();
-        recordedLineCountRef.current = totalLines;
+        const { lineCount } = await window.ipcRenderer.singbox.getInitialLogLineCount();
+        setFromLine(lineCount);
       } catch {
-        recordedLineCountRef.current = 0;
+        setFromLine(0);
       }
-      setInitialRecorded(true);
     };
 
     loadInitial();
   }, [isActive]);
 
+  // 轮询读取新日志
   useEffect(() => {
-    if (!isActive || isPaused || !initialRecorded) return;
+    if (!isActive || isPaused || fromLine === null) return;
 
     const poll = async () => {
       try {
-        const { lines, totalLines } = await window.ipcRenderer.singbox.readLog({
-          fromLine: recordedLineCountRef.current
-        });
+        const { lines, totalLines } = await window.ipcRenderer.singbox.readLog({ fromLine });
         if (lines.length > 0) {
           const newEntries: LogEntry[] = lines
             .filter((l) => l != null && String(l).trim().length > 0)
@@ -162,14 +165,14 @@ export function Logs({ isActive = true }: LogsProps) {
                 configHint: parsed.configHint
               };
             });
-          recordedLineCountRef.current = totalLines;
+          setFromLine(totalLines);
           setLogs((prev) => {
             const next = [...prev, ...newEntries];
             if (next.length > MAX_DISPLAY_LOGS) return next.slice(next.length - MAX_DISPLAY_LOGS);
             return next;
           });
-        } else if (totalLines > recordedLineCountRef.current) {
-          recordedLineCountRef.current = totalLines;
+        } else if (totalLines > fromLine) {
+          setFromLine(totalLines);
         }
       } catch {
         // 忽略读取错误
@@ -180,7 +183,7 @@ export function Logs({ isActive = true }: LogsProps) {
     poll();
 
     return () => clearInterval(timer);
-  }, [isActive, isPaused, initialRecorded]);
+  }, [isActive, isPaused, fromLine]);
 
   const clearLogs = () => setLogs([]);
 
@@ -207,9 +210,7 @@ export function Logs({ isActive = true }: LogsProps) {
       const res = await window.ipcRenderer.singbox.clearLog();
       if (res.success) {
         setLogs([]);
-        recordedLineCountRef.current = 0;
-        setInitialRecorded(false);
-        setTimeout(() => setInitialRecorded(true), 0);
+        setFromLine(0);
       }
     } catch {
       // ignore
@@ -282,7 +283,7 @@ export function Logs({ isActive = true }: LogsProps) {
           >
             <option value="all">全部级别</option>
             <option value="info">INFO</option>
-            <option value="warning">WARNING</option>
+            <option value="warning">WARN</option>
             <option value="error">ERROR</option>
             <option value="debug">DEBUG</option>
           </Select>
@@ -333,19 +334,19 @@ export function Logs({ isActive = true }: LogsProps) {
         </div>
       </div>
 
-      <div className="page-content">
-      <Card className="flex-1 overflow-hidden">
+      <div className="page-content min-w-0 flex flex-col min-h-0 overflow-hidden">
+      <Card className="flex-1 overflow-hidden min-w-0 flex flex-col min-h-0">
         <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--app-divider)]">
           <div className="text-[13px] font-medium text-[var(--app-text-secondary)]">内核日志列表</div>
           <Badge tone={isPaused ? 'warning' : 'success'}>{isPaused ? '已暂停' : '实时'}</Badge>
         </div>
-        <div className="flex-1 overflow-auto">
-          <table className="data-table text-[12px]">
-          <thead className="sticky top-0 z-10 text-[11px] uppercase">
+        <div ref={scrollContainerRef} className="table-scroll-x flex-1 min-h-0 overflow-y-auto">
+          <table className="data-table text-[12px] min-w-full">
+          <thead className="sticky top-0 z-10 text-[12px] font-semibold text-[var(--app-text-secondary)] !bg-[rgba(255,255,255,0.9)]">
             <tr>
-              <th className="px-5 py-2.5 font-medium w-32">时间</th>
-              <th className="px-5 py-2.5 font-medium w-28">级别</th>
-              <th className="px-5 py-2.5 font-medium">消息</th>
+              <th className="px-5 py-2.5 w-32">时间</th>
+              <th className="px-5 py-2.5 w-28">级别</th>
+              <th className="px-5 py-2.5">消息</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--app-divider)]">
@@ -384,6 +385,17 @@ export function Logs({ isActive = true }: LogsProps) {
         </div>
       </Card>
       </div>
+      <button
+        onClick={() => {
+          if (scrollContainerRef.current) {
+            scrollContainerRef.current.scrollTop = 0;
+          }
+        }}
+        className="floating-action w-[52px] h-[52px]"
+        title="返回顶部"
+      >
+        <ArrowUp className="w-5 h-5" />
+      </button>
       <ConfirmDialog />
     </div>
   );

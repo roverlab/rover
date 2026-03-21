@@ -101,11 +101,9 @@ contextBridge.exposeInMainWorld('ipcRenderer', {
         getCurrentConfigRules: () => ipcRenderer.invoke('core:getCurrentConfigRules'),
         getBuildInfo: () => ipcRenderer.invoke('core:getBuildInfo'),
         downloadRuleProvider: (providerId: string) => ipcRenderer.invoke('core:downloadRuleProvider', providerId),
-        addRuleProviderWithDownload: (provider: { name: string; url: string; type?: string; enabled?: boolean }) => ipcRenderer.invoke('core:addRuleProviderWithDownload', provider),
         getRuleProviderViewContent: (providerId: string) => ipcRenderer.invoke('core:getRuleProviderViewContent', providerId),
-        // Local Rule Provider
-        addLocalRuleProvider: (provider: { name: string; enabled?: boolean }) => ipcRenderer.invoke('core:addLocalRuleProvider', provider),
-        saveLocalRuleProvider: (providerId: string, rawData: any) => ipcRenderer.invoke('core:saveLocalRuleProvider', providerId, rawData),
+        // Rule Provider Save (unified)
+        saveRuleProvider: (provider: { id?: string; name: string; url?: string; type: string; enabled?: boolean; rules?: any[] }) => ipcRenderer.invoke('core:saveRuleProvider', provider),
         // Templates & Policies
         getTemplates: () => ipcRenderer.invoke('core:getTemplates'),
         getTemplatePolicies: (templatePath: string) => ipcRenderer.invoke('core:getTemplatePolicies', templatePath),
@@ -126,6 +124,7 @@ contextBridge.exposeInMainWorld('ipcRenderer', {
 
     // Sing-box 内核日志（本地文件）
     singbox: {
+        getInitialLogLineCount: () => ipcRenderer.invoke('singbox:getInitialLogLineCount'),
         readLog: (options?: { fromLine?: number }) => ipcRenderer.invoke('singbox:readLog', options),
         clearLog: () => ipcRenderer.invoke('singbox:clearLog'),
     },

@@ -68,7 +68,7 @@ export interface ElectronAPI {
             // Profile DNS Server Detours
             getProfileDnsServerDetour(profileId: string, dnsServerId: string): Promise<string | null>;
             setProfileDnsServerDetour(profileId: string, dnsServerId: string, detour: string | null): Promise<void>;
-            getAllProfileDnsServerDetours(profileId: string): Promise<Array<{ dns_server_id: string; detour: string | null }>>;
+            getAllProfileDnsServerDetours(profileId: string): Promise<Array<{ dns_server_id: string; preferred_detour: string | null }>>;
             // Custom Proxy Groups
             getProfileCustomGroups(profileId: string): Promise<CustomProxyGroup[]>;
             setProfileCustomGroups(profileId: string, groups: CustomProxyGroup[]): Promise<void>;
@@ -108,11 +108,9 @@ export interface ElectronAPI {
             getCurrentConfigRules(): Promise<any[]>;
             getBuildInfo(): Promise<{ appVersion: string; singboxVersion: string; buildTime: string; buildNumber: string; commitSha: string }>;
             downloadRuleProvider(providerId: string): Promise<{ success: boolean; path: string }>;
-            addRuleProviderWithDownload(provider: { name: string; url: string; type?: string; enabled?: boolean }): Promise<string>;
             getRuleProviderViewContent(providerId: string): Promise<{ content: string | null; error: string | null }>;
-            // Local Rule Provider
-            addLocalRuleProvider(provider: { name: string; enabled?: boolean }): Promise<string>;
-            saveLocalRuleProvider(providerId: string, rawData: import('./types/rule-providers').LocalRuleSetData): Promise<{ success: boolean; srsPath: string }>;
+            // Rule Provider Save (unified)
+            saveRuleProvider(provider: { id?: string; name: string; url?: string; type: RuleProviderType; enabled?: boolean; rules?: import('./types/singbox').HeadlessRule[] }): Promise<void>;
             // Templates & Policies
             getTemplates(): Promise<Array<{ name: string; description: string; path: string }>>;
             getTemplatePolicies(templatePath: string): Promise<{ rules: any[]; dns?: any; rule_unmatched_outbound?: string }>;
@@ -138,6 +136,7 @@ export interface ElectronAPI {
             logBatch(entries: Array<{ level: string; module: string; message: string }>): Promise<void>;
         };
         singbox: {
+            getInitialLogLineCount(): Promise<{ lineCount: number }>;
             readLog(options?: { fromLine?: number }): Promise<{ lines: string[]; totalLines: number }>;
             clearLog(): Promise<{ success: boolean; error?: string }>;
         };

@@ -12,7 +12,6 @@ import { RuleProviders } from './pages/RuleProviders';
 import { Routes } from './pages/Routes';
 import { ApiProvider } from './contexts/ApiContext';
 import { OverrideRulesProvider } from './contexts/OverrideRulesContext';
-import { ProfileProvider } from './contexts/ProfileContext';
 import { OverrideRulesGate } from './components/OverrideRulesGate';
 
 export type Page = 'Dashboard' | 'Proxies' | 'Profiles' | 'Policies' | 'DnsPolicies' | 'RuleProviders' | 'Routes' | 'Logs' | 'Connections' | 'Settings';
@@ -51,11 +50,21 @@ function ConfigLoaderOverlay() {
   );
 }
 
+// 使用 React.memo 缓存页面组件，避免不必要的重渲染
+const MemoizedDashboard = React.memo(Dashboard);
+const MemoizedProxies = React.memo(Proxies);
+const MemoizedProfiles = React.memo(Profiles);
+const MemoizedPolicies = React.memo(Policies);
+const MemoizedDnsPolicies = React.memo(DnsPolicies);
+const MemoizedRuleProviders = React.memo(RuleProviders);
+const MemoizedRoutes = React.memo(Routes);
+const MemoizedLogs = React.memo(Logs);
+const MemoizedConnections = React.memo(Connections);
+const MemoizedSettings = React.memo(Settings);
+
 export default function App() {
   const [currentPage, setCurrentPage] = useState<Page>('Dashboard');
   const [settingsInitialTab, setSettingsInitialTab] = useState<'basic' | 'advanced' | 'dns' | 'about' | null>(null);
-
-  const isPage = (pageName: Page) => currentPage === pageName ? 'flex flex-col flex-1 min-h-0' : 'hidden';
 
   const goToAdvancedSettings = useCallback(() => {
     setSettingsInitialTab('advanced');
@@ -64,46 +73,50 @@ export default function App() {
 
   const consumeSettingsTab = useCallback(() => setSettingsInitialTab(null), []);
 
+  // 判断页面是否活跃
+  const isPageActive = (pageName: Page) => currentPage === pageName;
+
   return (
     <ApiProvider>
-      <ProfileProvider>
-        <OverrideRulesProvider>
+      <OverrideRulesProvider>
         <div className="app-shell relative">
-        <div className="window-frame text-[var(--app-text)] font-sans relative">
-          <Sidebar currentPage={currentPage} onPageChange={setCurrentPage} />
+            <div className="window-frame text-[var(--app-text)] font-sans relative">
+              <Sidebar currentPage={currentPage} onPageChange={setCurrentPage} />
 
-          <ConfigLoaderOverlay />
+              <ConfigLoaderOverlay />
 
-          <main className="app-main">
-            <div className="flex-1 relative z-10 overflow-hidden flex flex-col min-h-0">
-              <div className={isPage('Dashboard')}><Dashboard isActive={currentPage === 'Dashboard'} /></div>
-              <div className={isPage('Proxies')}><Proxies /></div>
-              <div className={isPage('Profiles')}><Profiles /></div>
-              <div className={isPage('Policies')}>
-                <OverrideRulesGate pageName="Policies" onGoToAdvancedSettings={goToAdvancedSettings}>
-                  <Policies />
-                </OverrideRulesGate>
-              </div>
-              <div className={isPage('DnsPolicies')}>
-                <OverrideRulesGate pageName="DnsPolicies" onGoToAdvancedSettings={goToAdvancedSettings}>
-                  <DnsPolicies isActive={currentPage === 'DnsPolicies'} />
-                </OverrideRulesGate>
-              </div>
-              <div className={isPage('RuleProviders')}>,
-                <OverrideRulesGate pageName="RuleProviders" onGoToAdvancedSettings={goToAdvancedSettings}>
-                  <RuleProviders isActive={currentPage === 'RuleProviders'} />
-                </OverrideRulesGate>
-              </div>
-              <div className={isPage('Routes')}><Routes isActive={currentPage === 'Routes'} /></div>
-              <div className={isPage('Logs')}><Logs isActive={currentPage === 'Logs'} /></div>
-              <div className={isPage('Connections')}><Connections isActive={currentPage === 'Connections'} /></div>
-              <div className={isPage('Settings')}><Settings isActive={currentPage === 'Settings'} initialTab={settingsInitialTab} onTabConsumed={consumeSettingsTab} /></div>
+              <main className="app-main">
+                <div className="flex-1 relative z-10 overflow-hidden flex flex-col min-h-0">
+                  {/* 所有页面条件渲染，切换时卸载以节省内存 */}
+                  {isPageActive('Dashboard') && <MemoizedDashboard isActive={true} />}
+                  {isPageActive('Proxies') && <MemoizedProxies isActive={true} />}
+                  {isPageActive('Profiles') && <MemoizedProfiles isActive={true} />}
+                  {isPageActive('Policies') && (
+                    <OverrideRulesGate pageName="Policies" onGoToAdvancedSettings={goToAdvancedSettings}>
+                      <MemoizedPolicies isActive={true} />
+                    </OverrideRulesGate>
+                  )}
+                  {isPageActive('DnsPolicies') && (
+                    <OverrideRulesGate pageName="DnsPolicies" onGoToAdvancedSettings={goToAdvancedSettings}>
+                      <MemoizedDnsPolicies isActive={true} />
+                    </OverrideRulesGate>
+                  )}
+                  {isPageActive('RuleProviders') && (
+                    <OverrideRulesGate pageName="RuleProviders" onGoToAdvancedSettings={goToAdvancedSettings}>
+                      <MemoizedRuleProviders isActive={true} />
+                    </OverrideRulesGate>
+                  )}
+                  {isPageActive('Routes') && <MemoizedRoutes isActive={true} />}
+                  {isPageActive('Logs') && <MemoizedLogs isActive={true} />}
+                  {isPageActive('Connections') && <MemoizedConnections isActive={true} />}
+                  {isPageActive('Settings') && (
+                    <MemoizedSettings isActive={true} initialTab={settingsInitialTab} onTabConsumed={consumeSettingsTab} />
+                  )}
+                </div>
+              </main>
             </div>
-          </main>
-        </div>
-      </div>
+          </div>
         </OverrideRulesProvider>
-      </ProfileProvider>
     </ApiProvider>
   );
 }

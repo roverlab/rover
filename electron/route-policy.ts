@@ -13,10 +13,8 @@ import * as singbox from './core-controller';
 import { getDataDir, getRulesetsDir, resolveDataPath, getBuiltinResourcesPath, getPresetRulesetsPath, getPresetTemplatesPath } from './paths';
 import { cnJsonRuleToPolicy, getPolicyRuleSet } from '../src/services/policy';
 import type { RuleProviderForConfig, CnJsonRule } from '../src/types/policy';
-import { getRuleProviderFileBaseName, downloadAndConvertRuleSet, compileLocalRuleSet } from './ruleset-utils';
+import { getRuleProviderFileBaseName, downloadAndConvertRuleSet, compileLocalRuleSet, compileLocalRuleSetFromLogicRule } from './ruleset-utils';
 import {
-    regenerateConfigIfOverrideRulesEnabled,
-    regenerateConfigForRuleProviderIfNeeded
 } from './config-file';
 import * as scheduler from './scheduler';
 import { RuleProvider } from '../src/types/rule-providers';
@@ -367,43 +365,49 @@ export function registerRuleProviderIpcHandlers(
                 policiesToImport.push(policy);
             });
 
-            const hasDns = data.dns && typeof data.dns === 'object' && (
-                (Array.isArray(data.dns.servers) && data.dns.servers.length > 0) ||
-                (Array.isArray(data.dns.rules) && data.dns.rules.length > 0)
-            );
+            // 新模板格式：顶层 dns_servers 和 dns_rules 字段
+            const servers = Array.isArray(data.dns_servers) ? data.dns_servers : [];
+            const dnsRules = Array.isArray(data.dns_rules) ? data.dns_rules : [];
+            
+            const hasDns = servers.length > 0 || dnsRules.length > 0;
             if (policiesToImport.length === 0 && !hasDns) {
                 return { success: false, message: '该模板没有可导入的策略或 DNS 配置', addedCount: 0 };
             }
 
+            // 导入前清理所有相关数据
+            dbUtils.clearAllPolicyData();
+
             const addedCount = policiesToImport.length > 0 ? dbUtils.addPoliciesBatch(policiesToImport, true) : 0;
 
             let dnsSet = false;
-            // 导入模板时：dns.servers -> dnsServers 表（tag 作为 id，重复覆盖）；dns.rules -> dnsPolicies 表（先清空再写入）
+            // 导入模板时：dns_servers -> dnsServers 表（name 作为 id，重复覆盖）；dns_rules -> dnsPolicies 表（先清空再写入）
+      
             try {
-                const dns = data.dns;
-                if (dns && typeof dns === 'object') {
-                    const servers = Array.isArray(dns.servers) ? dns.servers : [];
+                if (servers.length > 0 || dnsRules.length > 0) {
                     for (let i = 0; i < servers.length; i++) {
                         const s = servers[i];
-                        if (s && typeof s === 'object' && s.tag) {
-                            dbUtils.upsertDnsServerByTag(s as Record<string, unknown>, i);
+                        // 支持 tag 或 name 字段作为标识
+                        const serverTag = s.tag || s.name;
+                        if (s && typeof s === 'object' && serverTag) {
+                            // 直接使用模板中的 detour 值，不进行转换
+                            if (s.detour && typeof s.detour === 'string' && s.detour === "selector_out") {
+                                s.detour = "selector_out";
+                            }else{
+                                s.detour = undefined;
+                            }
+                            // 将 tag 或 name 作为 name 字段，用于数据库存储
+                            const serverData = { ...s, name: serverTag } as Record<string, unknown>;
+                            dbUtils.upsertDnsServerByTag(serverData, i);
                         }
                     }
-                    const rules = Array.isArray(dns.rules) ? dns.rules : [];
-                    dbUtils.clearDnsPolicies();
-                    for (let i = 0; i < rules.length; i++) {
-                        const r = rules[i];
+                    for (let i = 0; i < dnsRules.length; i++) {
+                        const r = dnsRules[i];
                         if (r && typeof r === 'object' && (r.server || r.raw_data)) {
                             const policy = templateDnsRuleToDnsPolicy(r as Record<string, unknown>, i);
                             if (policy) dbUtils.addDnsPolicy(policy);
                         }
                     }
-                    dbUtils.cleanupProfileDnsPolicies();
-                    dnsSet = servers.length > 0 || rules.length > 0;
-                } else {
-                    // 模板没有 DNS 配置时，清空 DNS 策略数据
-                    dbUtils.clearDnsPolicies();
-                    dbUtils.cleanupProfileDnsPolicies();
+                    dnsSet = servers.length > 0 || dnsRules.length > 0;
                 }
             } catch (e) {
                 console.error('Failed to save DNS config from template:', e);
@@ -413,13 +417,8 @@ export function registerRuleProviderIpcHandlers(
             let finalOutbound: string | undefined;
             if (data.rule_unmatched_outbound) {
                 try {
-                    // 转换 outbound 值：direct -> direct_out, block -> block_out, currentSelected -> selector_out
-                    const PRESET_OUTBOUND_MAP: Record<string, string> = {
-                        direct: 'direct_out',
-                        block: 'block_out',
-                        currentSelected: 'selector_out',
-                    };
-                    const normalizedOutbound = PRESET_OUTBOUND_MAP[data.rule_unmatched_outbound] ?? data.rule_unmatched_outbound;
+                    // 直接使用模板中的 outbound 值，不进行转换
+                    const normalizedOutbound = data.rule_unmatched_outbound;
                     dbUtils.setSetting('policy-final-outbound', normalizedOutbound);
                     finalOutbound = normalizedOutbound;
                     finalOutboundSet = true;
@@ -521,7 +520,6 @@ tunNeedsAdmin = !checkIsServiceInstalled();
                 dbUtils.updateRuleProviderContent(providerId, result.srsPath, new Date().toISOString());
             }
             
-            await regenerateConfigForRuleProviderIfNeeded(providerId, 'rule provider downloaded', sendToRenderer, log);
             return { success: true, path: result.srsPath };
         } catch (dlErr: any) {
             console.error('Failed to download rule provider:', dlErr.message);
@@ -529,43 +527,10 @@ tunNeedsAdmin = !checkIsServiceInstalled();
         }
     });
 
-    // 新增规则集：先下载，成功后再写入数据库
-    ipcMain.handle('core:addRuleProviderWithDownload', async (_, provider: { name: string; url: string; type?: 'clash' | 'singbox'; enabled?: boolean }) => {
-        const { name, url, type: providerType = 'clash', enabled = true } = provider;
-        if (!name?.trim() || !url?.trim()) throw new Error('规则集名称和 URL 不能为空');
-
-        const providerId = dbUtils.allocateId();
-        
-        const result = await downloadAndConvertRuleSet(providerId, url.trim(), providerType);
-        
-        if (result.error) {
-            throw new Error(result.error);
-        }
-        
-        if (result.srsPath) {
-            console.log(`规则集 ${name} 已转换为SRS: ${result.srsPath}`);
-        }
-        
-        dbUtils.addRuleProvider({
-            name: name.trim(),
-            url: url.trim(),
-            type: providerType,
-            enabled,
-            path: result.srsPath,
-                last_update: new Date().toISOString(),
-        }, providerId);
-
-        scheduler.initSchedulers();
-        await regenerateConfigForRuleProviderIfNeeded(providerId, 'rule provider added', sendToRenderer, log);
-        return providerId;
-    });
-
     // Download all enabled rule providers
     ipcMain.handle('core:downloadAllRuleProviders', async () => {
         const providers = dbUtils.getRuleProviders().filter(p => p.enabled);
         const results: { id: string; name: string; success: boolean; error?: string }[] = [];
-        let shouldRegenerateConfig = false;
-
         for (const provider of providers) {
             try {
                 if (!provider.url) {
@@ -585,68 +550,85 @@ tunNeedsAdmin = !checkIsServiceInstalled();
                     dbUtils.updateRuleProviderContent(provider.id, result.srsPath, new Date().toISOString());
                 }
                 
-                if (isRuleProviderUsedByEnabledPolicies(provider)) {
-                    shouldRegenerateConfig = true;
-                }
                 results.push({ id: provider.id, name: provider.name, success: true });
             } catch (err: any) {
                 console.error(`Failed to download ${provider.name}:`, err.message);
                 results.push({ id: provider.id, name: provider.name, success: false, error: err.message });
             }
         }
-
-        if (shouldRegenerateConfig) {
-            await regenerateConfigIfOverrideRulesEnabled('rule providers batch updated', sendToRenderer, log);
-        }
-
         return results;
     });
 
-    // 添加本地类型规则集
-    ipcMain.handle('core:addLocalRuleProvider', async (_, provider: { name: string; enabled?: boolean }) => {
-        const { name, enabled = true } = provider;
+    // 统一的规则集保存接口，根据 type 自动判断处理方式
+    ipcMain.handle('core:saveRuleProvider', async (_, provider: { id?: string; name: string; url?: string; type: 'local' | 'clash' | 'singbox'; enabled?: boolean; logical_rule?: any }) => {
+        const { id, name, url, type, enabled = true, logical_rule } = provider;
+        
         if (!name?.trim()) throw new Error('规则集名称不能为空');
-
-        const providerId = dbUtils.allocateId();
         
-        // 创建空的规则集数据
-        const emptyRawData: import('../src/types/rule-providers').LocalRuleSetData = {
-            version: 1,
-            rules: []
-        };
-        
-        dbUtils.addRuleProvider({
-            name: name.trim(),
-            url: '', // 本地规则集没有 URL
-            type: 'local',
-            enabled,
-            raw_data: emptyRawData,
-            last_update: new Date().toISOString(),
-        }, providerId);
-
-        return providerId;
-    });
-
-    // 保存本地规则集数据并编译为 srs
-    ipcMain.handle('core:saveLocalRuleProvider', async (_, providerId: string, rawData: import('../src/types/rule-providers').LocalRuleSetData) => {
-        const provider = dbUtils.getRuleProviderById(providerId);
-        if (!provider) throw new Error('规则集不存在');
-        if (provider.type !== 'local') throw new Error('只能编辑本地类型的规则集');
-
-        // 编译为 srs 文件
-        const result = compileLocalRuleSet(providerId, rawData);
-        
-        if (result.error) {
-            throw new Error(result.error);
+        // 本地类型处理
+        if (type === 'local') {
+            const hasLogicRule = logical_rule && logical_rule.rules && logical_rule.rules.length > 0;
+            
+            // 本地规则必须有规则内容（新建时）
+            if (!id && !hasLogicRule) {
+                throw new Error('本地规则集必须包含至少一条规则');
+            }
+            
+            if (id) {
+                // 编辑已有本地规则集
+                dbUtils.updateRuleProvider(id, { name: name.trim() });
+                
+                // 保存规则数据
+                if (hasLogicRule) {
+                    const result = compileLocalRuleSetFromLogicRule(id, logical_rule);
+                    if (result.error) throw new Error(result.error);
+                    dbUtils.updateLocalRuleProviderData(id, logical_rule, result.srsPath || undefined);
+                }
+            } else {
+                // 新建本地规则集
+                const providerId = dbUtils.addLocalRuleProvider({
+                    name: name.trim(),
+                    url: '',
+                    type: 'local',
+                    enabled
+                });
+                
+                // 保存规则数据
+                if (hasLogicRule) {
+                    const result = compileLocalRuleSetFromLogicRule(providerId, logical_rule);
+                    if (result.error) throw new Error(result.error);
+                    dbUtils.updateLocalRuleProviderData(providerId, logical_rule, result.srsPath || undefined);
+                }
+            }
+        } else {
+            // 远程类型处理（clash/singbox）
+            if (!url?.trim()) throw new Error('远程规则集 URL 不能为空');
+            
+            if (id) {
+                // 编辑已有远程规则集
+                dbUtils.updateRuleProvider(id, {
+                    name: name.trim(),
+                    url: url.trim(),
+                    type
+                });
+            } else {
+                // 新建远程规则集：先下载，成功后再写入数据库
+                const result = await downloadAndConvertRuleSet(dbUtils.allocateId(), url.trim(), type);
+                
+                if (result.error) throw new Error(result.error);
+                
+                dbUtils.addRuleProvider({
+                    name: name.trim(),
+                    url: url.trim(),
+                    type,
+                    enabled,
+                    path: result.srsPath,
+                    last_update: new Date().toISOString(),
+                });
+                
+                scheduler.initSchedulers();
+            }
         }
-
-        // 更新数据库
-        dbUtils.updateLocalRuleProviderData(providerId, rawData, result.srsPath || undefined);
-
-        // 如果规则集被启用的策略引用，重新生成配置
-        await regenerateConfigForRuleProviderIfNeeded(providerId, 'local rule provider saved', sendToRenderer, log);
-        
-        return { success: true, srsPath: result.srsPath };
     });
 
 }

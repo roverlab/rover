@@ -1,16 +1,3 @@
-import type {
-    MihomoConfig,
-    ProxyGroup,
-    ProxyNode,
-    ShadowsocksProxy,
-    VMessProxy,
-    VLESSProxy,
-    Hysteria2Proxy,
-    TuicProxy,
-    TrojanProxy,
-    AnyTLSProxy
-} from './clash';
-
 /**
  * PolicyRule 类型定义
  * 用于表示单条策略规则
@@ -61,13 +48,17 @@ export interface ExperimentalConfig {
 export interface InboundConfig {
     type: string;
     tag: string;
+    auto_route?: boolean;
+    strict_route?: boolean;
     listen?: string;
     listen_port?: number;
+    mtu?: number;
     tcp_fast_open?: boolean;
     tcp_multi_path?: boolean;
     udp_fragment?: boolean;
     sniff?: boolean;
     interface_name?: string;
+    stack?: string;
     address?: string[];
     route_exclude_address?: string[];
 }
@@ -227,11 +218,17 @@ export interface DnsConfig {
  */
 export interface DnsServer {
     tag: string;
-    type: 'local' | 'remote' | 'hosts';
-    address?: string;
-    bootstrap?: string;
+    type: string;
+    server?: string;
+    server_port?: number;
     detour?: string;
     path?: string;
+    prefer_go?: boolean;
+    inet4_range?: string;
+    inet6_range?: string;
+    predefined?: Record<string, string | string[]>;
+    domain_resolver?: string;
+    [key: string]: unknown;
 }
 
 /**

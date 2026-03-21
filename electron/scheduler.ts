@@ -21,8 +21,8 @@ const log = createLogger('Scheduler');
 // 定时器映射表：profileId -> timer
 const profileTimers: Map<string, NodeJS.Timeout> = new Map();
 
-// 规则集定时器映射表：providerId -> timer
-const ruleProviderTimers: Map<string, NodeJS.Timeout> = new Map();
+// 全局规则集更新检查定时器
+let ruleProviderGlobalTimer: NodeJS.Timeout | null = null;
 
 // 检查间隔（秒）- 用于检查是否到了更新时间
 const CHECK_INTERVAL = 60;
@@ -30,7 +30,10 @@ const CHECK_INTERVAL = 60;
 // 上次更新时间记录
 const lastProfileUpdate: Map<string, Date> = new Map();
 const lastRuleProviderUpdate: Map<string, Date> = new Map();
-let onRuleProviderUpdatedHook: ((providerId: string) => Promise<void> | void) | null = null;
+
+// 全局规则集更新间隔（秒）
+let ruleProviderGlobalInterval: number = 0;
+let onRuleProviderUpdatedHook: (() => Promise<void> | void) | null = null;
 let onProfileUpdatedHook: ((profileId: string) => Promise<void> | void) | null = null;
 
 // getProfilesDir 和 getRulesetsDir 现在由 paths.ts 模块统一管理
@@ -151,9 +154,7 @@ async function updateRuleProvider(providerId: string): Promise<boolean> {
         }
         
         lastRuleProviderUpdate.set(providerId, new Date());
-        if (onRuleProviderUpdatedHook) {
-            await onRuleProviderUpdatedHook(providerId);
-        }
+        // 注意：不再在这里调用 hook，由批量更新函数统一调用
 
         log.info(`规则集更新成功: ${provider.name} (ID: ${providerId})`);
         log.debug(`文件保存至: ${result.srsPath}`);
@@ -164,7 +165,7 @@ async function updateRuleProvider(providerId: string): Promise<boolean> {
     }
 }
 
-export function setRuleProviderUpdatedHook(hook: ((providerId: string) => Promise<void> | void) | null) {
+export function setRuleProviderUpdatedHook(hook: (() => Promise<void> | void) | null) {
     onRuleProviderUpdatedHook = hook;
 }
 
@@ -211,71 +212,88 @@ function startProfileScheduler(profileId: string, intervalSeconds: number) {
 }
 
 /**
- * 启动规则集的定时更新
+ * 批量检查并更新所有需要更新的规则集
+ * 等所有更新完成后，只调用一次 hook
+ */
+async function checkAndUpdateAllRuleProviders(): Promise<void> {
+    if (ruleProviderGlobalInterval <= 0) {
+        return;
+    }
+
+    const providers = dbUtils.getRuleProviders().filter((p) => p.enabled && p.url && !p.profile_id);
+    const now = new Date();
+    const providersToUpdate: string[] = [];
+
+    for (const provider of providers) {
+        const lastUpdate = lastRuleProviderUpdate.get(provider.id);
+        if (!lastUpdate) {
+            providersToUpdate.push(provider.id);
+        } else {
+            const elapsedSeconds = Math.floor((now.getTime() - lastUpdate.getTime()) / 1000);
+            if (elapsedSeconds >= ruleProviderGlobalInterval) {
+                providersToUpdate.push(provider.id);
+            }
+        }
+    }
+
+    if (providersToUpdate.length === 0) {
+        return;
+    }
+
+    log.info(`批量更新规则集: ${providersToUpdate.length} 个需要更新`);
+
+    // 依次更新所有规则集
+    for (const providerId of providersToUpdate) {
+        try {
+            await updateRuleProvider(providerId);
+        } catch (err: any) {
+            log.error(`规则集 ${providerId} 更新失败: ${err.message}`);
+        }
+    }
+
+    // 所有更新完成后，只调用一次 hook
+    if (onRuleProviderUpdatedHook) {
+        try {
+            await onRuleProviderUpdatedHook();
+            log.info('规则集批量更新完成，已通知前台');
+        } catch (err: any) {
+            log.error(`规则集更新 hook 调用失败: ${err.message}`);
+        }
+    }
+}
+
+/**
+ * 启动规则集的定时更新（使用全局定时器）
  */
 function startRuleProviderScheduler(providerId: string, intervalSeconds: number) {
-    // 如果已存在定时器，先清除
-    if (ruleProviderTimers.has(providerId)) {
-        const existingTimer = ruleProviderTimers.get(providerId);
-        if (existingTimer) {
-            clearInterval(existingTimer);
-        }
-    }
-
-    log.info(`启动规则集定时更新: Provider ${providerId}, 间隔 ${intervalSeconds} 秒`);
-
     // 记录启动时间
     lastRuleProviderUpdate.set(providerId, new Date());
+    log.debug(`记录规则集启动时间: Provider ${providerId}`);
+}
 
-    // 创建定时器，每分钟检查一次是否需要更新
-    const timer = setInterval(async () => {
-        const lastUpdate = lastRuleProviderUpdate.get(providerId);
-        const now = new Date();
+/**
+ * 启动全局规则集更新检查定时器
+ */
+function startGlobalRuleProviderTimer(intervalSeconds: number) {
+    // 如果已存在全局定时器，先清除
+    if (ruleProviderGlobalTimer) {
+        clearInterval(ruleProviderGlobalTimer);
+        ruleProviderGlobalTimer = null;
+    }
 
-        if (!lastUpdate) {
-            // 没有记录，立即更新
-            await updateRuleProvider(providerId);
-            return;
-        }
+    ruleProviderGlobalInterval = intervalSeconds;
 
-        const elapsedSeconds = Math.floor((now.getTime() - lastUpdate.getTime()) / 1000);
-        if (elapsedSeconds >= intervalSeconds) {
-            log.debug(`规则集 ${providerId} 已经过 ${elapsedSeconds} 秒，需要更新`);
-            await updateRuleProvider(providerId);
-        }
+    if (intervalSeconds <= 0) {
+        log.info('规则集全局更新已禁用');
+        return;
+    }
+
+    log.info(`启动规则集全局定时更新检查，间隔 ${CHECK_INTERVAL} 秒`);
+
+    // 创建全局定时器，每分钟检查一次是否有规则集需要更新
+    ruleProviderGlobalTimer = setInterval(async () => {
+        await checkAndUpdateAllRuleProviders();
     }, CHECK_INTERVAL * 1000);
-
-    ruleProviderTimers.set(providerId, timer);
-}
-
-/**
- * 停止订阅配置的定时更新
- */
-function stopProfileScheduler(profileId: string) {
-    if (profileTimers.has(profileId)) {
-        const timer = profileTimers.get(profileId);
-        if (timer) {
-            clearInterval(timer);
-            profileTimers.delete(profileId);
-            log.info(`停止订阅配置定时更新: Profile ${profileId}`);
-        }
-    }
-    lastProfileUpdate.delete(profileId);
-}
-
-/**
- * 停止规则集的定时更新
- */
-function stopRuleProviderScheduler(providerId: string) {
-    if (ruleProviderTimers.has(providerId)) {
-        const timer = ruleProviderTimers.get(providerId);
-        if (timer) {
-            clearInterval(timer);
-            ruleProviderTimers.delete(providerId);
-            log.info(`停止规则集定时更新: Provider ${providerId}`);
-        }
-    }
-    lastRuleProviderUpdate.delete(providerId);
 }
 
 /**
@@ -288,8 +306,6 @@ export function initSchedulers() {
     // 清除所有现有定时器
     profileTimers.forEach((timer) => clearInterval(timer));
     profileTimers.clear();
-    ruleProviderTimers.forEach((timer) => clearInterval(timer));
-    ruleProviderTimers.clear();
     lastProfileUpdate.clear();
     lastRuleProviderUpdate.clear();
 
@@ -313,10 +329,13 @@ export function initSchedulers() {
             : `发现 ${autoUpdateProviders.length} 个规则集，更新已禁用`
     );
 
+    // 记录所有规则集的启动时间
     if (globalInterval > 0) {
         for (const provider of autoUpdateProviders) {
             startRuleProviderScheduler(provider.id, globalInterval);
         }
+        // 启动全局定时器
+        startGlobalRuleProviderTimer(globalInterval);
     }
 
     log.info('定时任务调度器初始化完成');
@@ -334,14 +353,16 @@ export function stopAllSchedulers() {
     });
     profileTimers.clear();
 
-    ruleProviderTimers.forEach((timer, providerId) => {
-        clearInterval(timer);
-        log.info(`停止规则集定时更新: Provider ${providerId}`);
-    });
-    ruleProviderTimers.clear();
+    // 停止全局规则集定时器
+    if (ruleProviderGlobalTimer) {
+        clearInterval(ruleProviderGlobalTimer);
+        ruleProviderGlobalTimer = null;
+        log.info('停止规则集全局定时更新');
+    }
 
     lastProfileUpdate.clear();
     lastRuleProviderUpdate.clear();
+    ruleProviderGlobalInterval = 0;
 
     log.info('所有定时任务已停止');
 }

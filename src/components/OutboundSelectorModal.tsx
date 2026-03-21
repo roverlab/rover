@@ -1,11 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from './ui/Button';
-import { X, Search } from 'lucide-react';
+import { X, Search, RefreshCw, Clock } from 'lucide-react';
 import { cn } from './Sidebar';
+import { useApi } from '../contexts/ApiContext';
+import { fetchProxies } from '../services/api';
 
-export type OutboundItem = { tag: string; type: string; all?: string[] };
+export type OutboundItem = { tag: string; type: string; all?: string[]; delay?: number };
 
 export interface OutboundSelectorModalProps {
     open: boolean;
@@ -13,6 +15,26 @@ export interface OutboundSelectorModalProps {
     preferredOutbound: string | null;
     onConfirm: (tag: string | null) => void;
     onClose: () => void;
+}
+
+/**
+ * 获取延迟对应的颜色类名
+ */
+function getDelayClass(delay?: number): string {
+    if (delay === undefined) return 'text-[var(--app-text-quaternary)]';
+    if (delay === 0) return 'text-red-500';
+    if (delay < 200) return 'text-green-500';
+    if (delay < 500) return 'text-yellow-600';
+    return 'text-red-500';
+}
+
+/**
+ * 格式化延迟显示文本
+ */
+function formatDelay(delay?: number): string {
+    if (delay === undefined) return '';
+    if (delay === 0) return 'Timeout';
+    return `${delay}ms`;
 }
 
 /**
@@ -29,25 +51,75 @@ export function OutboundSelectorModal({
     const [localSelected, setLocalSelected] = useState<string | null>(null);
     // 搜索关键词
     const [searchQuery, setSearchQuery] = useState('');
+    // 延迟数据
+    const [delayMap, setDelayMap] = useState<Record<string, number>>({});
+    // 是否正在加载延迟
+    const [loadingDelays, setLoadingDelays] = useState(false);
+    // 是否有任何节点有延迟数据（用于判断其他节点是否为超时）
+    const [hasAnyDelay, setHasAnyDelay] = useState(false);
+    // 是否过滤超时节点
+    const [hideTimeout, setHideTimeout] = useState(false);
 
-    // 2. 每次打开弹窗时，从 props 同步初始选中的值，并清空搜索
+    const { apiUrl, apiSecret } = useApi();
+
+    // 加载延迟数据（从 API 获取历史记录）
+    const loadDelays = useCallback(async () => {
+        if (!apiUrl) return;
+
+        setLoadingDelays(true);
+        try {
+            const apiData = await fetchProxies(apiUrl, apiSecret);
+            const proxies = apiData?.proxies || {};
+            const newDelays: Record<string, number> = {};
+
+            // 遍历所有节点，获取 history 延迟
+            for (const [proxyName, proxyData] of Object.entries(proxies)) {
+                const pData = proxyData as { history?: Array<{ time: string; delay: number }> };
+                if (Array.isArray(pData.history) && pData.history.length > 0) {
+                    const latestHistory = pData.history[pData.history.length - 1];
+                    if (latestHistory && typeof latestHistory.delay === 'number') {
+                        newDelays[proxyName] = latestHistory.delay;
+                    }
+                }
+            }
+
+            setDelayMap(newDelays);
+            // 判断是否有任何节点有延迟数据
+            setHasAnyDelay(Object.keys(newDelays).length > 0);
+            // API 不可用时保持空延迟
+        } finally {
+            setLoadingDelays(false);
+        }
+    }, [apiUrl, apiSecret]);
+
+    // 2. 每次打开弹窗时，从 props 同步初始选中的值，并清空搜索，加载延迟
     useEffect(() => {
         if (open) {
             setLocalSelected(preferredOutbound);
             setSearchQuery('');
+            // 弹窗打开时自动加载延迟
+            loadDelays();
         }
-    }, [open, preferredOutbound]);
+    }, [open, preferredOutbound, loadDelays]);
+
+    // 判断节点是否超时（延迟为0或没有延迟数据但有其他节点有延迟）
+    const isNodeTimeout = useCallback((tag: string): boolean => {
+        const delay = delayMap[tag];
+        if (delay === 0) return true;
+        if (delay === undefined && hasAnyDelay) return true;
+        return false;
+    }, [delayMap, hasAnyDelay]);
 
     // 过滤后的出站节点列表
-    const filteredOutbounds = searchQuery.trim()
-        ? availableOutbounds.filter(ob => {
-            const query = searchQuery.toLowerCase();
-            return (
-                ob.tag.toLowerCase().includes(query) ||
-                ob.type.toLowerCase().includes(query)
-            );
-        })
-        : availableOutbounds;
+    const filteredOutbounds = availableOutbounds.filter(ob => {
+        // 搜索过滤
+        const matchSearch = !searchQuery.trim() ||
+            ob.tag.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            ob.type.toLowerCase().includes(searchQuery.toLowerCase());
+        // 超时过滤
+        const matchTimeout = !hideTimeout || !isNodeTimeout(ob.tag);
+        return matchSearch && matchTimeout;
+    });
 
     const selectOutbound = (tag: string) => {
         setLocalSelected(prev => prev === tag ? null : tag);
@@ -99,9 +171,9 @@ export function OutboundSelectorModal({
 
                     {/* Content - 滚动区域 */}
                     <div className="flex-1 p-6 overflow-y-auto min-h-0 bg-white">
-                        {/* 搜索框 */}
-                        <div className="mb-4">
-                            <div className="relative">
+                        {/* 搜索框和过滤按钮 */}
+                        <div className="mb-4 flex gap-2">
+                            <div className="relative flex-1">
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--app-text-quaternary)]" />
                                 <input
                                     type="text"
@@ -111,10 +183,30 @@ export function OutboundSelectorModal({
                                     className="w-full pl-9 pr-3 py-2 text-[13px] rounded-[10px] border border-[rgba(39,44,54,0.12)] bg-white text-[var(--app-text)] placeholder:text-[var(--app-text-quaternary)] focus:outline-none focus:border-[var(--app-accent-border)] hover:border-[rgba(39,44,54,0.18)] transition-colors"
                                 />
                             </div>
+                            {/* 过滤超时按钮 */}
+                            <button
+                                type="button"
+                                onClick={() => setHideTimeout(prev => !prev)}
+                                className={cn(
+                                    "shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-[10px] text-[12px] border transition-all",
+                                    hideTimeout
+                                        ? "border-[var(--app-accent)] bg-[var(--app-accent-soft)] text-[var(--app-accent)]"
+                                        : "border-[rgba(39,44,54,0.12)] bg-white text-[var(--app-text-secondary)] hover:bg-[var(--app-hover)]"
+                                )}
+                                title="过滤超时节点"
+                            >
+                                <Clock className="w-3.5 h-3.5" />
+                                隐藏超时
+                            </button>
                         </div>
                         <div className="flex flex-wrap gap-2">
                             {filteredOutbounds.map(ob => {
                                 const active = localSelected === ob.tag;
+                                const delay = delayMap[ob.tag];
+                                const hasDelay = delay !== undefined;
+                                // 如果有任何一个节点有延迟，其他没有延迟数据的显示为超时
+                                const showAsTimeout = !loadingDelays && hasAnyDelay && !hasDelay;
+                                
                                 return (
                                     <div
                                         key={ob.tag}
@@ -137,6 +229,16 @@ export function OutboundSelectorModal({
                                         </div>
                                         <span className="text-[13px] text-[var(--app-text)]">{ob.tag}</span>
                                         <span className="text-[10px] text-[var(--app-text-quaternary)]">({ob.type})</span>
+                                        {/* 延迟显示 - 加载中显示转圈，有延迟显示数值，无延迟但有其他节点有延迟时显示超时 */}
+                                        {loadingDelays ? (
+                                            <RefreshCw className="w-3 h-3 animate-spin text-[var(--app-accent)]" />
+                                        ) : hasDelay ? (
+                                            <span className={cn("text-[10px] font-mono ml-1", getDelayClass(delay))}>
+                                                {formatDelay(delay)}
+                                            </span>
+                                        ) : showAsTimeout ? (
+                                            <span className="text-[10px] font-mono ml-1 text-red-500">Timeout</span>
+                                        ) : null}
                                     </div>
                                 );
                             })}

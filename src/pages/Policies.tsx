@@ -13,7 +13,11 @@ import { PolicyDeleteConfirmModal } from './Policies/PolicyDeleteConfirmModal';
 import { PolicyBatchDeleteConfirmModal } from './Policies/PolicyBatchDeleteConfirmModal';
 import { usePolicyFinalOutbound } from './Policies/usePolicyFinalOutbound';
 
-export function Policies() {
+interface PoliciesProps {
+  isActive?: boolean;
+}
+
+export function Policies({ isActive = true }: PoliciesProps) {
     const [policies, setPolicies] = useState<Policy[]>([]);
     const [loading, setLoading] = useState(true);
     const [showEditModal, setShowEditModal] = useState(false);
@@ -48,9 +52,12 @@ export function Policies() {
         }
     }, []);
 
+    // 页面激活时刷新数据
     useEffect(() => {
-        loadPolicies();
-    }, [loadPolicies]);
+        if (isActive) {
+            loadPolicies();
+        }
+    }, [isActive, loadPolicies]);
 
     const handleAdd = () => {
         setEditingPolicy(null);
