@@ -94,8 +94,8 @@ const NodeCard = memo(function NodeCard({
         </div>
       </div>
 
-      {/* 延迟显示 */}
-      {(delay !== undefined || testState) ? (
+      {/* 延迟显示 - 测速状态或延迟数据存在时显示 */}
+      {(testState || delay !== undefined) ? (
         <div className={cn("text-[12px] font-mono mt-0 absolute right-3.5 top-3",
             testState === 'testing' ? "text-[var(--app-accent)]" :
               testState === 'queued' ? "text-[var(--app-text-quaternary)]" :
@@ -104,8 +104,10 @@ const NodeCard = memo(function NodeCard({
             <RefreshCw className="w-3.5 h-3.5 animate-spin text-[var(--app-accent)]" />
           ) : testState === 'queued' ? (
             '...'
+          ) : delay && delay > 0 ? (
+            `${delay} ms`
           ) : (
-            delay !== undefined && delay > 0 ? `${delay} ms` : 'Timeout'
+            'Timeout'
           )}
         </div>
       ) : null}
@@ -174,7 +176,7 @@ export function Proxies({ isActive = true }: ProxiesProps) {
         }
       }
 
-      // 更新延迟数据
+      // 更新延迟数据 - 所有代理节点都获取延迟（没有 history 的设为 0 表示超时）
       const newHistoryDelays: Record<string, number> = {};
       for (const [proxyName, proxyData] of Object.entries(proxies)) {
         const pData = proxyData as { history?: Array<{ time: string; delay: number }> };
@@ -182,7 +184,13 @@ export function Proxies({ isActive = true }: ProxiesProps) {
           const latestHistory = pData.history[pData.history.length - 1];
           if (latestHistory && typeof latestHistory.delay === 'number') {
             newHistoryDelays[proxyName] = latestHistory.delay;
+          } else {
+            // history 存在但没有有效的 delay 数据，设为 0（超时）
+            newHistoryDelays[proxyName] = 0;
           }
+        } else {
+          // 没有 history 数据，设为 0（超时）
+          newHistoryDelays[proxyName] = 0;
         }
       }
 
