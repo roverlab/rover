@@ -268,13 +268,12 @@ export function setSetting(key: string, value: string) {
 // ===== DNS Servers 表 =====
 
 export function getDnsServers(): DnsServer[] {
-    return withDb((data) => [...(data.dnsServers ?? [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)));
+    return withDb((data) => [...(data.dnsServers ?? [])]);
 }
 
-export function addDnsServer(server: Omit<DnsServer, 'order'> & { order?: number }): string {
+export function addDnsServer(server: Omit<DnsServer, 'order'>): string {
     return withDb((data) => {
         const dnsServers = data.dnsServers ?? [];
-        const maxOrder = dnsServers.reduce((m, s) => Math.max(m, s.order ?? 0), -1);
         const id = (typeof server.id === 'string' ? server.id : '').trim();
         if (!id) throw new Error('DNS 服务器 ID 不能为空');
         const ids = new Set(dnsServers.map((s) => (s.id || '').trim().toLowerCase()));
@@ -282,7 +281,6 @@ export function addDnsServer(server: Omit<DnsServer, 'order'> & { order?: number
         const newServer = {
             ...server,
             id,
-            order: server.order ?? maxOrder + 1,
             enabled: server.enabled ?? true,
             is_default: server.is_default ?? false,
         } as DnsServer;
@@ -298,7 +296,8 @@ export function updateDnsServer(id: string, updates: Partial<DnsServer>): void {
         const idx = arr.findIndex((s) => s.id === id);
         if (idx < 0) return;
 
-        const oldId = arr[idx].id;
+        const oldServer = arr[idx];
+        const oldId = oldServer.id;
         const newId = typeof updates.id === 'string' ? updates.id.trim() : undefined;
 
         // id 变更时，检查是否冲突
@@ -309,9 +308,9 @@ export function updateDnsServer(id: string, updates: Partial<DnsServer>): void {
             }
         }
 
-        // 直接用前端传来的数据替换，保留 id（如果前端没传则用旧的）
+        // 合并更新，保留原有数据，用新数据覆盖
         const finalId = newId || oldId;
-        arr[idx] = { ...updates, id: finalId } as unknown as DnsServer;
+        arr[idx] = { ...oldServer, ...updates, id: finalId } as unknown as DnsServer;
     });
 }
 
@@ -322,7 +321,30 @@ export function deleteDnsServer(id: string): void {
 }
 
 /**
+ * 切换 DNS 服务器的启用状态
+ * @param serverId DNS 服务器的 id
+ * @param enabled 是否启用
+ * @returns 是否切换成功
+ */
+export function toggleDnsServerEnabled(serverId: string, enabled: boolean): boolean {
+    return withDb((data) => {
+        const dnsServers = data.dnsServers ?? [];
+        const targetServer = dnsServers.find((s) => s.id === serverId);
+        if (!targetServer) return false;
+
+        targetServer.enabled = enabled;
+        // 如果禁用服务器，同时取消默认状态
+        if (!enabled && targetServer.is_default) {
+            targetServer.is_default = false;
+        }
+        data.dnsServers = dnsServers;
+        return true;
+    });
+}
+
+/**
  * 设置默认 DNS 服务器（将指定服务器的 is_default 设为 true，其他全部设为 false）
+ * 如果目标服务器被禁用，则同时启用
  * @param serverId DNS 服务器的 id
  * @returns 是否设置成功
  */
@@ -336,8 +358,9 @@ export function setDefaultDnsServer(serverId: string): boolean {
         for (const s of dnsServers) {
             s.is_default = false;
         }
-        // 将目标服务器的 is_default 设为 true
+        // 将目标服务器的 is_default 设为 true，并启用
         targetServer.is_default = true;
+        targetServer.enabled = true;
         data.dnsServers = dnsServers;
         return true;
     });
@@ -361,14 +384,15 @@ export function clearDefaultDnsServer(): void {
  * 注意：模板中的 name 会作为 id 使用
  * 当服务器包含 raw_data 字段时，使用 raw 类型保存
  */
-export function upsertDnsServerByTag(serverFromTemplate: Record<string, unknown>, order: number): string {
+export function upsertDnsServerByTag(serverFromTemplate: Record<string, unknown>): string {
     const tag = serverFromTemplate?.name;
     if (typeof tag !== 'string' || !tag.trim()) {
         throw new Error('DNS server must have a valid tag');
     }
     const id = tag;
     return withDb((data) => {
-        let dnsServers = (data.dnsServers ?? []).filter((s) => s.id !== id);
+        const dnsServers = data.dnsServers ?? [];
+        const existingIdx = dnsServers.findIndex((s) => s.id === id);
 
         // 检测是否有 raw_data 字段，如果有则使用 raw 类型
         const hasRawData = serverFromTemplate.raw_data && typeof serverFromTemplate.raw_data === 'object';
@@ -376,7 +400,6 @@ export function upsertDnsServerByTag(serverFromTemplate: Record<string, unknown>
         const base: Partial<DnsServer> = {
             id,
             type: hasRawData ? 'raw' : ((serverFromTemplate.type as string) || 'udp'),
-            order,
             enabled: true,
             is_default: false,
         };
@@ -387,7 +410,14 @@ export function upsertDnsServerByTag(serverFromTemplate: Record<string, unknown>
             }
         }
         const newServer = { ...base, ...extra } as DnsServer;
-        dnsServers.push(newServer);
+
+        if (existingIdx >= 0) {
+            // 已存在则更新，保持原位置
+            dnsServers[existingIdx] = newServer;
+        } else {
+            // 不存在则追加到末尾
+            dnsServers.push(newServer);
+        }
         data.dnsServers = dnsServers;
         return id;
     });

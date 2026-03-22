@@ -306,12 +306,8 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
         return;
       }
     }
-    // 如果禁用服务器，同时取消默认状态
-    if (!newEnabled && s.is_default) {
-      await window.ipcRenderer.db.updateDnsServer(s.id, { enabled: newEnabled, is_default: false });
-    } else {
-      await window.ipcRenderer.db.updateDnsServer(s.id, { enabled: newEnabled });
-    }
+    // 使用独立接口切换启用状态
+    await window.ipcRenderer.db.toggleDnsServerEnabled(s.id, newEnabled);
     setSaved(true);
     setTimeout(() => setSaved(false), 3000);
     await loadDnsServers();
@@ -319,18 +315,8 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
   };
 
   const handleSetDefault = async (s: any) => {
-    // 先将所有服务器设置为非默认
-    for (const server of dnsServers) {
-      if (server.is_default && server.id !== s.id) {
-        await window.ipcRenderer.db.updateDnsServer(server.id, { is_default: false });
-      }
-    }
-    // 设置当前服务器为默认，如果当前被禁用则同时启用
-    const updates: any = { is_default: true };
-    if (s.enabled === false) {
-      updates.enabled = true;
-    }
-    await window.ipcRenderer.db.updateDnsServer(s.id, updates);
+    // 使用独立接口设置默认服务器
+    await window.ipcRenderer.db.setDefaultDnsServer(s.id);
     setSaved(true);
     setTimeout(() => setSaved(false), 3000);
     await loadDnsServers();

@@ -459,9 +459,9 @@ export function mergeSettingsIntoConfig(config: SingboxConfig): SingboxConfig {
     const enabledDnsServers = dnsServers.filter(s => s.enabled !== false);
     if (enabledDnsServers.length > 0) {
         const servers = enabledDnsServers.map((s) => {
-            // raw 类型直接使用 raw_data，不做任何覆盖
+            // raw 类型使用 raw_data，但需要覆盖 tag 字段为数据库中的 id
             if (s.type === 'raw' && s.raw_data) {
-                return s.raw_data as DnsServer;
+                return { ...s.raw_data, tag: s.id } as DnsServer;
             }
             
             const obj: DnsServer = { type: s.type, tag: s.id };
@@ -898,6 +898,12 @@ function applyDashboardMode(config: SingboxConfig, settings: Record<string, stri
     config.route.default_domain_resolver = final_dns_server;
     config.dns.final = final_dns_server;
     config.route.auto_detect_interface = true;
+    
+    // 确保 dns.servers 存在
+    if (!config.dns.servers) {
+        config.dns.servers = [];
+    }
+    
     config.dns.servers.push({ 
         tag: 'dns_direct_out',
         type: 'local'

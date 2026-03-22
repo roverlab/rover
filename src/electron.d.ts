@@ -62,6 +62,8 @@ export interface ElectronAPI {
             addDnsServer(server: any): Promise<string>;
             updateDnsServer(id: string, updates: any): Promise<void>;
             deleteDnsServer(id: string): Promise<void>;
+            toggleDnsServerEnabled(id: string, enabled: boolean): Promise<boolean>;
+            setDefaultDnsServer(id: string): Promise<boolean>;
             // Profile DNS Policies
             getProfileDnsPolicyByPolicyId(profileId: string, dnsPolicyId: string): Promise<any>;
             setProfileDnsPolicy(profileId: string, dnsPolicyId: string, dnsServerId: string | null): Promise<void>;

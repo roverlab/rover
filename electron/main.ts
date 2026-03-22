@@ -253,6 +253,8 @@ ipcMain.handle('db:getDnsServerRefs', (_, tag: string) => dbUtils.getDnsServerRe
 ipcMain.handle('db:addDnsServer', (_, server: any) => dbUtils.addDnsServer(server));
 ipcMain.handle('db:updateDnsServer', (_, id: string, updates: any) => dbUtils.updateDnsServer(id, updates));
 ipcMain.handle('db:deleteDnsServer', (_, id: string) => dbUtils.deleteDnsServer(id));
+ipcMain.handle('db:toggleDnsServerEnabled', (_, id: string, enabled: boolean) => dbUtils.toggleDnsServerEnabled(id, enabled));
+ipcMain.handle('db:setDefaultDnsServer', (_, id: string) => dbUtils.setDefaultDnsServer(id));
 
 // Custom Proxy Groups
 ipcMain.handle('db:getProfileCustomGroups', (_, profileId: string) => dbUtils.getProfileCustomGroups(profileId));

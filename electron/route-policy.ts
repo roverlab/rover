@@ -397,7 +397,7 @@ export function registerRuleProviderIpcHandlers(
                             }
                             // 将 tag 或 name 作为 name 字段，用于数据库存储
                             const serverData = { ...s, name: serverTag } as Record<string, unknown>;
-                            dbUtils.upsertDnsServerByTag(serverData, i);
+                            dbUtils.upsertDnsServerByTag(serverData);
                         }
                     }
                     for (let i = 0; i < dnsRules.length; i++) {
