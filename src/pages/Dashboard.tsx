@@ -205,6 +205,10 @@ export function Dashboard({ isActive }: DashboardProps) {
     const [isServiceInstalled, setIsServiceInstalled] = useState(true); // RoverService 服务是否已安装（默认true避免闪烁）
     const [tunModeInitialized, setTunModeInitialized] = useState(false); // tunMode 是否已从数据库加载完成
 
+    // 防止重复初始化的标记
+    const initializedRef = useRef(false);
+    const lastNetworkCheckRef = useRef(0);
+
     useEffect(() => {
         const timer = setTimeout(() => setIsLoaded(true), 150);
         return () => clearTimeout(timer);
@@ -280,8 +284,15 @@ export function Dashboard({ isActive }: DashboardProps) {
     }, [apiUrl, apiSecret]);
 
     // 网络检测：应用启动、进入首页、内核状态变化时刷新
+    // 使用防抖避免短时间内重复调用（如 React 18 双重挂载）
     useEffect(() => {
         if (!isActive) return;
+        
+        // 防抖：500ms 内不重复调用
+        const now = Date.now();
+        if (now - lastNetworkCheckRef.current < 500) return;
+        lastNetworkCheckRef.current = now;
+        
         checkNetwork();
     }, [isActive, isRunning, checkNetwork]);
 
@@ -337,7 +348,7 @@ export function Dashboard({ isActive }: DashboardProps) {
     }, []);
 
     // 加载 tunMode（只读取数据库值，与服务安装状态无关）
-    const loadTunMode = useCallback(async () => {
+    const loadTunMode = useCallback(async (force: boolean = false) => {
         try {
             // 并行获取数据库值和服务安装状态
             const [allSettings, installed] = await Promise.all([
@@ -366,29 +377,21 @@ export function Dashboard({ isActive }: DashboardProps) {
         }
     }, []);
 
-    // 初始化加载 tunMode
+    // 页面激活时加载/刷新设置（合并初始化和激活刷新逻辑）
     useEffect(() => {
-        loadTunMode();
-    }, []);
+        if (!isActive) return;
 
-    // 每次页面激活时刷新 tunMode 显示
-    useEffect(() => {
-        if (isActive) {
+        // 初始化时只加载一次
+        if (!initializedRef.current) {
+            initializedRef.current = true;
             loadTunMode();
-        }
-    }, [isActive, loadTunMode]);
-
-    // 初始化加载
-    useEffect(() => {
-        loadDashboardSettings();
-    }, []);
-
-    // 每次页面激活时重新加载设置（确保从其他页面返回时显示最新值）
-    useEffect(() => {
-        if (isActive) {
+            loadDashboardSettings();
+        } else {
+            // 非首次激活时刷新数据（从其他页面返回）
+            loadTunMode();
             loadDashboardSettings();
         }
-    }, [isActive, loadDashboardSettings]);
+    }, [isActive, loadTunMode, loadDashboardSettings]);
 
     // 定时检测运行状态（不再刷新 configs）
     useEffect(() => {

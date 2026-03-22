@@ -152,9 +152,12 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
 
   const buildServerFromForm = () => {
     const type = (form.type || 'udp') as DnsServerType;
+    // 构建完整的服务器对象，只包含当前类型需要的字段
     const server: Record<string, unknown> = {
       type,
       id: form.id?.trim() || 'dns',
+      enabled: form.enabled ?? true,
+      is_default: form.is_default ?? false,
     };
     if (type === 'raw') {
       // raw 类型直接保存原始 JSON
@@ -174,6 +177,7 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
       const port = form.server_port ?? DEFAULT_PORTS[type];
       if (port !== undefined && port !== DEFAULT_PORTS[type]) server.server_port = port;
     }
+    // 只有 https 类型才有 path 字段
     if (type === 'https' && form.path?.trim()) {
       server.path = form.path.trim();
     }
@@ -181,12 +185,9 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
     if (form.domain_resolver?.trim()) {
       server.domain_resolver = form.domain_resolver.trim();
     }
-    // detour 保存到 DNS 服务器本身（空字符串表示直连，需显式设置为 undefined 以清除原值）
+    // detour：空字符串表示直连，不设置该字段
     if (form.detour?.trim()) {
       server.detour = form.detour.trim();
-    } else {
-      // 显式设置为 undefined，确保数据库能正确清除原值
-      server.detour = undefined;
     }
     // preferred_detour 保存到 profile 关联，在 handleSubmit 中处理
     if (type === 'local' && form.prefer_go !== undefined) server.prefer_go = form.prefer_go;
@@ -499,12 +500,20 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
               value={form.type}
               onChange={(e) => {
                 const t = e.target.value as DnsServerType;
-                setForm((f) => ({
-                  ...f,
+                // 切换类型时，重置所有字段为默认值
+                setForm({
                   type: t,
-                  server_port: DEFAULT_PORTS[t] ?? f.server_port,
+                  id: form.id ?? '',
+                  server: '',
+                  server_port: DEFAULT_PORTS[t] ?? 53,
                   path: getDefaultPath(t),
-                }));
+                  detour: '',
+                  preferred_detour: '',
+                  domain_resolver: '',
+                  enabled: true,
+                  is_default: false,
+                });
+                setRawJsonText('');
               }}
               className="w-full"
             >

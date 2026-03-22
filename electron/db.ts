@@ -298,41 +298,20 @@ export function updateDnsServer(id: string, updates: Partial<DnsServer>): void {
         const idx = arr.findIndex((s) => s.id === id);
         if (idx < 0) return;
 
-        const server = arr[idx];
-        const oldId = server.id;
+        const oldId = arr[idx].id;
         const newId = typeof updates.id === 'string' ? updates.id.trim() : undefined;
 
-        // id 变更时，迁移所有引用
+        // id 变更时，检查是否冲突
         if (newId && newId !== oldId) {
-            // 检查新 id 是否已被其他服务器占用
             const conflict = arr.some((s, i) => i !== idx && s.id === newId);
             if (conflict) {
                 throw new Error(`DNS 服务器 ID "${newId}" 已存在`);
             }
-
-            // 更新服务器记录
-            const { id: _unusedId, ...rest } = updates;
-            arr[idx] = { ...server, ...rest, id: newId };
-
-        } else {
-            // id 未变更，仅应用其他字段（不允许通过 updates 修改 id）
-            const { id: _unusedId, ...rest } = updates;
-            // 处理 undefined 值：显式删除字段而非设置为 undefined
-            const cleanedRest: Record<string, unknown> = {};
-            for (const [key, value] of Object.entries(rest)) {
-                if (value !== undefined) {
-                    cleanedRest[key] = value;
-                }
-            }
-            // 从原服务器中删除值为 undefined 的字段
-            const cleanedServer: Record<string, unknown> = { ...server };
-            for (const key of Object.keys(rest)) {
-                if (rest[key] === undefined) {
-                    delete cleanedServer[key];
-                }
-            }
-            arr[idx] = { ...cleanedServer, ...cleanedRest } as unknown as DnsServer;
         }
+
+        // 直接用前端传来的数据替换，保留 id（如果前端没传则用旧的）
+        const finalId = newId || oldId;
+        arr[idx] = { ...updates, id: finalId } as unknown as DnsServer;
     });
 }
 

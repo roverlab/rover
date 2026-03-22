@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useCallback, ReactNode, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CheckCircle, AlertCircle, X, AlertTriangle } from 'lucide-react';
@@ -214,14 +214,26 @@ function ConfirmDialog({
     onConfirm, 
     onCancel 
 }: ConfirmState) {
+    // 打开时阻止 body 滚动，避免跳动
+    useEffect(() => {
+        if (isOpen) {
+            const originalOverflow = document.body.style.overflow;
+            document.body.style.overflow = 'hidden';
+            return () => {
+                document.body.style.overflow = originalOverflow;
+            };
+        }
+    }, [isOpen]);
+
     return createPortal(
         <AnimatePresence>
             {isOpen && (
-            <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+            <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 pointer-events-auto">
                 <motion.div
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
+                    transition={{ duration: 0.15 }}
                     className="absolute inset-0 z-0 bg-black/40 backdrop-blur-sm"
                     onClick={onCancel}
                 />
@@ -229,6 +241,7 @@ function ConfirmDialog({
                     initial={{ opacity: 0, scale: 0.95, y: 10 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                    transition={{ duration: 0.15 }}
                     className="relative z-10 w-full max-w-sm bg-white border border-[rgba(39,44,54,0.08)] rounded-[20px] shadow-[var(--shadow-elevated)] overflow-hidden"
                     style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
                     onClick={e => e.stopPropagation()}

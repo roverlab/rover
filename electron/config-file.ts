@@ -30,7 +30,6 @@ import {
 } from './route-policy';
 import { policiesToSingboxConfig } from '../src/services/policy';
 import { dnsPoliciesToSingboxConfig } from '../src/services/dns-policy';
-import { ru } from 'date-fns/locale';
 
 /** 判断是否为 IPv6 地址 */
 function isIPv6(ip: string): boolean {
@@ -527,6 +526,13 @@ export function mergeSettingsIntoConfig(config: SingboxConfig): SingboxConfig {
 export function appendExtraOutbounds(config: SingboxConfig): void {
     let outbounds = (config.outbounds || [])
     .filter(a=>!['selector_out','direct_out','block_out'].includes(a.tag));
+    outbounds.forEach(o=>{
+        if(!['selector','urltest','block','direct'].includes(o.type)){
+            o.domain_resolver = {
+                server: "dns_direct_out",
+            };
+        }
+    })
 
     const selectorUrltestTags = outbounds
         .filter(
@@ -547,7 +553,7 @@ export function appendExtraOutbounds(config: SingboxConfig): void {
         },
         {
             "type": "direct",
-            "tag": "direct_out"
+            "tag": "direct_out",
         },
         {
             "type": "block",
@@ -567,15 +573,15 @@ function isIpAddress(str: string): boolean {
     return ipv4Regex.test(str);
 }
 
-/** 从 outbounds 中提取所有真实代理节点的 server（域名或 IP）
- *  排除 selector、urltest、direct、block、dns 等非真实节点
+/** 从 outbounds 中提取所有真实代理节点的 server（域名或 IP）以及 tls.server_name
+ *  排除 selector、urltest、direct、block 等非真实节点
  */
 function extractProxyServerAddresses(config: SingboxConfig): { domains: string[]; ips: string[] } {
     const domains = new Set<string>();
     const ips = new Set<string>();
     
     // 排除的出站类型
-    const excludeTypes = new Set(['selector', 'urltest', 'direct', 'block', 'dns', 'dns_out', 'dns_direct_out']);
+    const excludeTypes = new Set(['selector', 'urltest', 'direct', 'block']);
     
     const outbounds = config.outbounds || [];
     for (const outbound of outbounds) {
@@ -583,12 +589,12 @@ function extractProxyServerAddresses(config: SingboxConfig): { domains: string[]
         if (excludeTypes.has(type)) continue;
         
         const server = outbound.server;
-        if (!server || typeof server !== 'string') continue;
-        
-        if (isIpAddress(server)) {
-            ips.add(server);
-        } else {
-            domains.add(server);
+        if (server && typeof server === 'string') {
+            if (isIpAddress(server)) {
+                ips.add(server);
+            } else {
+                domains.add(server);
+            }
         }
     }
     
@@ -805,37 +811,11 @@ function applyOverrideRulesRoute(config: SingboxConfig, profileId: string): any[
 function addSystemRouteRules(config: SingboxConfig, settings: Record<string, string>): void {
     const isTunMode = settings['dashboard-tun-mode'] === 'true';
 
-    let appendRules: DnsPlainRule[] = [
-      {
-        "protocol": "dns",
-        "action": "hijack-dns"
-      },
-      {
-        "inbound": "proxy_in",
-        "action": "sniff"
-      },
-    ]
-
-    if(isTunMode) {
-        appendRules = [
-            {
-                "inbound": "tun_in",
-                "action": "sniff"
-            },
-            ...appendRules
-        ]
-            
-    }
-    config.route.rules = [
-        ...appendRules,
-        ...config.route.rules,
-    ]
-
 
     const mergedConfig = config;
 
    // 为代理节点生成直连规则
-    addProxyServerRules(mergedConfig);
+    // addProxyServerRules(mergedConfig);
 
      // 高级配置 hosts-override 转为 dns 配置：单域名用 hosts 服务器，泛域名用 rule 的 predefined
     const hostsOverrideVal = settings['hosts-override'] || '[]';
@@ -862,6 +842,32 @@ function addSystemRouteRules(config: SingboxConfig, settings: Record<string, str
             console.log('[Config] Applied hosts-override to DNS (single domains -> hosts, wildcards -> predefined rules)');
         }
     }
+
+    let appendRules: DnsPlainRule[] = [
+      {
+        "protocol": "dns",
+        "action": "hijack-dns"
+      },
+      {
+        "inbound": "proxy_in",
+        "action": "sniff"
+      },
+    ]
+
+    if(isTunMode) {
+        appendRules = [
+            {
+                "inbound": "tun_in",
+                "action": "sniff"
+            },
+            ...appendRules
+        ]
+            
+    }
+    config.route.rules = [
+        ...appendRules,
+        ...config.route.rules,
+    ]
 }
 
 

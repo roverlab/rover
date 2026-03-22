@@ -137,7 +137,7 @@ export interface ElectronAPI {
         };
         singbox: {
             getInitialLogLineCount(): Promise<{ lineCount: number }>;
-            readLog(options?: { fromLine?: number }): Promise<{ lines: string[]; totalLines: number }>;
+            readLog(options?: { fromLine?: number; search?: string; maxResults?: number }): Promise<{ lines: string[]; totalLines: number; isSearch?: boolean }>;
             clearLog(): Promise<{ success: boolean; error?: string }>;
         };
         /** RoverService APIs (macOS and Windows) */

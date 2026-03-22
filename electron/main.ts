@@ -18,11 +18,13 @@ import { setCachedIsServiceInstalled, getCachedIsServiceInstalled } from './rove
 
 import path from 'node:path';
 import fs from 'node:fs';
+import readline from 'node:readline';
 import * as dbUtils from './db';
 import * as singbox from './core-controller';
 import * as proxy from './proxy';
 import { createTray, updateTrayMenu } from './tray';
 import * as scheduler from './scheduler';
+import { startSingboxLogMaintenance, stopSingboxLogMaintenance } from './singbox-log-maintenance';
 import { initLogger, createLogger, getLogDir, getLogFiles, clearAllLogs, redirectConsole, log as loggerLog, logBatch } from './logger';
 import { getDataDir, getProfilesDir,  resolveDataPath, getAppRootPath, getDistPath, getPublicPath, getPreloadPath, getTemplatesIndexPath, getPresetTemplatesPath, getBuildInfoPath, getSingboxLogPath, syncBuiltinRulesetsToUserData } from './paths';
 import {
@@ -480,11 +482,6 @@ console.log('[Path Debug] app.getAppPath():', app.getAppPath());
 console.log('[Path Debug] appRootPath:', appRootPath);
 console.log('[Path Debug] process.env.DIST:', process.env.DIST);
 console.log('[Path Debug] process.env.VITE_PUBLIC:', process.env.VITE_PUBLIC);
-console.log('[Path Debug] DIST exists:', fs.existsSync(process.env.DIST as string));
-if (fs.existsSync(process.env.DIST as string)) {
-    console.log('[Path Debug] DIST contents:', fs.readdirSync(process.env.DIST as string));
-}
-
 let win: BrowserWindow | null;
 
 let isQuitting = false;
@@ -588,6 +585,7 @@ app.on('before-quit', async (event) => {
 
     // 停止定时任务
     scheduler.stopAllSchedulers();
+    stopSingboxLogMaintenance();
 
     handleAppQuit();
 
@@ -629,35 +627,149 @@ ipcMain.handle('singbox:getInitialLogLineCount', () => {
 
 // 读取 sing-box 内核日志文件（本地文件，不调接口）
 // 容错：编码回退、移除不可打印字符、读取异常时返回空
-ipcMain.handle('singbox:readLog', async (_event, options?: { fromLine?: number }) => {
+// 统一使用流式从后往前读取，限制只读取启动后的日志
+// 搜索文本支持多关键词(空格分割，AND逻辑)，例如: "ERROR connection" 匹配包含 ERROR 和 connection 的日志
+ipcMain.handle('singbox:readLog', async (_event, options?: { fromLine?: number; search?: string; maxResults?: number }) => {
     const logPath = getSingboxLogPath();
     if (!fs.existsSync(logPath)) {
         return { lines: [], totalLines: 0 };
     }
+    
+    // 移除不可打印字符
+    const cleanLine = (line: string): string => line.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '');
+    const chunkSize = 64 * 1024; // 64KB 每次读取块
+    
+    // 解析搜索文本：所有词都作为关键词(AND逻辑)
+    const searchInput = options?.search?.trim() || '';
+    const searchWords = searchInput ? searchInput.split(/\s+/).map(w => w.toLowerCase()) : [];
+    const isSearch = searchWords.length > 0;
+    const maxResults = options?.maxResults ?? 200;  // 默认 200 条
+    
     try {
-        let buf: Buffer;
-        try {
-            buf = fs.readFileSync(logPath);
-        } catch (readErr) {
-            log.error(`读取 sing-box 日志文件失败: ${(readErr as Error).message}`);
-            return { lines: [], totalLines: 0 };
+        const stat = fs.statSync(logPath);
+        const fileSize = stat.size;
+        
+        if (fileSize === 0) {
+            return { lines: [], totalLines: 0, isSearch };
         }
-        let content: string;
-        try {
-            content = buf.toString('utf8');
-        } catch {
-            content = buf.toString('latin1');
+        
+        // 先快速计算总行数
+        const totalLines = await new Promise<number>((resolve) => {
+            let count = 0;
+            const rs = fs.createReadStream(logPath, { encoding: 'utf8' });
+            const rl = readline.createInterface({ input: rs, crlfDelay: Infinity });
+            rl.on('line', () => count++);
+            rl.on('close', () => resolve(count));
+            rl.on('error', () => resolve(count));
+        });
+        
+        // 计算起始行号
+        const startLine = isSearch 
+            ? singboxLogInitialLineCount  // 搜索模式：只读启动后的日志
+            : Math.max(singboxLogInitialLineCount, options?.fromLine ?? singboxLogInitialLineCount);
+        
+        if (startLine >= totalLines) {
+            return { lines: [], totalLines, isSearch };
         }
-        // 移除不可打印字符，避免前端解析异常
-        content = content.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '');
-        const allLines = content.split(/\r?\n/);
-        const totalLines = allLines.length;
-        const fromLine = Math.max(0, options?.fromLine ?? 0);
-        const lines = fromLine >= totalLines ? [] : allLines.slice(fromLine);
-        return { lines, totalLines };
+        
+        // 从底部向上读取
+        const fd = fs.openSync(logPath, 'r');
+        
+        const readBackwards = (): Promise<{ lines: string[]; stopped: boolean }> => {
+            return new Promise((resolve) => {
+                const results: string[] = [];
+                const buffer = Buffer.alloc(chunkSize);
+                let pos = fileSize;
+                let carry = '';
+                let currentLineNum = totalLines;
+                
+                // 匹配函数：多关键词搜索(AND逻辑)
+                const matchLine = (cleanedLine: string): boolean => {
+                    if (searchWords.length === 0) return true;
+                    const lineLower = cleanedLine.toLowerCase();
+                    // 所有关键词都必须匹配
+                    for (const word of searchWords) {
+                        if (!lineLower.includes(word)) return false;
+                    }
+                    return true;
+                };
+                
+                const readChunk = () => {
+                    // 停止条件：已读够、已到起始行、文件读完
+                    if (results.length >= maxResults || currentLineNum <= startLine || pos <= 0) {
+                        // 处理最后剩余的 carry
+                        if (carry && currentLineNum > startLine && pos <= 0) {
+                            const cleanedCarry = cleanLine(carry);
+                            if (cleanedCarry.trim() && matchLine(cleanedCarry)) {
+                                results.push(cleanedCarry);
+                            }
+                        }
+                        fs.closeSync(fd);
+                        resolve({ lines: results, stopped: results.length >= maxResults });
+                        return;
+                    }
+                    
+                    const readSize = Math.min(chunkSize, pos);
+                    pos -= readSize;
+                    
+                    try {
+                        const bytesRead = fs.readSync(fd, buffer, 0, readSize, pos);
+                        if (bytesRead === 0) {
+                            fs.closeSync(fd);
+                            resolve({ lines: results, stopped: results.length >= maxResults });
+                            return;
+                        }
+                        
+                        // carry 是上一个 chunk 末尾不完整的行（较新），拼到新 chunk 后面
+                        const chunk = buffer.toString('utf8', 0, bytesRead) + carry;
+                        const lines = chunk.split(/\r?\n/);
+                        // lines[0] 是这个 chunk 开头不完整的行（较旧），保存为 carry 供下一个 chunk 使用
+                        carry = lines[0];
+                        
+                        // 从后往前处理 lines[1] 到 lines[end]
+                        // lines[end] 是最新的，lines[1] 是这个 chunk 中较旧的
+                        for (let i = lines.length - 1; i >= 1; i--) {
+                            const line = lines[i];
+                            currentLineNum--;
+                            
+                            if (currentLineNum < startLine) {
+                                fs.closeSync(fd);
+                                resolve({ lines: results, stopped: results.length >= maxResults });
+                                return;
+                            }
+                            
+                            if (!line || !line.trim()) continue;
+                            
+                            const cleanedLine = cleanLine(line);
+                            if (matchLine(cleanedLine)) {
+                                results.push(cleanedLine);
+                                if (results.length >= maxResults) {
+                                    fs.closeSync(fd);
+                                    resolve({ lines: results, stopped: true });
+                                    return;
+                                }
+                            }
+                        }
+                        
+                        setImmediate(readChunk);
+                    } catch (err) {
+                        log.error(`反向读取日志失败: ${(err as Error).message}`);
+                        fs.closeSync(fd);
+                        resolve({ lines: results, stopped: false });
+                    }
+                };
+                
+                readChunk();
+            });
+        };
+        
+        const { lines: matched } = await readBackwards();
+        // 结果是从新到旧读取的，直接返回
+        return { lines: matched, totalLines, isSearch };
+        
     } catch (err) {
         log.error(`读取 sing-box 日志失败: ${(err as Error).message}`);
-        return { lines: [], totalLines: 0 };
+        return { lines: [], totalLines: 0, isSearch };
     }
 });
 
@@ -806,6 +918,8 @@ dbUtils.cleanupProfileDnsServerDetours();
     // 初始化定时任务调度器
     log.info('初始化定时任务调度器...');
     scheduler.initSchedulers();
+
+    startSingboxLogMaintenance();
 
     // 启动时自动打开内核（默认 true，未显式设为 false 时启用）
     const autoStartKernel = dbUtils.getSetting('auto-start-proxy');

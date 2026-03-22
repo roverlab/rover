@@ -30,9 +30,11 @@ export async function selectProxy(apiUrl: string, secret: string, group: string,
   if (!res.ok) throw new Error('Failed to select proxy');
 }
 
-export async function getProxyDelay(apiUrl: string, secret: string, proxy: string, url: string = 'http://www.gstatic.com/generate_204', timeout: number = 1200) {
+export async function getProxyDelay(apiUrl: string, secret: string, proxy: string, url: string = 'http://www.gstatic.com/generate_204', timeout: number = 2000) {
+  // 前端超时与 API 超时一致
   const res = await fetch(`${apiUrl}/proxies/${encodeURIComponent(proxy)}/delay?timeout=${timeout}&url=${encodeURIComponent(url)}`, {
-    headers: secret ? { Authorization: `Bearer ${secret}` } : {}
+    headers: secret ? { Authorization: `Bearer ${secret}` } : {},
+    signal: AbortSignal.timeout(timeout)
   });
   if (!res.ok) throw new Error('Failed to get delay');
   return res.json();

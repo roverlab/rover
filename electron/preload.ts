@@ -125,7 +125,7 @@ contextBridge.exposeInMainWorld('ipcRenderer', {
     // Sing-box 内核日志（本地文件）
     singbox: {
         getInitialLogLineCount: () => ipcRenderer.invoke('singbox:getInitialLogLineCount'),
-        readLog: (options?: { fromLine?: number }) => ipcRenderer.invoke('singbox:readLog', options),
+        readLog: (options?: { fromLine?: number; search?: string; maxResults?: number }) => ipcRenderer.invoke('singbox:readLog', options),
         clearLog: () => ipcRenderer.invoke('singbox:clearLog'),
     },
 

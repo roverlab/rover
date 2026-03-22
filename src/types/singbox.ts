@@ -193,6 +193,7 @@ export interface OutboundConfig {
     min_idle_session?: number;
     tcp_fast_open?: boolean;
     congestion_control?: string;
+    domain_resolver?: any;
 }
 
 export interface RouteConfig {

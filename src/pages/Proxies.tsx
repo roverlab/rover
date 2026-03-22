@@ -157,7 +157,7 @@ export function Proxies({ isActive = true }: ProxiesProps) {
   const activeGroupNameRef = useRef<string>(''); // 用于存储当前活动组名
   const isTestRunningRef = useRef(false); // 防止测试重复触发
   const activeTabRef = useRef<string>(''); // 用于存储当前 activeTab，避免循环依赖
-  const MAX_CONCURRENT_TESTS = 20; // 最大并发测试数量
+  const MAX_CONCURRENT_TESTS = 10; // 最大并发测试数量
 
   // 异步获取 API 数据（延迟和当前选择状态）
   const fetchApiDataAsync = useCallback(async (currentGroups: ProxyGroup[]) => {
@@ -361,12 +361,8 @@ export function Proxies({ isActive = true }: ProxiesProps) {
     }
   }, [apiUrl, apiSecret, loadProxies]);
 
-  // 稳定的节点选择回调，避免每次渲染创建新函数
-  const handleNodeSelect = useCallback((nodeName: string) => {
-    if (activeGroupNameRef.current) {
-      handleSelectNode(activeGroupNameRef.current, nodeName, true);
-    }
-  }, [handleSelectNode]);
+  // 使用 ref 存储 processQueue 的最新引用，避免闭包问题
+  const processQueueRef = useRef<() => void>();
 
   const processQueue = useCallback(async () => {
     if (testingCountRef.current >= MAX_CONCURRENT_TESTS || testQueueRef.current.length === 0) return;
@@ -378,8 +374,6 @@ export function Proxies({ isActive = true }: ProxiesProps) {
 
       setNodeTestState(prev => ({ ...prev, [nodeName]: 'testing' }));
 
-
-
       const finishTest = (delay: number) => {
         setNodeDelays(prev => ({ ...prev, [nodeName]: delay }));
         setNodeTestState(prev => {
@@ -389,29 +383,39 @@ export function Proxies({ isActive = true }: ProxiesProps) {
         });
         testingCountRef.current--;
         if (testQueueRef.current.length > 0 || testingCountRef.current > 0) {
-          processQueue();
+          // 使用 setTimeout 确保使用最新的 processQueue 引用
+          setTimeout(() => processQueueRef.current?.(), 0);
         } else {
           isTestRunningRef.current = false;
         }
       };
 
-    
-        // 代理节点：调用 sing-box API 测速
-        const testUrl = 'http://www.gstatic.com/generate_204';
-        getProxyDelay(apiUrl, apiSecret, nodeName, testUrl).then(data => {
-          finishTest(data.delay);
-        }).catch(e => {
-          finishTest(0);
-        });
+      // 代理节点：调用 sing-box API 测速
+      const testUrl = 'http://www.gstatic.com/generate_204';
+      getProxyDelay(apiUrl, apiSecret, nodeName, testUrl).then(data => {
+        finishTest(data.delay);
+      }).catch(e => {
+        finishTest(0);
+      });
     }
   }, [apiUrl, apiSecret]);
 
+  // 同步 processQueue 到 ref
+  useEffect(() => {
+    processQueueRef.current = processQueue;
+  }, [processQueue]);
+
   const enqueueTest = useCallback((node: Node) => {
-    if (nodeTestState[node.name]) return; // 已经在队列中或正在测试
+    // 检查是否已经在队列中或正在测试
+    if (nodeTestState[node.name]) return;
+    // 检查是否已经在 testQueueRef 中
+    if (testQueueRef.current.some(n => n.name === node.name)) return;
+
     testQueueRef.current.push(node);
     setNodeTestState(prev => ({ ...prev, [node.name]: 'queued' }));
-    processQueue();
-  }, [nodeTestState, processQueue]);
+    // 使用 ref 调用最新的 processQueue
+    processQueueRef.current?.();
+  }, [nodeTestState]);
 
   // 搜索结果 - 在所有组中搜索匹配的节点（需在 testLatency 之前定义）
   const searchResults = useMemo(() => {
@@ -473,11 +477,21 @@ export function Proxies({ isActive = true }: ProxiesProps) {
 
     isTestRunningRef.current = true;
 
-    // 清空之前的延迟数据
-    setNodeDelays({});
+    // 清空即将测试的节点的延迟数据（保留其他节点的测速结果）
+    setNodeDelays(prev => {
+      const next = { ...prev };
+      nodesToTest.forEach(n => {
+        delete next[n.name];
+      });
+      return next;
+    });
 
-    // 将需要测试的节点加入队列（排除已在测试中的）
-    const toEnqueue = nodesToTest.filter(n => !nodeTestState[n.name]);
+    // 将需要测试的节点加入队列（排除已在测试中或已在队列中的）
+    const toEnqueue = nodesToTest.filter(n => {
+      if (nodeTestState[n.name]) return false; // 已经在测试中
+      if (testQueueRef.current.some(qn => qn.name === n.name)) return false; // 已经在队列中
+      return true;
+    });
     toEnqueue.forEach(n => {
       testQueueRef.current.push(n);
     });
@@ -492,8 +506,8 @@ export function Proxies({ isActive = true }: ProxiesProps) {
     });
 
     // 开始处理队列
-    processQueue();
-  }, [groups, activeTab, searchActiveGroup, isSearchMode, searchQuery, displayedSearchNodes, nodeTestState, processQueue, apiUrl, apiSecret, addNotification]);
+    processQueueRef.current?.();
+  }, [groups, activeTab, searchActiveGroup, isSearchMode, searchQuery, displayedSearchNodes, nodeTestState, apiUrl, apiSecret, addNotification]);
 
   const getDelayClass = useCallback((delay?: number) => {
     if (delay === undefined) return 'text-red-500';
@@ -502,31 +516,6 @@ export function Proxies({ isActive = true }: ProxiesProps) {
     if (delay < 500) return 'text-yellow-600';
     return 'text-red-500';
   }, []);
-
-  // 使用 useMemo 缓存排序结果 - 移除对 nodeTestState 的依赖避免频繁重排序
-  const sortedNodes = useMemo(() => {
-    const activeGroupData = groups.find(g => g.name === activeTab);
-    if (!activeGroupData) return [];
-
-    const nodes = [...activeGroupData.nodes];
-    switch (settings.sortBy) {
-      case 'delay':
-        return nodes.sort((a, b) => {
-          const delayA = nodeDelays[a.name];
-          const delayB = nodeDelays[b.name];
-          // 未测试(undefined)或超时/失败(0)的节点排到最后
-          const effectiveA = (delayA != null && delayA > 0) ? delayA : Infinity;
-          const effectiveB = (delayB != null && delayB > 0) ? delayB : Infinity;
-          const diff = effectiveA - effectiveB;
-          if (diff !== 0) return diff;
-          return a.name.localeCompare(b.name); // 相同延迟时按名称稳定排序
-        });
-      case 'name':
-        return nodes.sort((a, b) => a.name.localeCompare(b.name));
-      default:
-        return nodes;
-    }
-  }, [groups, activeTab, settings.sortBy, nodeDelays]);
 
   // 进入搜索模式时，默认选中第一个组
   useEffect(() => {
@@ -583,7 +572,60 @@ export function Proxies({ isActive = true }: ProxiesProps) {
   }, [settings.viewStyle, settings.sizeOption]);
 
   const activeGroupData = groups.find(g => g.name === activeTab);
-  const isSelectableGroup = activeGroupData?.type === 'select' || activeGroupData?.type === 'Selector';
+  const isSelectableGroup = activeGroupData?.type === 'selector' || activeGroupData?.type === 'Selector';
+
+  // 统一计算当前显示的节点列表（普通模式和搜索模式共用）
+  const displayedNodes = useMemo(() => {
+    // 搜索模式
+    if (isSearchMode) {
+      if (searchQuery.trim()) {
+        // 有搜索词：显示搜索结果
+        return displayedSearchNodes.map(({ group, node }) => ({
+          node,
+          group,
+          key: `${group.name}-${node.name}`,
+          isSelected: selectedNodes[group.name] === node.name,
+          isSelectable: group.type === 'selector' || group.type === 'Selector',
+        }));
+      } else {
+        // 无搜索词：显示当前选中组的所有节点
+        const group = groups.find(g => g.name === searchActiveGroup);
+        if (!group) return [];
+        return group.nodes.map(node => ({
+          node,
+          group,
+          key: node.name,
+          isSelected: selectedNodes[group.name] === node.name,
+          isSelectable: group.type === 'selector' || group.type === 'Selector',
+        }));
+      }
+    }
+    // 普通模式
+    if (!activeGroupData) return [];
+    // 应用排序
+    const nodes = [...activeGroupData.nodes];
+    let sortedNodes = nodes;
+    if (settings.sortBy === 'delay') {
+      sortedNodes = nodes.sort((a, b) => {
+        const delayA = nodeDelays[a.name];
+        const delayB = nodeDelays[b.name];
+        const effectiveA = (delayA != null && delayA > 0) ? delayA : Infinity;
+        const effectiveB = (delayB != null && delayB > 0) ? delayB : Infinity;
+        const diff = effectiveA - effectiveB;
+        if (diff !== 0) return diff;
+        return a.name.localeCompare(b.name);
+      });
+    } else if (settings.sortBy === 'name') {
+      sortedNodes = nodes.sort((a, b) => a.name.localeCompare(b.name));
+    }
+    return sortedNodes.map(node => ({
+      node,
+      group: activeGroupData,
+      key: node.name,
+      isSelected: selectedNodes[activeGroupData.name] === node.name,
+      isSelectable: isSelectableGroup,
+    }));
+  }, [isSearchMode, searchQuery, displayedSearchNodes, groups, searchActiveGroup, activeGroupData, settings.sortBy, nodeDelays, selectedNodes, isSelectableGroup]);
 
   // 更新 ref 以便在回调中使用
   useEffect(() => {
@@ -596,6 +638,11 @@ export function Proxies({ isActive = true }: ProxiesProps) {
   useEffect(() => {
     activeTabRef.current = activeTab;
   }, [activeTab]);
+
+  // 稳定的节点选择回调
+  const handleCardSelect = useCallback((groupName: string, nodeName: string, isSelectable: boolean) => {
+    handleSelectNode(groupName, nodeName, isSelectable);
+  }, [handleSelectNode]);
 
   return (
     <div className="page-shell text-[var(--app-text-secondary)]">
@@ -678,130 +725,68 @@ export function Proxies({ isActive = true }: ProxiesProps) {
       <div className="page-content">
         {groups.length === 0 && !initialLoading ? (
           <div className="empty-state text-[13px]">No proxies available.</div>
-        ) : isSearchMode ? (
-          /* 搜索模式 */
+        ) : (
           <>
-            {/* 搜索模式组标签栏 - 与普通模式同高，避免节点组区域高度变化 */}
+            {/* 组标签栏 */}
             <div className="px-4 py-2 mb-4 shrink-0 relative flex items-center gap-1">
-              <div className="flex space-x-1 overflow-x-auto flex-1 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none']">
+              <div className={cn(
+                "flex space-x-1 overflow-x-auto flex-1",
+                "[&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none']"
+              )}>
                 {groups.map(g => (
                   <button
                     key={g.name}
-                    onClick={() => setSearchActiveGroup(g.name)}
+                    onClick={() => isSearchMode ? setSearchActiveGroup(g.name) : setActiveTab(g.name)}
                     className={cn(
                       "px-3 py-2 text-[13px] font-medium whitespace-nowrap transition-colors relative rounded-[6px]",
-                      searchActiveGroup === g.name
+                      (isSearchMode ? searchActiveGroup : activeTab) === g.name
                         ? "text-[var(--app-text)]"
                         : "text-[var(--app-text-quaternary)] hover:text-[var(--app-text-secondary)] hover:bg-[var(--app-hover)]"
                     )}
                   >
                     {g.name}
-                    {searchActiveGroup === g.name && (
+                    {(isSearchMode ? searchActiveGroup : activeTab) === g.name && (
                       <div className="absolute bottom-0.5 left-3 right-3 h-0.5 bg-[var(--app-accent)] rounded-full" />
                     )}
                   </button>
                 ))}
               </div>
-            </div>
-
-            {/* 搜索结果节点网格 */}
-            <div className={cn("grid", gridCols, layoutClasses)}>
-              {searchQuery.trim() ? (
-                /* 有输入时显示搜索结果 */
-                displayedSearchNodes.length > 0 ? (
-                  displayedSearchNodes.map(({ group, node }) => (
-                    <NodeCard
-                      key={`${group.name}-${node.name}`}
-                      name={node.name}
-                      type={node.type}
-                      isSelected={selectedNodes[group.name] === node.name}
-                      isSelectable={group.type === 'select' || group.type === 'Selector'}
-                      delay={nodeDelays[node.name]}
-                      testState={nodeTestState[node.name]}
-                      sizeClasses={sizeClasses}
-                      onSelect={() => handleSelectNode(group.name, node.name, group.type === 'select' || group.type === 'Selector')}
-                      getDelayClass={getDelayClass}
-                      currentNode={selectedNodes[node.name]}
-                    />
-                  ))
-                ) : (
-                  /* 无搜索结果 */
-                  <div className="col-span-full flex items-center justify-center py-20 text-[var(--app-text-tertiary)] text-[13px]">
-                    未找到匹配的节点
-                  </div>
-                )
-              ) : (
-                /* 无输入时显示当前选中组的所有节点 */
-                groups.find(g => g.name === searchActiveGroup)?.nodes.map(node => {
-                  const group = groups.find(g => g.name === searchActiveGroup)!;
-                  return (
-                    <NodeCard
-                      key={node.name}
-                      name={node.name}
-                      type={node.type}
-                      isSelected={selectedNodes[group.name] === node.name}
-                      isSelectable={group.type === 'select' || group.type === 'Selector'}
-                      delay={nodeDelays[node.name]}
-                      testState={nodeTestState[node.name]}
-                      sizeClasses={sizeClasses}
-                      onSelect={() => handleSelectNode(group.name, node.name, group.type === 'select' || group.type === 'Selector')}
-                      getDelayClass={getDelayClass}
-                      currentNode={selectedNodes[node.name]}
-                    />
-                  );
-                })
+              {/* 更多按钮 - 仅普通模式显示 */}
+              {!isSearchMode && (
+                <button
+                  onClick={() => setShowTabsPopup(true)}
+                  className="w-7 h-7 flex items-center justify-center rounded-[6px] bg-white shadow-sm border border-[var(--app-divider)] hover:bg-[var(--app-hover)] transition-colors shrink-0 z-10"
+                  title="查看所有分组"
+                >
+                  <MoreVertical className="w-4 h-4 text-[var(--app-text-secondary)]" />
+                </button>
               )}
             </div>
-          </>
-        ) : (
-          /* 普通模式 */
-          <>
-            <div className="px-4 py-2 mb-4 shrink-0 relative flex items-center gap-1">
-              <div className="flex space-x-1 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none'] flex-1">
-                {groups.map(g => (
-                  <button
-                    key={g.name}
-                    onClick={() => setActiveTab(g.name)}
-                    className={cn(
-                      "px-3 py-2 text-[13px] font-medium whitespace-nowrap transition-colors relative rounded-[6px]",
-                      activeTab === g.name
-                        ? "text-[var(--app-text)]"
-                        : "text-[var(--app-text-quaternary)] hover:text-[var(--app-text-secondary)] hover:bg-[var(--app-hover)]"
-                    )}
-                  >
-                    {g.name}
-                    {activeTab === g.name && (
-                      <div className="absolute bottom-0.5 left-3 right-3 h-0.5 bg-[var(--app-accent)] rounded-full" />
-                    )}
-                  </button>
-                ))}
-              </div>
-              {/* 更多按钮 - 点击展开所有分组 */}
-              <button
-                onClick={() => setShowTabsPopup(true)}
-                className="w-7 h-7 flex items-center justify-center rounded-[6px] bg-white shadow-sm border border-[var(--app-divider)] hover:bg-[var(--app-hover)] transition-colors shrink-0 z-10"
-                title="查看所有分组"
-              >
-                <MoreVertical className="w-4 h-4 text-[var(--app-text-secondary)]" />
-              </button>
-            </div>
 
+            {/* 节点网格 - 搜索模式和普通模式共用 */}
             <div className={cn("grid", gridCols, layoutClasses)}>
-              {activeGroupData && sortedNodes.map(node => (
-                <NodeCard
-                  key={node.name}
-                  name={node.name}
-                  type={node.type}
-                  isSelected={selectedNodes[activeGroupData.name] === node.name}
-                  isSelectable={isSelectableGroup}
-                  delay={nodeDelays[node.name]}
-                  testState={nodeTestState[node.name]}
-                  sizeClasses={sizeClasses}
-                  onSelect={() => handleNodeSelect(node.name)}
-                  getDelayClass={getDelayClass}
-                  currentNode={(node.type === 'urltest' || node.type === 'URLTest') ? selectedNodes[node.name] : undefined}
-                />
-              ))}
+              {isSearchMode && searchQuery.trim() && displayedNodes.length === 0 ? (
+                /* 无搜索结果 */
+                <div className="col-span-full flex items-center justify-center py-20 text-[var(--app-text-tertiary)] text-[13px]">
+                  未找到匹配的节点
+                </div>
+              ) : (
+                displayedNodes.map(({ node, group, key, isSelected, isSelectable }) => (
+                  <NodeCard
+                    key={key}
+                    name={node.name}
+                    type={node.type}
+                    isSelected={isSelected}
+                    isSelectable={isSelectable}
+                    delay={nodeDelays[node.name]}
+                    testState={nodeTestState[node.name]}
+                    sizeClasses={sizeClasses}
+                    onSelect={() => handleCardSelect(group.name, node.name, isSelectable)}
+                    getDelayClass={getDelayClass}
+                    currentNode={(node.type === 'urltest' || node.type === 'URLTest') ? selectedNodes[node.name] : undefined}
+                  />
+                ))
+              )}
             </div>
           </>
         )}

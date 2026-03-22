@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Trash2, Pause, Play, Activity, Search, MoreVertical, FileX2, X, ArrowUp } from 'lucide-react';
+import { Trash2, Pause, Play, Activity, Search, MoreVertical, FileX2, X, ArrowUp, Loader2, Copy, Check } from 'lucide-react';
 import { cn } from '../components/Sidebar';
 import { Button } from '../components/ui/Button';
 import { Input, Select } from '../components/ui/Field';
@@ -20,9 +20,8 @@ interface LogsProps {
   isActive?: boolean;
 }
 
-// 优化：降低轮询频率，减少内存占用
-const POLL_INTERVAL_MS = 2000;
-const MAX_DISPLAY_LOGS = 300;
+// 每次请求最多返回的日志条数
+const MAX_RESULTS = 200;
 
 /** 移除 ANSI 转义序列，支持常见格式 */
 function stripAnsi(str: string): string {
@@ -118,74 +117,111 @@ export function Logs({ isActive = true }: LogsProps) {
   const [isPaused, setIsPaused] = useState(false);
   const [levelFilter, setLevelFilter] = useState<string>('all');
   const [searchText, setSearchText] = useState('');
-  const [fromLine, setFromLine] = useState<number | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
   const idCounter = useRef(0);
   const [moreOpen, setMoreOpen] = useState(false);
   const moreButtonRef = useRef<HTMLButtonElement>(null);
   const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0 });
   const { confirm, ConfirmDialog } = useConfirm();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const debounceRef = useRef<NodeJS.Timeout | null>(null);
+  // 右键菜单状态
+  const [contextMenu, setContextMenu] = useState<{
+    visible: boolean;
+    x: number;
+    y: number;
+    log: LogEntry | null;
+  }>({ visible: false, x: 0, y: 0, log: null });
+  const [copied, setCopied] = useState(false);
 
-  // 初始化：从后端获取启动时已记录的日志行数
-  useEffect(() => {
-    if (!isActive) {
-      setFromLine(null);
-      return;
+  // 是否处于搜索模式
+  const isInSearchMode = searchText.trim() !== '' || levelFilter !== 'all';
+
+  // 构建搜索文本：级别 + 搜索词，用空格分割
+  const buildSearchText = useCallback(() => {
+    const parts: string[] = [];
+    if (levelFilter !== 'all') {
+      parts.push(levelFilter.toUpperCase());
     }
+    if (searchText.trim()) {
+      parts.push(searchText.trim());
+    }
+    return parts.join(' ');
+  }, [levelFilter, searchText]);
 
-    const loadInitial = async () => {
-      try {
-        const { lineCount } = await window.ipcRenderer.singbox.getInitialLogLineCount();
-        setFromLine(lineCount);
-      } catch {
-        setFromLine(0);
+  // 从后台获取日志
+  const fetchLogs = useCallback(async () => {
+    if (!isActive) return;
+    
+    setIsSearching(true);
+    try {
+      const result = await window.ipcRenderer.singbox.readLog({
+        search: buildSearchText() || undefined,
+        maxResults: MAX_RESULTS
+      });
+      
+      let entries: LogEntry[] = result.lines
+        .filter((l) => l != null && String(l).trim().length > 0)
+        .map((l) => {
+          const parsed = parseLogLine(String(l));
+          return {
+            id: idCounter.current++,
+            time: parsed.time,
+            level: parsed.level,
+            message: parsed.message,
+            configHint: parsed.configHint
+          };
+        });
+
+      // 前端二次过滤：确保级别筛选准确
+      if (levelFilter !== 'all') {
+        entries = entries.filter((entry) => entry.level === levelFilter);
       }
-    };
 
-    loadInitial();
-  }, [isActive]);
+      // 后端返回的日志已是从新到旧
+      setLogs(entries);
+    } catch {
+      // 忽略错误
+    } finally {
+      setIsSearching(false);
+    }
+  }, [isActive, buildSearchText]);
 
-  // 轮询读取新日志
+  // 初始化和非搜索模式下定时刷新
   useEffect(() => {
-    if (!isActive || isPaused || fromLine === null) return;
+    if (!isActive) return;
+    
+    // 立即获取一次
+    fetchLogs();
+    
+    // 非搜索模式且未暂停时，定时刷新
+    if (!isInSearchMode && !isPaused) {
+      const timer = setInterval(fetchLogs, 2000);
+      return () => clearInterval(timer);
+    }
+  }, [isActive, isInSearchMode, isPaused, fetchLogs]);
 
-    const poll = async () => {
-      try {
-        const { lines, totalLines } = await window.ipcRenderer.singbox.readLog({ fromLine });
-        if (lines.length > 0) {
-          const newEntries: LogEntry[] = lines
-            .filter((l) => l != null && String(l).trim().length > 0)
-            .map((l) => {
-              const parsed = parseLogLine(String(l));
-              return {
-                id: idCounter.current++,
-                time: parsed.time,
-                level: parsed.level,
-                message: parsed.message,
-                configHint: parsed.configHint
-              };
-            });
-          setFromLine(totalLines);
-          setLogs((prev) => {
-            const next = [...prev, ...newEntries];
-            if (next.length > MAX_DISPLAY_LOGS) return next.slice(next.length - MAX_DISPLAY_LOGS);
-            return next;
-          });
-        } else if (totalLines > fromLine) {
-          setFromLine(totalLines);
-        }
-      } catch {
-        // 忽略读取错误
+  // 搜索模式：防抖后查询
+  useEffect(() => {
+    if (!isActive || !isInSearchMode) return;
+    
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+    }
+    
+    debounceRef.current = setTimeout(fetchLogs, 300);
+    
+    return () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
       }
     };
+  }, [isActive, isInSearchMode, searchText, levelFilter, fetchLogs]);
 
-    const timer = setInterval(poll, POLL_INTERVAL_MS);
-    poll();
-
-    return () => clearInterval(timer);
-  }, [isActive, isPaused, fromLine]);
-
-  const clearLogs = () => setLogs([]);
+  // 清除日志显示
+  const clearLogs = () => {
+    setLogs([]);
+  };
 
   const handleOpenMore = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -210,7 +246,8 @@ export function Logs({ isActive = true }: LogsProps) {
       const res = await window.ipcRenderer.singbox.clearLog();
       if (res.success) {
         setLogs([]);
-        setFromLine(0);
+        setSearchText('');
+        setLevelFilter('all');
       }
     } catch {
       // ignore
@@ -224,16 +261,6 @@ export function Logs({ isActive = true }: LogsProps) {
     return () => document.removeEventListener('click', onOutside);
   }, [moreOpen]);
 
-  const getLevelColor = (level: string) => {
-    switch (level.toLowerCase()) {
-      case 'info': return 'text-[var(--app-accent)]';
-      case 'warning': return 'text-[var(--app-warning)]';
-      case 'error': return 'text-[var(--app-danger)]';
-      case 'debug': return 'text-[var(--app-text-quaternary)]';
-      default: return 'text-[var(--app-text-secondary)]';
-    }
-  };
-
   const getLevelBadgeClass = (level: string) => {
     switch (level.toLowerCase()) {
       case 'info': return 'bg-[var(--app-accent-soft)] text-[var(--app-accent)]';
@@ -244,11 +271,67 @@ export function Logs({ isActive = true }: LogsProps) {
     }
   };
 
-  const filteredLogs = logs.filter(log => {
-    const matchesLevel = levelFilter === 'all' || log.level.toLowerCase() === levelFilter.toLowerCase();
-    const matchesSearch = !searchText || log.message.toLowerCase().includes(searchText.toLowerCase());
-    return matchesLevel && matchesSearch;
-  }).reverse();
+  // 状态徽章
+  const getStatusBadge = () => {
+    if (isInSearchMode) return '搜索中';
+    if (isPaused) return '已暂停';
+    return '实时';
+  };
+
+  const getStatusBadgeTone = (): 'warning' | 'success' | 'neutral' => {
+    if (isInSearchMode) return 'neutral';
+    if (isPaused) return 'warning';
+    return 'success';
+  };
+
+  // 右键菜单处理
+  const handleContextMenu = useCallback((e: React.MouseEvent, log: LogEntry) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({
+      visible: true,
+      x: e.clientX,
+      y: e.clientY,
+      log
+    });
+    setCopied(false);
+  }, []);
+
+  // 关闭右键菜单
+  const closeContextMenu = useCallback(() => {
+    setContextMenu(prev => ({ ...prev, visible: false }));
+  }, []);
+
+  // 复制日志内容
+  const handleCopyLog = useCallback(async () => {
+    if (!contextMenu.log) return;
+    const text = `[${contextMenu.log.time}] [${contextMenu.log.level.toUpperCase()}] ${contextMenu.log.message}`;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => {
+        setCopied(false);
+        closeContextMenu();
+      }, 800);
+    } catch {
+      // 忽略错误
+    }
+  }, [contextMenu.log, closeContextMenu]);
+
+  // 点击其他地方关闭右键菜单
+  useEffect(() => {
+    if (!contextMenu.visible) return;
+    const handleClick = () => closeContextMenu();
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeContextMenu();
+    };
+    document.addEventListener('click', handleClick);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('click', handleClick);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [contextMenu.visible, closeContextMenu]);
 
   return (
     <div className="page-shell">
@@ -267,13 +350,20 @@ export function Logs({ isActive = true }: LogsProps) {
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
             />
-            {searchText && (
-              <button
-                onClick={() => setSearchText('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded-full hover:bg-[var(--app-hover)] text-[var(--app-text-quaternary)] hover:text-[var(--app-text-secondary)] transition-colors"
-              >
-                <X className="w-3 h-3" />
-              </button>
+            {(searchText || isSearching) && (
+              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                {isSearching && (
+                  <Loader2 className="w-3 h-3 animate-spin text-[var(--app-text-quaternary)]" />
+                )}
+                {searchText && (
+                  <button
+                    onClick={() => setSearchText('')}
+                    className="p-0.5 rounded-full hover:bg-[var(--app-hover)] text-[var(--app-text-quaternary)] hover:text-[var(--app-text-secondary)] transition-colors"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
             )}
           </div>
           <Select
@@ -292,6 +382,7 @@ export function Logs({ isActive = true }: LogsProps) {
             variant="ghost"
             size="icon"
             title={isPaused ? "继续" : "暂停"}
+            disabled={isInSearchMode}
           >
             {isPaused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}
           </Button>
@@ -337,8 +428,10 @@ export function Logs({ isActive = true }: LogsProps) {
       <div className="page-content min-w-0 flex flex-col min-h-0 overflow-hidden">
       <Card className="flex-1 overflow-hidden min-w-0 flex flex-col min-h-0">
         <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--app-divider)]">
-          <div className="text-[13px] font-medium text-[var(--app-text-secondary)]">内核日志列表</div>
-          <Badge tone={isPaused ? 'warning' : 'success'}>{isPaused ? '已暂停' : '实时'}</Badge>
+          <div className="text-[13px] font-medium text-[var(--app-text-secondary)]">
+            {isInSearchMode ? `搜索结果 (${logs.length} 条)` : `内核日志 (${logs.length} 条)`}
+          </div>
+          <Badge tone={getStatusBadgeTone()}>{getStatusBadge()}</Badge>
         </div>
         <div ref={scrollContainerRef} className="table-scroll-x flex-1 min-h-0 overflow-y-auto">
           <table className="data-table text-[12px] min-w-full">
@@ -350,8 +443,12 @@ export function Logs({ isActive = true }: LogsProps) {
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--app-divider)]">
-            {filteredLogs.map((log) => (
-              <tr key={log.id} className="group">
+            {logs.map((log) => (
+              <tr
+                key={log.id}
+                className="group cursor-default select-text"
+                onContextMenu={(e) => handleContextMenu(e, log)}
+              >
                 <td className="px-5 py-2.5 font-mono text-[var(--app-text-quaternary)] text-[11px]">
                   {log.time}
                 </td>
@@ -372,11 +469,11 @@ export function Logs({ isActive = true }: LogsProps) {
                 </td>
               </tr>
             ))}
-            {filteredLogs.length === 0 && (
+            {logs.length === 0 && !isSearching && (
               <tr>
                 <td colSpan={3} className="px-5 py-10 text-center text-[var(--app-text-quaternary)]">
                   <Activity className="w-6 h-6 mx-auto mb-2 text-[var(--app-text-quaternary)]" />
-                  <p className="text-[13px]">暂无日志</p>
+                  <p className="text-[13px]">{isInSearchMode ? '未找到匹配的日志' : '暂无日志'}</p>
                 </td>
               </tr>
             )}
@@ -397,6 +494,35 @@ export function Logs({ isActive = true }: LogsProps) {
         <ArrowUp className="w-5 h-5" />
       </button>
       <ConfirmDialog />
+      {/* 右键菜单 */}
+      {contextMenu.visible && createPortal(
+        <div
+          className="fixed bg-[var(--app-bg)] border border-[var(--app-divider)] rounded-lg shadow-lg py-1 w-32 z-[9999]"
+          style={{
+            top: contextMenu.y,
+            left: contextMenu.x
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            className="flex items-center px-3 py-1.5 text-[12px] text-[var(--app-text-secondary)] hover:bg-[var(--app-hover)] hover:text-[var(--app-text)] transition-colors text-left w-full"
+            onClick={handleCopyLog}
+          >
+            {copied ? (
+              <>
+                <Check className="w-3.5 h-3.5 mr-2 text-[var(--app-success)]" />
+                已复制
+              </>
+            ) : (
+              <>
+                <Copy className="w-3.5 h-3.5 mr-2" />
+                复制日志
+              </>
+            )}
+          </button>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }
