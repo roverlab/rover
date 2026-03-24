@@ -81,12 +81,18 @@ jobs:
       - name: Build roverservice
         run: |
           cd roverservice
+          # arch 映射: x86_64 -> amd64, arm64 -> arm64
+          if [ "${{ matrix.arch }}" == "x86_64" ]; then
+            GO_ARCH="amd64"
+          else
+            GO_ARCH="${{ matrix.arch }}"
+          fi
           if [ "${{ matrix.platform }}" == "windows" ]; then
             # Build for Windows amd64
             GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o ../resources/roverservice.exe .
           elif [ "${{ matrix.platform }}" == "macos" ]; then
             # Build for macOS (both arm64 and amd64)
-            GOOS=darwin GOARCH=${{ matrix.arch }} CGO_ENABLED=0 go build -ldflags="-s -w" -o ../resources/roverservice .
+            GOOS=darwin GOARCH=$GO_ARCH CGO_ENABLED=0 go build -ldflags="-s -w" -o ../resources/roverservice .
           else
             # Build for Linux
             GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o ../resources/roverservice .
