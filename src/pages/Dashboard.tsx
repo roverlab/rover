@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useApi } from '../contexts/ApiContext';
 import { getWsUrl, checkApiAvailable } from '../services/api';
 import { Switch } from '../components/ui/Switch';
@@ -201,9 +203,9 @@ export function Dashboard({ isActive }: DashboardProps) {
     const [networkCheckFailed, setNetworkCheckFailed] = useState(false); // 网络检测失败
     const [isLoaded, setIsLoaded] = useState(false);
     const [settingsLoaded, setSettingsLoaded] = useState(false); // 设置是否已从数据库加载
-    const [showNetworkTip, setShowNetworkTip] = useState(false); // 是否显示网络检测提示
     const [isServiceInstalled, setIsServiceInstalled] = useState(true); // RoverService 服务是否已安装（默认true避免闪烁）
     const [tunModeInitialized, setTunModeInitialized] = useState(false); // tunMode 是否已从数据库加载完成
+    const [showNetworkTip, setShowNetworkTip] = useState(false); // 是否显示网络检测提示
 
     // 防止重复初始化的标记
     const initializedRef = useRef(false);
@@ -1025,34 +1027,57 @@ export function Dashboard({ isActive }: DashboardProps) {
             <NotificationList notifications={notifications} onRemove={removeNotification} />
 
             {/* 网络检测说明弹窗 */}
-            {showNetworkTip && (
-                <div
-                    className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center"
-                    onClick={() => setShowNetworkTip(false)}
-                >
-                    <div
-                        className="bg-white rounded-[14px] p-5 max-w-[280px] shadow-xl animate-in fade-in zoom-in duration-200"
-                        onClick={e => e.stopPropagation()}
-                    >
-                        <div className="flex items-center gap-2 mb-3">
-                            <svg className="w-5 h-5 text-[var(--app-accent)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <circle cx="12" cy="12" r="10" />
-                                <path d="M12 16v-4" />
-                                <path d="M12 8h.01" />
-                            </svg>
-                            <span className="text-[14px] font-medium text-[var(--app-text-secondary)]">说明</span>
+            {createPortal(
+                <AnimatePresence>
+                    {showNetworkTip && (
+                        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+                            <motion.div
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                className="absolute inset-0 z-0 bg-black/40 backdrop-blur-sm"
+                                onClick={() => setShowNetworkTip(false)}
+                            />
+                            <motion.div
+                                initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                                animate={{ opacity: 1, scale: 1, y: 0 }}
+                                exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                                className="relative z-10 w-full max-w-sm flex flex-col bg-white border border-[rgba(39,44,54,0.08)] rounded-[20px] shadow-[var(--shadow-elevated)] overflow-hidden"
+                                style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties }
+                                onClick={e => e.stopPropagation()}
+                            >
+                                <div className="flex shrink-0 items-center justify-between px-6 py-4 border-b border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/50">
+                                    <h2 className="text-[15px] font-semibold text-[var(--app-text)]">说明</h2>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowNetworkTip(false)}
+                                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[var(--app-text-tertiary)] hover:bg-[var(--app-hover)] hover:text-[var(--app-text)] transition-colors -mr-2"
+                                        aria-label="关闭"
+                                    >
+                                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <path d="M18 6L6 18" />
+                                            <path d="M6 6l12 12" />
+                                        </svg>
+                                    </button>
+                                </div>
+                                <div className="flex-1 overflow-y-auto p-6">
+                                    <p className="text-[14px] text-[var(--app-text-secondary)] leading-relaxed">
+                                        依赖第三方 API 检测，仅供参考
+                                    </p>
+                                </div>
+                                <div className="flex shrink-0 items-center justify-end gap-2 px-6 py-4 border-t border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/30">
+                                    <button
+                                        onClick={() => setShowNetworkTip(false)}
+                                        className="px-4 py-2 text-[13px] font-medium text-white bg-[var(--app-accent)] hover:opacity-90 rounded-[10px] transition-colors"
+                                    >
+                                        确定
+                                    </button>
+                                </div>
+                            </motion.div>
                         </div>
-                        <p className="text-[13px] text-[var(--app-text-tertiary)] leading-relaxed">
-                            依赖第三方 API 检测，仅供参考
-                        </p>
-                        <button
-                            onClick={() => setShowNetworkTip(false)}
-                            className="mt-4 w-full py-2 rounded-[10px] bg-[var(--app-accent)] text-white text-[13px] font-medium hover:opacity-90 transition-opacity"
-                        >
-                            确定
-                        </button>
-                    </div>
-                </div>
+                    )}
+                </AnimatePresence>,
+                document.body
             )}
 
         </div>

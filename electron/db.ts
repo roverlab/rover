@@ -1,9 +1,11 @@
 import fs from 'node:fs';
-import { getDbPath, getDataDir, toDataRelativePath } from './paths';
+import path from 'node:path';
+import { getDbPath, getDataDir, toDataRelativePath, getProfilesDir, getRulesetsDir } from './paths';
 import type { RuleProvider } from '../src/types/rule-providers';
 import type { Policy } from '../src/types/policy';
 import type { DnsPolicy } from '../src/types/dns-policy';
 import { getPolicyRuleSet } from '../src/services/policy';
+import { getRuleProviderFileBaseName } from '../src/shared/ruleset';
 
 /** 订阅用户信息（从 Subscription-Userinfo 响应头解析） */
 export interface SubscriptionUserinfo {
@@ -98,6 +100,8 @@ export interface ProfileDnsPolicy {
 /** DNS 服务器表 */
 export interface DnsServer {
     id: string;
+    /** 显示名称（用于UI展示） */
+    name?: string;
     type: string;
     order: number;
     /** 是否启用 */
@@ -241,9 +245,35 @@ export function addProfile(profile: { name: string; type: 'remote' | 'local'; ur
 }
 
 export function deleteProfile(id: string) {
+    // 获取 profile 信息以确定需要删除的文件
+    const profile = getProfileById(id);
+    
     withDb((data) => {
         data.profiles = data.profiles.filter((p) => p.id !== id);
     });
+    
+    // 删除本地配置文件
+    try {
+        const profilesDir = getProfilesDir();
+        const profileFilePath = path.join(profilesDir, `profile_${id}`);
+        if (fs.existsSync(profileFilePath)) {
+            fs.unlinkSync(profileFilePath);
+            console.log(`[DB] 已删除配置文件: ${profileFilePath}`);
+        }
+        
+        // 如果 profile 有自定义 path，也尝试删除
+        if (profile?.path) {
+            const customPath = path.isAbsolute(profile.path) 
+                ? profile.path 
+                : path.join(getDataDir(), profile.path);
+            if (fs.existsSync(customPath) && customPath !== profileFilePath) {
+                fs.unlinkSync(customPath);
+                console.log(`[DB] 已删除自定义配置文件: ${customPath}`);
+            }
+        }
+    } catch (err: any) {
+        console.error(`[DB] 删除配置文件失败: ${err.message}`);
+    }
 }
 
 export function selectProfile(id: string) {
@@ -271,13 +301,23 @@ export function getDnsServers(): DnsServer[] {
     return withDb((data) => [...(data.dnsServers ?? [])]);
 }
 
-export function addDnsServer(server: Omit<DnsServer, 'order'>): string {
+export function addDnsServer(server: Omit<DnsServer, 'order' | 'id'> & { id?: string }): string {
     return withDb((data) => {
         const dnsServers = data.dnsServers ?? [];
-        const id = (typeof server.id === 'string' ? server.id : '').trim();
-        if (!id) throw new Error('DNS 服务器 ID 不能为空');
-        const ids = new Set(dnsServers.map((s) => (s.id || '').trim().toLowerCase()));
-        if (ids.has(id.toLowerCase())) throw new Error(`DNS 服务器 ID "${id}" 已存在`);
+        const existingIds = new Set([
+            ...data.profiles.map((p) => p.id),
+            ...data.ruleProviders.map((p) => p.id),
+            ...dnsServers.map((s) => s.id),
+        ]);
+        
+        // 手动添加时，如果未提供 id 或 id 为空，则自动生成
+        let id = (typeof server.id === 'string' ? server.id : '').trim();
+        if (!id) {
+            id = generateShortId(existingIds);
+        } else if (existingIds.has(id)) {
+            throw new Error(`DNS 服务器 ID "${id}" 已存在`);
+        }
+        
         const newServer = {
             ...server,
             id,
@@ -381,7 +421,7 @@ export function clearDefaultDnsServer(): void {
 
 /**
  * 按 name 作为 id 插入或更新 DNS 服务器（重复 tag 则覆盖）
- * 注意：模板中的 name 会作为 id 使用
+ * 注意：模板中的 name 会作为 id 使用，同时 name 字段也用于显示
  * 当服务器包含 raw_data 字段时，使用 raw 类型保存
  */
 export function upsertDnsServerByTag(serverFromTemplate: Record<string, unknown>): string {
@@ -399,13 +439,14 @@ export function upsertDnsServerByTag(serverFromTemplate: Record<string, unknown>
 
         const base: Partial<DnsServer> = {
             id,
+            name: tag, // 导入预设时，id 和 name 相同
             type: hasRawData ? 'raw' : ((serverFromTemplate.type as string) || 'udp'),
             enabled: true,
             is_default: false,
         };
         const extra: Record<string, unknown> = {};
         for (const [k, v] of Object.entries(serverFromTemplate)) {
-            if (!['tag', 'type', 'id'].includes(k) && v !== undefined) {
+            if (!['tag', 'type', 'id', 'name'].includes(k) && v !== undefined) {
                 extra[k] = v;
             }
         }
@@ -585,13 +626,63 @@ export function updateRuleProvider(id: string, updates: Partial<RuleProvider>) {
 export function deleteRuleProvider(id: string) {
     // 首先检查是否有引用
     const references = getRuleProviderReferences(id);
-    if (references.policies.length > 0 || references.profiles.length > 0) {
-        throw new Error(`无法删除规则集：被以下策略或配置引用 - 策略: ${references.policies.map(p => p.name).join(', ')}, 配置: ${references.profiles.map(p => p.name).join(', ')}`);
+    const hasPolicyRefs = references.policies.length > 0;
+    const hasDnsPolicyRefs = references.dnsPolicies.length > 0;
+    const hasProfileRefs = references.profiles.length > 0;
+    
+    if (hasPolicyRefs || hasDnsPolicyRefs || hasProfileRefs) {
+        const parts: string[] = [];
+        if (hasPolicyRefs) {
+            parts.push(`路由策略: ${references.policies.map(p => p.name).join(', ')}`);
+        }
+        if (hasDnsPolicyRefs) {
+            parts.push(`DNS策略: ${references.dnsPolicies.map(p => p.name).join(', ')}`);
+        }
+        if (hasProfileRefs) {
+            parts.push(`配置: ${references.profiles.map(p => p.name).join(', ')}`);
+        }
+        throw new Error(`无法删除规则集：被以下项目引用 - ${parts.join('; ')}`);
     }
+    
+    // 获取规则集信息以确定需要删除的文件
+    const provider = getRuleProviderById(id);
     
     withDb((data) => {
         data.ruleProviders = data.ruleProviders.filter((p) => p.id !== id);
     });
+    
+    // 删除本地规则集文件
+    try {
+        const rulesetsDir = getRulesetsDir();
+        const fileBase = getRuleProviderFileBaseName(id);
+        
+        // 删除 .srs 文件
+        const srsPath = path.join(rulesetsDir, `${fileBase}.srs`);
+        if (fs.existsSync(srsPath)) {
+            fs.unlinkSync(srsPath);
+            console.log(`[DB] 已删除规则集文件: ${srsPath}`);
+        }
+        
+        // 删除 .json 文件（如果存在）
+        const jsonPath = path.join(rulesetsDir, `${fileBase}.json`);
+        if (fs.existsSync(jsonPath)) {
+            fs.unlinkSync(jsonPath);
+            console.log(`[DB] 已删除规则集 JSON 文件: ${jsonPath}`);
+        }
+        
+        // 如果 provider 有自定义 path，也尝试删除
+        if (provider?.path) {
+            const customPath = path.isAbsolute(provider.path) 
+                ? provider.path 
+                : path.join(getDataDir(), provider.path);
+            if (fs.existsSync(customPath) && customPath !== srsPath && customPath !== jsonPath) {
+                fs.unlinkSync(customPath);
+                console.log(`[DB] 已删除自定义规则集文件: ${customPath}`);
+            }
+        }
+    } catch (err: any) {
+        console.error(`[DB] 删除规则集文件失败: ${err.message}`);
+    }
 }
 
 /**
@@ -599,6 +690,24 @@ export function deleteRuleProvider(id: string) {
  */
 export function getPolicyReferencedRuleProviderRefs(policy: Policy): string[] {
     const ruleSets = getPolicyRuleSet(policy);
+    const refs: string[] = [];
+    for (const item of ruleSets) {
+        if (typeof item === 'string') {
+            if (item.startsWith('acl:')) {
+                refs.push(item.slice(4));
+            } else if (!item.startsWith('geosite:') && !item.startsWith('geoip:')) {
+                refs.push(item);
+            }
+        }
+    }
+    return refs;
+}
+
+/**
+ * 获取DNS策略引用的规则集ID
+ */
+export function getDnsPolicyReferencedRuleProviderRefs(dnsPolicy: DnsPolicy): string[] {
+    const ruleSets = dnsPolicy.ruleSet ?? [];
     const refs: string[] = [];
     for (const item of ruleSets) {
         if (typeof item === 'string') {
@@ -643,14 +752,15 @@ export function getPoliciesReferencingRuleProvider(providerId: string): Array<{i
 }
 
 /**
- * 获取规则集的所有引用信息（策略和profile）
+ * 获取规则集的所有引用信息（路由策略、DNS策略和profile）
  */
 export function getRuleProviderReferences(providerId: string): {
     policies: Array<{id: string, name: string}>,
+    dnsPolicies: Array<{id: string, name: string}>,
     profiles: Array<{id: string, name: string}>
 } {
     return withDb((data) => {
-        // 获取引用此规则集的策略
+        // 获取引用此规则集的路由策略
         const referencingPolicies = data.policies
             .filter((policy: Policy) => {
                 const refs = getPolicyReferencedRuleProviderRefs(policy);
@@ -661,15 +771,30 @@ export function getRuleProviderReferences(providerId: string): {
                 name: policy.name
             }));
         
-        // 获取包含这些策略的profile
-        const relevantPolicyIds = new Set(referencingPolicies.map(p => p.id));
-        const referencingProfiles = data.profiles
-            .filter((p: Profile) => (p.policies ?? []).some((pp) => relevantPolicyIds.has(pp.policy_id)))
-            .map((p: Profile) => ({ id: p.id, name: p.name }));
+        // 获取引用此规则集的DNS策略
+        const referencingDnsPolicies = (data.dnsPolicies ?? [])
+            .filter((dnsPolicy: DnsPolicy) => {
+                const refs = getDnsPolicyReferencedRuleProviderRefs(dnsPolicy);
+                return refs.includes(providerId);
+            })
+            .map((dnsPolicy: DnsPolicy) => ({
+                id: dnsPolicy.id,
+                name: dnsPolicy.name
+            }));
+        
+        // 获取直接关联此规则集的profile（通过 profile_id 字段）
+        const referencingProfiles = data.ruleProviders
+            .filter((rp: RuleProvider) => rp.id === providerId && rp.profile_id)
+            .map((rp: RuleProvider) => {
+                const profile = data.profiles.find((p: Profile) => p.id === rp.profile_id);
+                return profile ? { id: profile.id, name: profile.name } : null;
+            })
+            .filter((p): p is {id: string, name: string} => p !== null);
         
         return {
             policies: referencingPolicies,
-            profiles: referencingProfiles as Array<{id: string, name: string}>
+            dnsPolicies: referencingDnsPolicies,
+            profiles: referencingProfiles
         };
     });
 }
@@ -1184,7 +1309,8 @@ export function getDnsServerRefs(id: string): DnsServerRef[] {
         if (server.id === t) continue; // 跳过自身
         const dr = typeof server.domain_resolver === 'string' ? server.domain_resolver.trim() : '';
         if (dr === t) {
-            refs.push({ source: 'dns_server', index: i + 1, name: server.id || `DNS 服务器 ${i + 1}` });
+            const displayName = server.name || server.id || `DNS 服务器 ${i + 1}`;
+            refs.push({ source: 'dns_server', index: i + 1, name: displayName });
         }
     }
     return refs;

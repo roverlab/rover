@@ -487,6 +487,12 @@ console.log('[Path Debug] process.env.VITE_PUBLIC:', process.env.VITE_PUBLIC);
 let win: BrowserWindow | null;
 
 let isQuitting = false;
+let isCleanupDone = false; // 标记清理是否已完成
+
+// 导出设置 isQuitting 的函数，供托盘菜单等使用
+export function setIsQuitting(value: boolean) {
+    isQuitting = value;
+}
 
 function createWindow() {
     // UAC 提升后新进程不继承 env，通过 --dev-url 传递开发服务器地址
@@ -498,15 +504,15 @@ function createWindow() {
         width: 1000,
         height: 700,
         show: false, // Set to false to avoid flicker before ready-to-show
-        backgroundColor: '#00000000', // Transparent for Mica
-        backgroundMaterial: 'mica', // Windows 11 native material
+        backgroundColor: '#f8f9fa', // 使用固定背景色替代透明，避免 Win11 阴影跳动
+        // backgroundMaterial: 'mica', // 暂时禁用 Mica 材质，避免鼠标悬停时窗口边缘阴影跳动
         titleBarStyle: 'hidden',
         trafficLightPosition: { x: 16, y: 16 }, // Mac native traffic light placement
         vibrancy: 'sidebar', // Mac native blur
         visualEffectState: 'active', // Mac
         icon: getWindowIconPath(publicPath),
         titleBarOverlay: { // Windows native controls
-            color: '#00000000', // transparent
+            color: '#00000000', // 与背景色一致
             symbolColor: '#555',
             height: 40
         },
@@ -578,7 +584,14 @@ app.on('window-all-closed', async () => {
 
 // 程序退出前检测内核退出
 app.on('before-quit', async (event) => {
-    if (isQuitting) return; // 已经在处理退出流程中
+    // 如果清理已完成，允许正常退出
+    if (isCleanupDone) return;
+
+    // 如果正在处理退出流程中，阻止重复执行
+    if (isQuitting) {
+        event.preventDefault();
+        return;
+    }
 
     event.preventDefault();
     isQuitting = true;
@@ -589,8 +602,10 @@ app.on('before-quit', async (event) => {
     scheduler.stopAllSchedulers();
     stopSingboxLogMaintenance();
 
-    handleAppQuit();
+    await handleAppQuit();
 
+    // 标记清理已完成
+    isCleanupDone = true;
     app.quit();
 });
 

@@ -87,9 +87,15 @@ export default function App() {
 
               <main className="app-main">
                 <div className="flex-1 relative z-10 overflow-hidden flex flex-col min-h-0">
-                  {/* 所有页面条件渲染，切换时卸载以节省内存 */}
-                  {isPageActive('Dashboard') && <MemoizedDashboard isActive={true} />}
-                  {isPageActive('Proxies') && <MemoizedProxies isActive={true} />}
+                  {/* 仪表盘页面：使用 hidden 保留状态，离开后不用销毁 */}
+                  <div className={isPageActive('Dashboard') ? 'contents' : 'hidden'}>
+                    <MemoizedDashboard isActive={isPageActive('Dashboard')} />
+                  </div>
+                  {/* 代理页面：使用 hidden 保留状态，离开后不用销毁 */}
+                  <div className={isPageActive('Proxies') ? 'contents' : 'hidden'}>
+                    <MemoizedProxies isActive={isPageActive('Proxies')} />
+                  </div>
+                  {/* 其他页面条件渲染，切换时卸载以节省内存 */}
                   {isPageActive('Profiles') && <MemoizedProfiles isActive={true} />}
                   {isPageActive('Policies') && (
                     <OverrideRulesGate pageName="Policies" onGoToAdvancedSettings={goToAdvancedSettings}>

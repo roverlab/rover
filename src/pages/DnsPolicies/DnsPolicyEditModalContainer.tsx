@@ -106,8 +106,6 @@ export function DnsPolicyEditModalContainer({
                 editingPolicy,
                 form,
                 ruleSetGroups,
-                unavailableAclRefs,
-                ruleSetAdvancedConflict,
                 showRuleSetModal,
                 onClose,
                 onFormChange,
@@ -116,14 +114,14 @@ export function DnsPolicyEditModalContainer({
                 addNotification,
             }) => {
                 // DNS服务器列表
-                const [dnsServers, setDnsServers] = React.useState<Array<{ id: string; type: string }>>([]);
+                const [dnsServers, setDnsServers] = React.useState<Array<{ id: string; name?: string; type: string }>>([]);
 
                 const policy = editingPolicy as unknown as DnsPolicy | null;
 
                 React.useEffect(() => {
                     if (open) {
                         window.ipcRenderer.db.getDnsServers().then((servers) => {
-                            setDnsServers((servers as Array<{ id: string; type: string }>) || []);
+                            setDnsServers((servers as Array<{ id: string; name?: string; type: string }>) || []);
                         });
                         // 加载已保存的dnsServerId
                         if (policy) {
@@ -141,11 +139,11 @@ export function DnsPolicyEditModalContainer({
                     }
                 }, [open, policy?.id]);
 
-                // 构建动态的DNS服务器选项（统一使用 id）
+                // 构建动态的DNS服务器选项（显示 name，值使用 id）
                 const dynamicDnsServerOptions = React.useMemo(() => {
                     return dnsServers.map(s => ({
                         value: s.id,
-                        label: `${s.id} (${s.type})`,
+                        label: s.name ? `${s.name} (${s.type})` : `${s.id} (${s.type})`,
                     }));
                 }, [dnsServers]);
 
@@ -162,7 +160,7 @@ export function DnsPolicyEditModalContainer({
                                 <option value="">不指定</option>
                                 {dnsServers.map((server) => (
                                     <option key={server.id} value={server.id}>
-                                        {server.id} ({server.type})
+                                        {server.name || server.id} ({server.type})
                                     </option>
                                 ))}
                             </Select>
@@ -184,8 +182,6 @@ export function DnsPolicyEditModalContainer({
                         editingPolicy={policy}
                         form={form}
                         ruleSetGroups={ruleSetGroups}
-                        unavailableAclRefs={unavailableAclRefs}
-                        ruleSetAdvancedConflict={ruleSetAdvancedConflict}
                         showRuleSetModal={showRuleSetModal}
                         onClose={onClose}
                         onFormChange={onFormChange}

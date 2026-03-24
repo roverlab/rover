@@ -107,8 +107,6 @@ export function PolicyEditModalContainer({
                 editingPolicy,
                 form,
                 ruleSetGroups,
-                unavailableAclRefs,
-                ruleSetAdvancedConflict,
                 showRuleSetModal,
                 onClose,
                 onFormChange,
@@ -154,8 +152,6 @@ export function PolicyEditModalContainer({
                         editingPolicy={policy}
                         form={form}
                         ruleSetGroups={ruleSetGroups}
-                        unavailableAclRefs={unavailableAclRefs}
-                        ruleSetAdvancedConflict={ruleSetAdvancedConflict}
                         showRuleSetModal={showRuleSetModal}
                         onClose={onClose}
                         onFormChange={onFormChange}

@@ -58,8 +58,8 @@
     }
 
     body {
-        /* 移除固定底色，使用 bg-transparent 以支持 Mica/Acrylic 素材及窗口圆角 */
-        background: transparent;
+        /* 使用与主窗口一致的背景色，避免 Win11 阴影跳动问题 */
+        background: #f8f9fa;
     }
 
     * {

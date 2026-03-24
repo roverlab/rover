@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useDropdownPosition } from '../hooks/useDropdownPosition';
 import { Card, Badge } from '../components/ui/Surface';
 import { Button } from '../components/ui/Button';
 import { Switch } from '../components/ui/Switch';
@@ -28,7 +29,7 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
     const [downloadingId, setDownloadingId] = useState<string | null>(null);
     const [downloadingAll, setDownloadingAll] = useState(false);
     const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
-    const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0 });
+    const { position: dropdownPosition, calculatePosition } = useDropdownPosition({ menuWidth: 120, menuHeight: 130 });
     const dropdownButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
     const [showViewModal, setShowViewModal] = useState(false);
     const [viewProvider, setViewProvider] = useState<RuleProvider | null>(null);
@@ -310,11 +311,7 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
         e.stopPropagation();
         const button = dropdownButtonRefs.current[providerId];
         if (button) {
-            const rect = button.getBoundingClientRect();
-            setDropdownPosition({
-                top: rect.bottom + 4,
-                left: rect.right - 120
-            });
+            calculatePosition(button);
         }
         setOpenDropdownId(openDropdownId === providerId ? null : providerId);
     };

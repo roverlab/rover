@@ -46,7 +46,6 @@ export interface PolicyEditModalBaseContainerProps<T extends PolicyEditFormState
         policiesCount: number;
         customGroupIds: Set<string>;
         builtinIds: Set<string>;
-        unavailableAclRefs: string[];
     }) => Record<string, unknown> | null;
     /** 保存策略 */
     savePolicy: (params: {
@@ -65,8 +64,6 @@ export interface PolicyEditModalBaseContainerProps<T extends PolicyEditFormState
         policiesCount: number;
         form: T;
         ruleSetGroups: RuleSetGroupItem[];
-        unavailableAclRefs: string[];
-        ruleSetAdvancedConflict: boolean;
         showRuleSetModal: boolean;
         onClose: () => void;
         onFormChange: (updates: Partial<T>) => void;
@@ -142,7 +139,6 @@ export function createBuildPolicyData<T extends PolicyEditFormStateBase>(
         policiesCount,
         customGroupIds,
         builtinIds,
-        unavailableAclRefs,
         addNotification,
     }: {
         form: T;
@@ -150,7 +146,6 @@ export function createBuildPolicyData<T extends PolicyEditFormStateBase>(
         policiesCount: number;
         customGroupIds: Set<string>;
         builtinIds: Set<string>;
-        unavailableAclRefs: string[];
         addNotification: (message: string, type?: 'success' | 'error' | 'info') => void;
     }): Record<string, unknown> | null => {
         if (form.policyType === 'raw') {
@@ -191,8 +186,9 @@ export function createBuildPolicyData<T extends PolicyEditFormStateBase>(
                 addNotification('规则集和高级规则只能二选一，请清空其中一项后再保存', 'error');
                 return null;
             }
-            if (editingPolicy && unavailableAclRefs.length > 0) {
-                addNotification(`已自动剔除 ${unavailableAclRefs.length} 个不可用规则集`, 'info');
+            if (!hasRuleSet && !hasAdvancedRules) {
+                addNotification('规则集和高级规则不能同时为空，请选择其中一项', 'error');
+                return null;
             }
             const logical_rule = form.ruleGroupsTree ?? undefined;
             return {
@@ -302,23 +298,6 @@ export function PolicyEditModalBaseContainer<T extends PolicyEditFormStateBase, 
         return ids;
     }, [ruleSetGroups]);
 
-    const unavailableAclRefs = useMemo(() => {
-        if (!open) return [];
-        const availableIds = new Set([...customGroupIds, ...builtinIds]);
-        return Array.from(form.selectedRuleSetIds).filter(id => !availableIds.has(id));
-    }, [form.selectedRuleSetIds, customGroupIds, builtinIds, open]);
-
-    /** 规则集与高级规则同时有值时冲突 */
-    const ruleSetAdvancedConflict = useMemo(() => {
-        if (form.policyType !== 'default') return false;
-        const ruleSetValue: string[] = [];
-        for (const id of form.selectedRuleSetIds) {
-            if (customGroupIds.has(id) || builtinIds.has(id)) ruleSetValue.push(id);
-        }
-        const hasAdvancedRules = form.ruleGroupsTree !== null;
-        return ruleSetValue.length > 0 && hasAdvancedRules;
-    }, [form.policyType, form.selectedRuleSetIds, form.ruleGroupsTree, customGroupIds, builtinIds]);
-
     const onFormChange = (updates: Partial<T>) => {
         setForm(prev => {
             const next = { ...prev, ...updates };
@@ -346,7 +325,6 @@ export function PolicyEditModalBaseContainer<T extends PolicyEditFormStateBase, 
                 policiesCount,
                 customGroupIds,
                 builtinIds,
-                unavailableAclRefs,
             });
 
             if (!policyData) {
@@ -374,8 +352,6 @@ export function PolicyEditModalBaseContainer<T extends PolicyEditFormStateBase, 
                 policiesCount,
                 form,
                 ruleSetGroups,
-                unavailableAclRefs,
-                ruleSetAdvancedConflict,
                 showRuleSetModal,
                 onClose,
                 onFormChange,

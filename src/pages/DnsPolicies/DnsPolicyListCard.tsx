@@ -1,16 +1,17 @@
 import React, { useRef, useEffect, useState, useMemo, useCallback } from 'react';
+import { useDropdownPosition } from '../../hooks/useDropdownPosition';
 import { Card, Badge } from '../../components/ui/Surface';
 import { Button } from '../../components/ui/Button';
 import { Switch } from '../../components/ui/Switch';
 import { Plus, Search, MoreVertical } from 'lucide-react';
 import { cn } from '../../components/Sidebar';
 import type { DnsPolicy } from '../../types/dns-policy';
-import { getPolicyServer, getPolicyMatchCount } from './utils';
+import { getPolicyServer, getPolicyMatchCount, getServerTone, getServerLabel } from './utils';
 import { DnsPolicyRowDropdown } from './DnsPolicyRowDropdown';
 
 interface DnsPolicyListCardProps {
     policies: DnsPolicy[];
-    dnsServers: Array<{ id: string }>;
+    dnsServers: Array<{ id: string; name?: string }>;
     availableOutbounds: Array<{ tag: string; type: string }>;
     profileDnsPolicies: Record<string, string>;
     onAdd: () => void;
@@ -43,7 +44,7 @@ export function DnsPolicyListCard({
     const [statusFilter, setStatusFilter] = useState<'all' | 'enabled' | 'disabled' | 'selected'>('all');
     const [selectedPolicyIds, setSelectedPolicyIds] = useState<Set<string>>(new Set());
     const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
-    const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0 });
+    const { position: dropdownPosition, calculatePosition } = useDropdownPosition({ menuWidth: 120, menuHeight: 130 });
     const dropdownButtonRefs = useRef<{ [key: string]: HTMLButtonElement | null }>({});
     const selectAllCheckboxRef = useRef<HTMLInputElement | null>(null);
 
@@ -85,6 +86,7 @@ export function DnsPolicyListCard({
                 policy.name,
                 serverId,
                 dnsServer?.id,
+                dnsServer?.name,
                 getSubscriptionServer(policy),
             ];
             return searchFields.some((value) => value?.toLowerCase().includes(query));
@@ -115,21 +117,7 @@ export function DnsPolicyListCard({
         e.stopPropagation();
         const button = dropdownButtonRefs.current[policyId];
         if (button) {
-            const rect = button.getBoundingClientRect();
-            const menuWidth = 120;
-            const menuHeight = 130;
-            const viewportWidth = window.innerWidth;
-            const viewportHeight = window.innerHeight;
-            const gap = 4;
-            const edgePadding = 8;
-            const preferBelowTop = rect.bottom + gap;
-            const placeAboveTop = rect.top - menuHeight - gap;
-            const top = preferBelowTop + menuHeight <= viewportHeight - edgePadding ? preferBelowTop : Math.max(edgePadding, placeAboveTop);
-            const preferredLeft = rect.right - menuWidth;
-            const minLeft = edgePadding;
-            const maxLeft = Math.max(edgePadding, viewportWidth - menuWidth - edgePadding);
-            const left = Math.min(Math.max(preferredLeft, minLeft), maxLeft);
-            setDropdownPosition({ top, left });
+            calculatePosition(button);
         }
         setOpenDropdownId(prev => prev === policyId ? null : policyId);
     };
@@ -284,13 +272,11 @@ export function DnsPolicyListCard({
                                             {(() => {
                                                 const serverId = getPolicyServer(policy);
                                                 const dnsServer = serverId ? dnsServers.find(s => s.id === serverId) : null;
-                                                return dnsServer ? (
-                                                    <Badge tone="info" className="text-[10px] px-1.5 py-0 whitespace-nowrap inline-block truncate max-w-[80px]">
-                                                        {dnsServer.id}
-                                                    </Badge>
-                                                ) : serverId ? (
-                                                    <Badge tone="neutral" className="text-[10px] px-1.5 py-0 whitespace-nowrap inline-block truncate max-w-[80px]">
-                                                        {serverId}
+                                                const displayLabel = dnsServer ? (dnsServer.name || dnsServer.id) : getServerLabel(serverId);
+                                                const tone = getServerTone(serverId ?? '');
+                                                return serverId ? (
+                                                    <Badge tone={tone} className="text-[10px] px-1.5 py-0 whitespace-nowrap inline-block truncate max-w-[80px]">
+                                                        {displayLabel}
                                                     </Badge>
                                                 ) : null;
                                             })()}
@@ -301,9 +287,9 @@ export function DnsPolicyListCard({
                                             {(() => {
                                                 const preferredServer = getSubscriptionServer(policy);
                                                 if (!preferredServer) return null;
-                                                // 如果preferredServer是id，查找对应的tag
+                                                // 如果preferredServer是id，查找对应的name
                                                 const dnsServer = dnsServers.find(s => s.id === preferredServer);
-                                                const displayTag = dnsServer?.id || preferredServer;
+                                                const displayTag = dnsServer?.name || dnsServer?.id || preferredServer;
                                                 return (
                                                     <Badge 
                                                         tone="accent" 

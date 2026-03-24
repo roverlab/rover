@@ -167,9 +167,9 @@ export function createTray(mainWindow: BrowserWindow) {
             { type: 'separator' },
             {
                 label: '退出',
-                click: async () => {
+                click: () => {
                     console.log('Quit from tray...');
-                    await handleAppQuit();
+                    // 直接调用 app.quit()，让 before-quit 事件处理清理逻辑
                     app.quit();
                 }
             },

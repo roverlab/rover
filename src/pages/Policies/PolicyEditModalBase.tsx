@@ -45,9 +45,6 @@ export interface PolicyEditModalBaseProps<T extends PolicyEditFormStateBase> {
     editingPolicy: { id?: string; type?: PolicyType } | null;
     form: T;
     ruleSetGroups: RuleSetGroupItem[];
-    unavailableAclRefs?: string[];
-    /** 规则集与高级规则同时有值时为 true */
-    ruleSetAdvancedConflict?: boolean;
     showRuleSetModal: boolean;
     showRuleFieldsEditorModal?: boolean;
     onClose: () => void;
@@ -75,8 +72,6 @@ export function PolicyEditModalBase<T extends PolicyEditFormStateBase>({
     editingPolicy,
     form,
     ruleSetGroups,
-    unavailableAclRefs = [],
-    ruleSetAdvancedConflict = false,
     showRuleSetModal,
     onClose,
     onFormChange,
@@ -337,16 +332,13 @@ export function PolicyEditModalBase<T extends PolicyEditFormStateBase>({
                                             modalTitle={ruleFieldsEditorTitle}
                                             fieldConfig={ruleFieldConfig}
                                         />
-                                        {ruleSetAdvancedConflict && (
-                                            <p className="text-[12px] text-red-500 pl-1">规则集和高级规则只能二选一，请清空其中一项后再保存</p>
-                                        )}
                                     </>
                                 )}
                             </div>
 
                             <div className="flex shrink-0 items-center justify-end gap-2 px-6 py-4 border-t border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/30">
                                 <Button variant="ghost" onClick={onClose}>取消</Button>
-                                <Button variant="primary" onClick={onSave} disabled={!form.name.trim() || ruleSetAdvancedConflict}>保存</Button>
+                                <Button variant="primary" onClick={onSave} disabled={!form.name.trim()}>保存</Button>
                             </div>
                         </motion.div>
                     </div>

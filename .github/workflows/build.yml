@@ -20,21 +20,22 @@ jobs:
         include:
           - os: windows-latest
             platform: windows
-            arch: x64
+            arch: x86_64
           - os: macos-latest
             platform: macos
             arch: arm64
+          - os: macos-latest
+            platform: macos
+            arch: x86_64
+          - os: ubuntu-latest
+            platform: linux
+            arch: x86_64
 
     env:
       SINGBOX_VERSION: 1.13.2
       SHORT_SHA: ${GITHUB_SHA::7}
 
     steps:
-      - name: Disable Windows Defender
-        if: matrix.os == 'windows-latest'
-        run: Set-MpPreference -DisableRealtimeMonitoring $true
-        shell: pwsh
-
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -54,7 +55,22 @@ jobs:
         run: node scripts/generate-build-info.cjs ${{ env.SINGBOX_VERSION }} ${{ env.SHORT_SHA }}
 
       - name: Download sing-box
-        run: node scripts/download-singbox.cjs ${{ env.SINGBOX_VERSION }} ${{ matrix.platform == 'windows' && 'win32' || 'darwin' }} ${{ matrix.arch }}
+        run: |
+          # arch 映射: x86_64 -> amd64, arm64 -> arm64
+          if [ "${{ matrix.arch }}" == "x86_64" ]; then
+            SB_ARCH="amd64"
+          else
+            SB_ARCH="${{ matrix.arch }}"
+          fi
+
+          if [ "${{ matrix.platform }}" == "windows" ]; then
+            node scripts/download-singbox.cjs ${{ env.SINGBOX_VERSION }} win32 $SB_ARCH
+          elif [ "${{ matrix.platform }}" == "macos" ]; then
+            node scripts/download-singbox.cjs ${{ env.SINGBOX_VERSION }} darwin $SB_ARCH
+          else
+            node scripts/download-singbox.cjs ${{ env.SINGBOX_VERSION }} linux $SB_ARCH
+          fi
+        shell: bash
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -65,12 +81,15 @@ jobs:
       - name: Build roverservice
         run: |
           cd roverservice
-          if [[ "${{ matrix.platform }}" == "windows" ]]; then
+          if [ "${{ matrix.platform }}" == "windows" ]; then
             # Build for Windows amd64
             GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o ../resources/roverservice.exe .
+          elif [ "${{ matrix.platform }}" == "macos" ]; then
+            # Build for macOS (both arm64 and amd64)
+            GOOS=darwin GOARCH=${{ matrix.arch }} CGO_ENABLED=0 go build -ldflags="-s -w" -o ../resources/roverservice .
           else
-            # Build for macOS (only arm64 is configured in the matrix)
-            GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-s -w" -o ../resources/roverservice .
+            # Build for Linux
+            GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o ../resources/roverservice .
           fi
         shell: bash
 
@@ -92,21 +111,31 @@ jobs:
               $VERSION="latest"
           }
 
+          # electron-builder 使用 x64 而不是 x86_64
+          $EB_ARCH = if ("${{ matrix.arch }}" -eq "x86_64") { "x64" } else { "${{ matrix.arch }}" }
+
           if ("${{ matrix.platform }}" -eq "windows") {
               $ARTIFACT="Rover-$VERSION-windows-${{ matrix.arch }}.exe"
               # 关键：这里强制指定 --win nsis，覆盖 package.json 里的 "dir"
               npx electron-builder `
                 --win nsis `
-                --${{ matrix.arch }} `
+                --$EB_ARCH `
                 --publish never `
                 --config.nsis.artifactName=$ARTIFACT
-          } else {
+          } elseif ("${{ matrix.platform }}" -eq "macos") {
               $ARTIFACT="Rover-$VERSION-macos-${{ matrix.arch }}.dmg"
               npx electron-builder `
                 --mac dmg `
-                --${{ matrix.arch }} `
+                --$EB_ARCH `
                 --publish never `
                 --config.dmg.artifactName=$ARTIFACT
+          } else {
+              $ARTIFACT="Rover-$VERSION-linux-${{ matrix.arch }}.AppImage"
+              npx electron-builder `
+                --linux appimage `
+                --$EB_ARCH `
+                --publish never `
+                --config.linux.artifactName=$ARTIFACT
           }
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -122,7 +151,7 @@ jobs:
         shell: bash
         run: ls -la resources/
 
-      # 上传 Artifacts：只上传 exe 和 dmg 文件
+      # 上传 Artifacts：上传 exe、dmg 和 AppImage 文件
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -130,6 +159,7 @@ jobs:
           path: |
             release/Rover-*.exe
             release/Rover-*.dmg
+            release/Rover-*.AppImage
           retention-days: 1
 
   publish-release:
@@ -155,7 +185,7 @@ jobs:
           files: |
             release-assets/**/*.exe
             release-assets/**/*.dmg
-            release-assets/**/*.zip
+            release-assets/**/*.AppImage
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

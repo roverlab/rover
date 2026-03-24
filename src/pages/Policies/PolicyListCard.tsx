@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useState, useMemo } from 'react';
+import { useDropdownPosition } from '../../hooks/useDropdownPosition';
 import { Card, Badge } from '../../components/ui/Surface';
 import { Button } from '../../components/ui/Button';
 import { Switch } from '../../components/ui/Switch';
@@ -39,7 +40,7 @@ export function PolicyListCard({
     const [statusFilter, setStatusFilter] = useState<'all' | 'enabled' | 'disabled' | 'selected'>('all');
     const [selectedPolicyIds, setSelectedPolicyIds] = useState<Set<string>>(new Set());
     const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
-    const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0 });
+    const { position: dropdownPosition, calculatePosition } = useDropdownPosition({ menuWidth: 120, menuHeight: 130 });
     const [profilePolicies, setProfilePolicies] = useState<Record<string, string[]>>({});
     const dropdownButtonRefs = useRef<{ [key: string]: HTMLButtonElement | null }>({});
     const selectAllCheckboxRef = useRef<HTMLInputElement | null>(null);
@@ -138,21 +139,7 @@ export function PolicyListCard({
         e.stopPropagation();
         const button = dropdownButtonRefs.current[policyId];
         if (button) {
-            const rect = button.getBoundingClientRect();
-            const menuWidth = 120;
-            const menuHeight = 130;
-            const viewportWidth = window.innerWidth;
-            const viewportHeight = window.innerHeight;
-            const gap = 4;
-            const edgePadding = 8;
-            const preferBelowTop = rect.bottom + gap;
-            const placeAboveTop = rect.top - menuHeight - gap;
-            const top = preferBelowTop + menuHeight <= viewportHeight - edgePadding ? preferBelowTop : Math.max(edgePadding, placeAboveTop);
-            const preferredLeft = rect.right - menuWidth;
-            const minLeft = edgePadding;
-            const maxLeft = Math.max(edgePadding, viewportWidth - menuWidth - edgePadding);
-            const left = Math.min(Math.max(preferredLeft, minLeft), maxLeft);
-            setDropdownPosition({ top, left });
+            calculatePosition(button);
         }
         setOpenDropdownId(prev => prev === policyId ? null : policyId);
     };

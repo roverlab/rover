@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { useDropdownPosition } from '../hooks/useDropdownPosition';
 import { Download, RefreshCw, Plus, MoreVertical, Trash2, Loader2, Edit2, FileText, X, Copy, Layers } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../components/Sidebar';
@@ -87,7 +88,7 @@ export function Profiles({ isActive = true }: ProfilesProps) {
   const [contentLoading, setContentLoading] = useState(false);
 
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
-  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0 });
+  const { position: dropdownPosition, calculatePosition } = useDropdownPosition({ menuWidth: 144, menuHeight: 160 });
   const dropdownButtonRefs = useRef<{ [key: string]: HTMLButtonElement | null }>({});
 
   // 分组编辑器状态
@@ -111,18 +112,14 @@ export function Profiles({ isActive = true }: ProfilesProps) {
     }
   }, [isActive]);
 
-  const handleOpenDropdown = (e: React.MouseEvent, profileId: string) => {
-    e.stopPropagation();
-    const button = dropdownButtonRefs.current[profileId];
-    if (button) {
-      const rect = button.getBoundingClientRect();
-      setDropdownPosition({
-        top: rect.bottom + 4,
-        left: rect.right - 144 // 144 is menu width (w-36)
-      });
-    }
-    setOpenDropdownId(openDropdownId === profileId ? null : profileId);
-  };
+    const handleOpenDropdown = (e: React.MouseEvent, profileId: string) => {
+        e.stopPropagation();
+        const button = dropdownButtonRefs.current[profileId];
+        if (button) {
+            calculatePosition(button);
+        }
+        setOpenDropdownId(openDropdownId === profileId ? null : profileId);
+    };
 
   const loadProfiles = async () => {
     try {

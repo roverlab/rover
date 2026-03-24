@@ -24,6 +24,8 @@ export type DnsServerType =
 export interface DnsServerConfig {
   type: DnsServerType;
   id: string;
+  /** 显示名称（用于UI展示） */
+  name?: string;
   server?: string;
   server_port?: number;
   path?: string;
@@ -76,6 +78,7 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
   const [form, setForm] = useState<Partial<DnsServerConfig> & { preferred_detour: string }>({
     type: 'udp',
     id: '',
+    name: '',
     server: '',
     server_port: 53,
     path: '',
@@ -120,11 +123,13 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
   }, [isActive]);
 
   const validateForm = (): string => {
-    if (!form.id?.trim()) return '名称不能为空';
-    const id = form.id.trim();
+    if (!form.name?.trim()) return '显示名称不能为空';
+    // id 现在由数据库自动生成，不需要验证
     const others = dnsServers.filter((s) => s.id !== editingId);
-    if (others.some((s) => (s.id || '').toLowerCase() === id.toLowerCase())) {
-      return `名称 "${id}" 已存在`;
+    // 检查 name 是否重复（可选，根据需求决定是否允许重名）
+    const name = form.name.trim();
+    if (others.some((s) => (s.name || '').toLowerCase() === name.toLowerCase())) {
+      return `显示名称 "${name}" 已存在`;
     }
     const needsServer = ['udp', 'tls', 'https'].includes(form.type || '');
     if (needsServer && !form.server?.trim()) return '服务器地址不能为空';
@@ -153,20 +158,18 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
   const buildServerFromForm = () => {
     const type = (form.type || 'udp') as DnsServerType;
     // 构建完整的服务器对象，只包含当前类型需要的字段
+    // 注意：不提交 id/enabled/is_default，这些由后端控制或保持不变
     const server: Record<string, unknown> = {
       type,
-      id: form.id?.trim() || 'dns',
-      enabled: form.enabled ?? true,
-      is_default: form.is_default ?? false,
+      name: form.name?.trim() || '',
     };
     if (type === 'raw') {
       // raw 类型直接保存原始 JSON
       try {
         const rawData = JSON.parse(rawJsonText);
         server.raw_data = rawData;
-        // 从 raw_data 中提取 type 和 id（如果存在）
+        // 从 raw_data 中提取 type（不提取 id，id 由后端控制）
         if (rawData.type) server.type = rawData.type;
-        if (rawData.tag) server.id = rawData.tag; // 使用模板中的 tag 作为 id
       } catch {
         // 验证时已检查，这里应该不会出错
       }
@@ -199,6 +202,7 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
     setForm({
       type: 'udp',
       id: '',
+      name: '',
       server: '',
       server_port: 53,
       path: getDefaultPath('https'),
@@ -222,6 +226,7 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
     setForm({
       type: isRaw ? 'raw' : ((s.type || 'udp') as DnsServerType),
       id,
+      name: s.name || '',
       server: s.server || '',
       server_port: s.server_port ?? DEFAULT_PORTS[(s.type || 'udp') as DnsServerType],
       path: s.path ?? getDefaultPath((s.type || 'https') as DnsServerType),
@@ -247,6 +252,13 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
 
     let serverId: string;
     if (editingId) {
+      // 编辑时，从原始服务器获取 id、enabled、is_default
+      const originalServer = dnsServers.find((s) => s.id === editingId);
+      if (originalServer) {
+        serverData.id = originalServer.id;
+        serverData.enabled = originalServer.enabled;
+        serverData.is_default = originalServer.is_default;
+      }
       await window.ipcRenderer.db.updateDnsServer(editingId, serverData);
       serverId = editingId;
     } else {
@@ -385,7 +397,7 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
                 <tr className="h-9">
                   <th className="w-12 shrink-0 pl-4 pr-2 py-1.5 text-center text-[11px] font-medium text-[var(--app-text-quaternary)]">序号</th>
                   <th className="w-[72px] shrink-0 px-2 py-1.5 text-center text-[11px] font-medium text-[var(--app-text-quaternary)]">类型</th>
-                  <th className="min-w-[100px] px-2 py-1.5 text-left text-[11px] font-medium text-[var(--app-text-quaternary)]">名称</th>
+                    <th className="min-w-[100px] px-2 py-1.5 text-left text-[11px] font-medium text-[var(--app-text-quaternary)]">显示名称</th>
                   <th className="min-w-[140px] px-2 py-1.5 text-left text-[11px] font-medium text-[var(--app-text-quaternary)]">地址</th>
                   <th className="w-[60px] shrink-0 px-2 py-1.5 text-center text-[11px] font-medium text-[var(--app-text-quaternary)]">出站</th>
                   <th className="w-[140px] shrink-0 pl-2 pr-4 py-1.5 text-right text-[11px] font-medium text-[var(--app-text-quaternary)]">操作</th>
@@ -402,7 +414,9 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
                     </td>
                     <td className="min-w-[100px] px-2 py-1.5 align-middle">
                       <div className="flex items-center gap-2 min-w-0">
-                        <span className={`text-[13px] font-medium truncate ${s.enabled === false ? 'text-[var(--app-text-tertiary)] line-through' : 'text-[var(--app-text)]'}`}>{s.id}</span>
+                        <span className={`text-[13px] font-medium truncate ${s.enabled === false ? 'text-[var(--app-text-tertiary)] line-through' : 'text-[var(--app-text)]'}`}>
+                          {s.name || s.id}
+                        </span>
                         {s.is_default && (
                           <span className="inline-flex items-center gap-1 text-[11px] text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full shrink-0">
                             <CircleDot className="w-3 h-3 fill-emerald-600" />
@@ -490,6 +504,7 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
                 setForm({
                   type: t,
                   id: form.id ?? '',
+                  name: form.name ?? '',
                   server: '',
                   server_port: DEFAULT_PORTS[t] ?? 53,
                   path: getDefaultPath(t),
@@ -512,14 +527,14 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
           </div>
 
           <div>
-            <label className="block text-[12px] font-medium text-[var(--app-text-secondary)] mb-1.5">名称</label>
+            <label className="block text-[12px] font-medium text-[var(--app-text-secondary)] mb-1.5">显示名称</label>
             <Input
-              value={form.id}
-              onChange={(e) => setForm((f) => ({ ...f, id: e.target.value }))}
-              placeholder="例如: local, remote, doh"
+              value={form.name}
+              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+              placeholder="例如: Google DNS, 阿里云 DNS"
               className="w-full"
             />
-            <p className="text-[11px] text-[var(--app-text-quaternary)] mt-1">用于 DNS 规则中引用此服务器</p>
+            <p className="text-[11px] text-[var(--app-text-quaternary)] mt-1">用于界面显示，便于识别</p>
           </div>
 
           {needsServerField && (
@@ -574,7 +589,7 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
                   .filter((s) => s.id !== editingId && s.enabled !== false)
                   .map((s) => (
                     <option key={s.id} value={s.id}>
-                      {s.id} ({s.type})
+                      {s.name || s.id} ({s.type})
                     </option>
                   ))}
               </Select>

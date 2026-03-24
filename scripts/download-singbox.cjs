@@ -14,13 +14,11 @@ const https = require('node:https');
 const VERSION = process.argv[2] || '1.12.16';
 // 支持通过参数指定目标平台，用于交叉编译
 // 用法: node scripts/download-singbox.cjs [version] [platform] [arch]
+// 注意: arch 参数应为 amd64 或 arm64（由工作流统一映射）
 const targetPlatform = process.argv[3];
 const targetArch = process.argv[4];
 const platform = targetPlatform || process.platform;
-const arch = targetArch || process.arch;
-
-const archMap = { x64: 'amd64', arm64: 'arm64' };
-const sbArch = archMap[arch] || 'amd64';
+const sbArch = targetArch || 'amd64';
 
 let archiveUrl, archiveName, binaryName, extractDir;
 
@@ -34,6 +32,11 @@ if (platform === 'win32') {
     archiveName = `sing-box-${VERSION}-darwin-${sbArch}.tar.gz`;
     binaryName = 'sing-box';
     extractDir = `sing-box-${VERSION}-darwin-${sbArch}`;
+} else if (platform === 'linux') {
+    archiveUrl = `https://github.com/SagerNet/sing-box/releases/download/v${VERSION}/sing-box-${VERSION}-linux-${sbArch}.tar.gz`;
+    archiveName = `sing-box-${VERSION}-linux-${sbArch}.tar.gz`;
+    binaryName = 'sing-box';
+    extractDir = `sing-box-${VERSION}-linux-${sbArch}`;
 } else {
     console.error('Unsupported platform:', platform);
     process.exit(1);
@@ -154,7 +157,7 @@ async function main() {
     console.log('===== sing-box Download Script =====');
     console.log('[DEBUG] Version:', VERSION);
     console.log('[DEBUG] Platform:', platform);
-    console.log('[DEBUG] Arch:', arch, '-> sing-box arch:', sbArch);
+    console.log('[DEBUG] Arch:', sbArch);
     console.log('[DEBUG] Project root:', projectRoot);
     console.log('[DEBUG] Resources dir:', resourcesDir);
     console.log('[DEBUG] Archive name:', archiveName);
@@ -172,7 +175,7 @@ async function main() {
         console.log('[DEBUG] Resources directory already exists');
     }
 
-    console.log('\nDownloading sing-box', VERSION, `(${platform}-${arch})...`);
+    console.log('\nDownloading sing-box', VERSION, `(${platform}-${sbArch})...`);
     await download();
 
     console.log('\n[DEBUG] Checking if archive file exists...');
