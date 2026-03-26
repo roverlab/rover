@@ -30,6 +30,7 @@ import {
 } from './route-policy';
 import { policiesToSingboxConfig } from '../src/services/policy';
 import { dnsPoliciesToSingboxConfig } from '../src/services/dns-policy';
+import { t } from './i18n-main';
 
 /** 判断是否为 IPv6 地址 */
 function isIPv6(ip: string): boolean {
@@ -239,7 +240,7 @@ export function readConfig(): any | null {
     try {
         return JSON.parse(fs.readFileSync(configPath, 'utf8'));
     } catch {
-        throw new Error('配置文件损坏，请重新生成配置文件');
+        throw new Error(t('main.errors.configFile.corrupt'));
     }
 }
 
@@ -282,14 +283,14 @@ function hashContent(content: string): string {
 export function invalidateProfileConvertCache(profileId: string): void {
     const had = profileConvertCache.has(profileId);
     profileConvertCache.delete(profileId);
-    if (had) console.log(`[订阅转换缓存] 已清除 profile=${profileId}`);
+    if (had) console.log(`[ConvertCache] Cleared profile=${profileId}`);
 }
 
 /** 将 Clash YAML 转为 Sing-box JSON */
 export function convertYamlToSingbox(content: string, options?: ConvertOptions): string {
     try {
         const parsed = yaml.load(content) as MihomoConfig;
-        if (!parsed) throw new Error('Failed to parse YAML content');
+        if (!parsed) throw new Error(t('main.errors.configFile.parseYamlEmpty'));
         if (parsed.proxies && Array.isArray(parsed.proxies)) {
             console.log(`Converting Clash config with ${parsed.proxies.length} proxies...`);
             if (options?.skipRules) {
@@ -298,10 +299,10 @@ export function convertYamlToSingbox(content: string, options?: ConvertOptions):
             const singboxConfig = convertClashToSingbox(parsed, options);
             return JSON.stringify(singboxConfig, null, 2);
         }
-        throw new Error('No proxies found in YAML file');
+        throw new Error(t('main.errors.configFile.noProxiesInYaml'));
     } catch (err: any) {
         console.error('YAML conversion error:', err.message);
-        throw new Error(`Failed to convert YAML: ${err.message}`);
+        throw new Error(t('main.errors.configFile.convertYamlGeneric', { message: err.message }));
     }
 }
 
@@ -312,23 +313,23 @@ export function convertYamlToSingbox(content: string, options?: ConvertOptions):
  */
 export async function getProfileConfig(profileId: string, skipRules = false): Promise<{ config: any; profile: any }> {
     const profile = dbUtils.getProfileById(profileId);
-    if (!profile) throw new Error('Profile not found');
+    if (!profile) throw new Error(t('main.errors.profileNotFound'));
 
     let content = subscription.readProfileContent(profileId, profile.path ? resolveDataPath(profile.path) : undefined);
 
     if (!content) {
         if (profile.type === 'local') {
-            throw new Error('本地配置文件已损坏或丢失，无法使用。请重新导入配置文件。');
+            throw new Error(t('main.errors.configFile.localProfileMissing'));
         } else if (profile.type === 'remote') {
             console.log(`Profile file missing, attempting to re-download for profile ${profileId}...`);
             if (!profile.url) {
-                throw new Error('配置文件丢失且没有订阅地址，无法自动恢复。请重新添加订阅。');
+                throw new Error(t('main.errors.configFile.remoteProfileNoUrl'));
             }
             try {
                 content = await subscription.downloadProfile(profileId);
                 console.log('Successfully re-downloaded profile');
             } catch (downloadErr: any) {
-                throw new Error(`配置文件丢失，自动重新下载失败: ${downloadErr.message}`);
+                throw new Error(t('main.errors.configFile.redownloadFailed', { message: downloadErr.message }));
             }
         }
     }
@@ -338,29 +339,29 @@ export async function getProfileConfig(profileId: string, skipRules = false): Pr
         
         // 当跳过规则转换时，不使用缓存，因为缓存的配置包含完整规则
         if (skipRules) {
-            console.log(`[订阅转换] profile=${profileId} skipRules=true，跳过规则转换`);
+            console.log(`[Convert] profile=${profileId} skipRules=true, skipping rules conversion`);
             console.log('YAML content detected in profile, converting to sing-box JSON (without rules)...');
             try {
                 content = convertYamlToSingbox(content, { skipRules: true });
             } catch (convertErr: any) {
-                throw new Error(`Failed to convert YAML config: ${convertErr.message}`);
+                throw new Error(t('main.errors.configFile.convertYamlFailed', { message: convertErr.message }));
             }
         } else {
             // 正常模式：使用缓存机制
             const cached = profileConvertCache.get(profileId);
             if (cached && cached.hash === contentHash) {
-                console.log(`[订阅转换缓存] 命中 profile=${profileId} hash=${contentHash.slice(0, 12)}...`);
+                console.log(`[ConvertCache] Hit profile=${profileId} hash=${contentHash.slice(0, 12)}...`);
                 content = cached.converted;
             } else {
-                const reason = !cached ? '无缓存' : `hash 变化 (旧=${cached.hash.slice(0, 12)}... 新=${contentHash.slice(0, 12)}...)`;
-                console.log(`[订阅转换缓存] 未命中 profile=${profileId} 原因=${reason}`);
+                const reason = !cached ? 'no cache' : `hash changed (old=${cached.hash.slice(0, 12)}... new=${contentHash.slice(0, 12)}...)`;
+                console.log(`[ConvertCache] Miss profile=${profileId} reason=${reason}`);
                 console.log('YAML content detected in profile, converting to sing-box JSON...');
                 try {
                     content = convertYamlToSingbox(content);
                     profileConvertCache.set(profileId, { hash: contentHash, converted: content });
-                    console.log(`[订阅转换缓存] 已写入 profile=${profileId} hash=${contentHash.slice(0, 12)}...`);
+                    console.log(`[ConvertCache] Written profile=${profileId} hash=${contentHash.slice(0, 12)}...`);
                 } catch (convertErr: any) {
-                    throw new Error(`Failed to convert YAML config: ${convertErr.message}`);
+                    throw new Error(t('main.errors.configFile.convertYamlFailed', { message: convertErr.message }));
                 }
             }
         }
@@ -369,10 +370,10 @@ export async function getProfileConfig(profileId: string, skipRules = false): Pr
     let config;
     try {
         config = JSON.parse(content);
-        if (Object.keys(config).length === 0) throw new Error('Config is empty');
+        if (Object.keys(config).length === 0) throw new Error(t('main.errors.configFile.configEmpty'));
     } catch (e: any) {
         console.error('Invalid config format:', e.message);
-        throw new Error(`Invalid config format: ${e.message}. Note: Only Sing-box JSON is supported.`);
+        throw new Error(t('main.errors.configFile.invalidSingboxJson', { message: e.message }));
     }
 
     return { config, profile };
@@ -615,7 +616,7 @@ function addProxyServerRules(config: SingboxConfig): void {
         return;
     }
     
-    console.log(`[Config] 为 ${domains.length} 个代理域名和 ${ips.length} 个代理 IP 生成直连规则`);
+    console.log(`[Config] Generating direct rules for ${domains.length} proxy domains and ${ips.length} proxy IPs`);
     
     // 1. DNS 规则：代理域名使用 dns_direct_out（本地解析）
     if (domains.length > 0) {
@@ -628,7 +629,7 @@ function addProxyServerRules(config: SingboxConfig): void {
         };
         // 插入到 DNS 规则最前面（优先匹配）
         config.dns.rules.unshift(dnsRule as DnsRule);
-        console.log(`[Config] DNS 规则: ${domains.length} 个代理域名使用 dns_direct_out`);
+        console.log(`[Config] DNS rules: ${domains.length} proxy domains using dns_direct_out`);
     }
     
     // 2. 路由规则：代理域名和 IP 直连
@@ -642,7 +643,7 @@ function addProxyServerRules(config: SingboxConfig): void {
             outbound: 'direct_out'
         };
         config.route.rules.unshift(ipRule);
-        console.log(`[Config] 路由规则: ${ips.length} 个代理 IP 直连`);
+        console.log(`[Config] Route rules: ${ips.length} proxy IPs direct`);
     }
     
     // 域名直连规则
@@ -652,7 +653,7 @@ function addProxyServerRules(config: SingboxConfig): void {
             outbound: 'direct_out'
         };
         config.route.rules.unshift(domainRule);
-        console.log(`[Config] 路由规则: ${domains.length} 个代理域名直连`);
+        console.log(`[Config] Route rules: ${domains.length} proxy domains direct`);
     }
 }
 
@@ -741,31 +742,31 @@ function applyRoutePolicyPreferredOutbounds(
     for (const [policyId, preferredOutbound] of preferredOutboundMap.entries()) {
         // 检查节点是否存在
         if (!existingOutboundTags.has(preferredOutbound)) {
-            console.log(`[Config] 跳过策略 ${policyId}: 节点 ${preferredOutbound} 不存在`);
+            console.log(`[Config] Skip policy ${policyId}: node ${preferredOutbound} not found`);
             continue;
         }
 
         // 找到对应的 rule index
         const ruleIndex = policyIdToRuleIndex.get(policyId);
         if (ruleIndex === undefined || ruleIndex < 0 || ruleIndex >= config.route.rules.length) {
-            console.log(`[Config] 跳过策略 ${policyId}: 找不到对应的规则`);
+            console.log(`[Config] Skip policy ${policyId}: rule not found`);
             continue;
         }
 
         const rule = config.route.rules[ruleIndex];
         // 跳过逻辑规则
         if ('type' in rule && rule.type === 'logical') {
-            console.log(`[Config] 跳过策略 ${policyId}: 逻辑规则不支持 preferred_outbound`);
+            console.log(`[Config] Skip policy ${policyId}: logical rule does not support preferred_outbound`);
             continue;
         }
 
         const oldOutbound = rule.outbound;
         rule.outbound = preferredOutbound;
         rulesUpdated++;
-        console.log(`[Config] 更新策略规则出站: ${policyId} (${oldOutbound}) -> ${preferredOutbound}`);
+        console.log(`[Config] Update policy rule outbound: ${policyId} (${oldOutbound}) -> ${preferredOutbound}`);
     }
 
-    console.log(`[Config] 成功更新 ${rulesUpdated} 条规则的出站`);
+    console.log(`[Config] Successfully updated ${rulesUpdated} rule outbounds`);
 }
 
 /** 应用 profile 的 DNS 服务器 detour 设置 */
@@ -782,11 +783,11 @@ function applyDnsServerDetours(config: SingboxConfig, profileId: string): void {
         if (preferredDetour) {
             server.detour = preferredDetour;
             appliedCount++;
-            console.log(`[Config] DNS 服务器 ${serverId} 设置 detour: ${preferredDetour}`);
+            console.log(`[Config] DNS server ${serverId} set detour: ${preferredDetour}`);
         }
     }
 
-    console.log(`[Config] 应用了 ${appliedCount} 个 DNS 服务器的 detour 设置`);
+    console.log(`[Config] Applied ${appliedCount} DNS server detour settings`);
 }
 
 /** 应用自定义分流模式：策略规则（不处理 rule_set，后续统一处理） */
@@ -954,9 +955,9 @@ function applyCustomProxyGroups(config: SingboxConfig, profileId: string): void 
     console.log(`[Config] Found ${allProxyNodes.length} proxy nodes in current config`);
 
     
-    // 默认分组名称
-    const SELECTOR_GROUP = '🚀 节点选择';
-    const AUTO_SELECT_GROUP = '♻️ 自动选择';
+    // 默认分组名称（与当前语言一致，写入 config）
+    const SELECTOR_GROUP = t('main.config.proxyGroupSelector');
+    const AUTO_SELECT_GROUP = t('main.config.proxyGroupAutoSelect');
 
     
     // 1. ♻️ 自动选择 - urltest 类型，包含所有代理节点
@@ -1083,7 +1084,7 @@ export async function writeConfigFileOnly(
     const configPath = getConfigPath();
     fs.writeFileSync(configPath, JSON.stringify(mergedConfig, null, 2), 'utf8');
     
-    console.log(`[Config] 配置文件已写入: ${configPath}`);
+    console.log(`[Config] Config file written: ${configPath}`);
     return configPath;
 }
 

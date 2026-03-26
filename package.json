@@ -17,23 +17,21 @@
     "download:rulesets": "npx tsx scripts/download-rulesets.js"
   },
   "dependencies": {
-    "@google/genai": "^1.29.0",
     "adm-zip": "^0.5.16",
     "axios": "^1.13.6",
     "clsx": "^2.1.1",
     "country-flag-icons": "^1.6.15",
-    "date-fns": "^4.1.0",
-    "dotenv": "^17.2.3",
     "express": "^4.21.2",
     "framer-motion": "^12.35.1",
     "https-proxy-agent": "^8.0.0",
-    "iconv-lite": "^0.7.2",
+    "i18next": "^25.10.9",
+    "i18next-browser-languagedetector": "^8.2.1",
     "js-yaml": "^4.1.1",
-    "jschardet": "^3.1.4",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "react-i18next": "^16.6.6",
     "sortablejs": "^1.15.7",
     "tailwind-merge": "^3.5.0"
   },
@@ -55,8 +53,7 @@
     "tailwindcss": "^4.1.14",
     "ts-node": "^10.9.2",
     "tsx": "^4.21.0",
-    "typescript": "~5.8.2",
-    "vitest": "^4.1.0"
+    "typescript": "~5.8.2"
   },
   "build": {
     "appId": "roverlab.rover",

@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { Policy } from '../types/policy';
 import type { RuleProvider } from '../types/rule-providers';
 import { useNotificationState, NotificationList } from '../components/ui/Notification';
-import { POLICY_FINAL_OPTIONS } from './Policies/utils';
+import { POLICY_FINAL_OPTION_DEFS } from '../types/policy';
 import { PolicyHeader } from './Policies/PolicyHeader';
 import { PolicyEmptyState } from './Policies/PolicyEmptyState';
 import { PolicyListCard } from './Policies/PolicyListCard';
@@ -18,8 +19,9 @@ interface PoliciesProps {
 }
 
 export function Policies({ isActive = true }: PoliciesProps) {
-    const [policies, setPolicies] = useState<Policy[]>([]);
-    const [loading, setLoading] = useState(true);
+const { t } = useTranslation();
+const [policies, setPolicies] = useState<Policy[]>([]);
+const [loading, setLoading] = useState(true);
     const [showEditModal, setShowEditModal] = useState(false);
     const [editingPolicy, setEditingPolicy] = useState<Policy | null>(null);
     const [showImportModal, setShowImportModal] = useState(false);
@@ -78,9 +80,9 @@ export function Policies({ isActive = true }: PoliciesProps) {
         if (!detailPolicy || detailPolicy.type !== 'raw') return;
         try {
             await navigator.clipboard.writeText(JSON.stringify(detailPolicy.raw_data || {}, null, 2));
-            addNotification('原始规则已复制到剪贴板');
+            addNotification(t('policies.rawRuleCopied'));
         } catch (err: unknown) {
-            addNotification(`复制失败: ${(err as Error)?.message || '未知错误'}`, 'error');
+            addNotification(t('policies.copyFailed', { error: (err as Error)?.message || 'Unknown' }), 'error');
         }
     };
 
@@ -98,7 +100,7 @@ export function Policies({ isActive = true }: PoliciesProps) {
             await confirmBatchDeleteForSingle(tempDeleteIds);
         } catch (err: unknown) {
             console.error('Failed to delete policy:', err);
-            addNotification(`删除失败: ${(err as Error)?.message || '未知错误'}`, 'error');
+            addNotification(t('policies.deleteFailed', { error: (err as Error)?.message || 'Unknown' }), 'error');
         } finally {
             setShowDeleteConfirm(false);
             setDeleteTargetId(null);
@@ -131,7 +133,7 @@ export function Policies({ isActive = true }: PoliciesProps) {
             window.ipcRenderer.core.generateConfig().catch(console.error);
         } catch (err: unknown) {
             console.error('Failed to update order:', err);
-            addNotification('批量排序失败，已恢复原顺序', 'error');
+            addNotification(t('policies.reorderFailed'), 'error');
             loadPolicies();
         }
     };
@@ -141,12 +143,12 @@ export function Policies({ isActive = true }: PoliciesProps) {
         const ids = Array.from(selectedIds);
         try {
             await Promise.all(ids.map(id => window.ipcRenderer.db.updatePolicy(id, { enabled: true })));
-            addNotification(`已启用 ${ids.length} 条策略`);
+            addNotification(t('policies.batchEnableSuccess', { count: ids.length }));
             loadPolicies();
             // 异步生成配置，不阻塞UI
             window.ipcRenderer.core.generateConfig().catch(console.error);
         } catch (err: unknown) {
-            addNotification(`批量启用失败: ${(err as Error)?.message || '未知错误'}`, 'error');
+            addNotification(t('policies.batchEnableFailed', { error: (err as Error)?.message || 'Unknown' }), 'error');
         }
     };
 
@@ -155,12 +157,12 @@ export function Policies({ isActive = true }: PoliciesProps) {
         const ids = Array.from(selectedIds);
         try {
             await Promise.all(ids.map(id => window.ipcRenderer.db.updatePolicy(id, { enabled: false })));
-            addNotification(`已禁用 ${ids.length} 条策略`);
+            addNotification(t('policies.batchDisableSuccess', { count: ids.length }));
             loadPolicies();
             // 异步生成配置，不阻塞UI
             window.ipcRenderer.core.generateConfig().catch(console.error);
         } catch (err: unknown) {
-            addNotification(`批量禁用失败: ${(err as Error)?.message || '未知错误'}`, 'error');
+            addNotification(t('policies.batchDisableFailed', { error: (err as Error)?.message || 'Unknown' }), 'error');
         }
     };
 
@@ -178,12 +180,12 @@ export function Policies({ isActive = true }: PoliciesProps) {
         setBatchDeleteIds(new Set());
         try {
             await Promise.all(ids.map(id => window.ipcRenderer.db.deletePolicy(id as string)));
-            addNotification(`已删除 ${count} 条策略`);
+            addNotification(t('policies.policyDeleted'));
             loadPolicies();
             // 异步生成配置，不阻塞UI
             window.ipcRenderer.core.generateConfig().catch(console.error);
         } catch (err: unknown) {
-            addNotification(`批量删除失败: ${(err as Error)?.message || '未知错误'}`, 'error');
+            addNotification(t('policies.batchDeleteFailed', { error: (err as Error)?.message || 'Unknown' }), 'error');
         }
     };
 
@@ -193,12 +195,12 @@ export function Policies({ isActive = true }: PoliciesProps) {
         const ids = Array.from(selectedIds);
         try {
             await Promise.all(ids.map(id => window.ipcRenderer.db.deletePolicy(id as string)));
-            addNotification('策略已删除');
+            addNotification(t('policies.policyDeleted'));
             loadPolicies();
             // 异步生成配置，不阻塞UI
             window.ipcRenderer.core.generateConfig().catch(console.error);
         } catch (err: unknown) {
-            addNotification(`删除失败: ${(err as Error)?.message || '未知错误'}`, 'error');
+            addNotification(t('policies.deleteFailed', { error: (err as Error)?.message || 'Unknown' }), 'error');
         }
     };
 
@@ -238,11 +240,17 @@ export function Policies({ isActive = true }: PoliciesProps) {
     const handlePolicyFinalOutboundChange = async (value: 'direct_out' | 'block_out' | 'selector_out') => {
         try {
             await policyFinalOutbound.onChange(value);
-            addNotification(`未匹配时出站已切换为：${POLICY_FINAL_OPTIONS.find(item => item.value === value)?.label ?? value}`);
+            const opt = POLICY_FINAL_OPTION_DEFS.find((item) => item.value === value);
+            addNotification(
+                t('policies.finalOutboundChanged', { value: opt ? t(opt.labelKey) : value })
+            );
             // 异步生成配置，不阻塞UI
             window.ipcRenderer.core.generateConfig().catch(console.error);
         } catch (err: unknown) {
-            addNotification(`更新未匹配时出站失败: ${(err as Error)?.message || '未知错误'}`, 'error');
+            addNotification(
+                t('policies.finalOutboundChangeFailed', { error: (err as Error)?.message || t('common.error') }),
+                'error'
+            );
         }
     };
 

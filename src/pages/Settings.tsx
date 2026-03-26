@@ -5,10 +5,12 @@ import { Select } from '../components/ui/Field';
 import { Input } from '../components/ui/Field';
 import { Card, ListRow, SectionHeader } from '../components/ui/Surface';
 import { Modal } from '../components/ui/Modal';
+import { useTranslation } from 'react-i18next';
 import { useApi } from '../contexts/ApiContext';
 import { Settings as SettingsIcon, Sliders, Check, Globe, Download, Upload, Info, ExternalLink } from 'lucide-react';
 import { DnsServersTab } from './Settings/DnsServersTab';
 import { useOverrideRules } from '../contexts/OverrideRulesContext';
+import { changeLanguage, getCurrentLanguage, getAvailableLanguages } from '../i18n';
 
 interface SettingsProps {
   isActive?: boolean;
@@ -18,11 +20,13 @@ interface SettingsProps {
 
 
 export function Settings({ isActive = true, initialTab, onTabConsumed }: SettingsProps = {}) {
+  const { t, i18n } = useTranslation();
   const { apiUrl, apiSecret, setApiUrl, setApiSecret } = useApi();
   const { refreshOverrideRules } = useOverrideRules();
 
   // App Settings
-  const [lang, setLang] = useState('en');
+  const [lang, setLang] = useState(getCurrentLanguage());
+  const availableLanguages = getAvailableLanguages();
 
   // Core & System Settings
   const [allowLan, setAllowLan] = useState(false);
@@ -151,7 +155,8 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
       // Format build time to local readable format
       if (buildInfo.buildTime) {
         const date = new Date(buildInfo.buildTime);
-        const formattedTime = date.toLocaleString('zh-CN', {
+        const locale = i18n.language?.startsWith('zh') ? 'zh-CN' : 'en-US';
+        const formattedTime = date.toLocaleString(locale, {
           year: 'numeric',
           month: '2-digit',
           day: '2-digit',
@@ -205,7 +210,7 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
         // 用户取消，不显示错误
       }
     } catch (e: any) {
-      setConfigExportError(e?.message || '导出失败');
+      setConfigExportError(e?.message || t('settings.exportFailed'));
     } finally {
       setConfigExporting(false);
     }
@@ -221,18 +226,21 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
         setConfigImportSuccessModal(true);
       }
     } catch (e: any) {
-      setConfigImportError(e?.message || '导入失败');
+      setConfigImportError(e?.message || t('settings.importFailed'));
     } finally {
       setConfigImporting(false);
       setConfigImportStep(null);
     }
   };
 
-  const CONFIG_IMPORT_STEP_LABELS: Record<string, string> = {
-    restoring: '正在恢复配置...',
-    downloading: '正在下载订阅配置...',
-    generating: '正在生成主配置...',
-    done: '处理完成',
+  const configImportStepLabel = (step: string) => {
+    const map: Record<string, string> = {
+      restoring: t('settings.restoring'),
+      downloading: t('settings.downloading'),
+      generating: t('settings.generating'),
+      done: t('settings.done'),
+    };
+    return map[step] || step;
   };
 
   const handleImportSuccessConfirm = () => {
@@ -319,11 +327,11 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
       } else {
         // 用户拒绝安装服务（取消 UAC 提示），不显示错误提示
         if (!result.isUserCanceled) {
-          setRoverServiceError(result.error || '安装失败');
+          setRoverServiceError(result.error || t('settings.installFailed'));
         }
       }
     } catch (err: any) {
-      setRoverServiceError(err.message || '安装失败');
+      setRoverServiceError(err.message || t('settings.installFailed'));
     } finally {
       setRoverServiceInstalling(false);
     }
@@ -346,11 +354,11 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
       } else {
         // 用户拒绝卸载服务（取消 UAC 提示），不显示错误提示
         if (!result.isUserCanceled) {
-          setRoverServiceError(result.error || '卸载失败');
+          setRoverServiceError(result.error || t('settings.uninstallFailed'));
         }
       }
     } catch (err: any) {
-      setRoverServiceError(err.message || '卸载失败');
+      setRoverServiceError(err.message || t('settings.uninstallFailed'));
     } finally {
       setRoverServiceUninstalling(false);
     }
@@ -365,7 +373,7 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
       const uninstallResult = await window.ipcRenderer.roverservice.uninstall();
       if (!uninstallResult.success) {
         // 卸载失败也继续尝试安装
-        console.warn('[RoverService] 卸载失败，尝试重新安装:', uninstallResult.error);
+            console.warn('[RoverService] Uninstall failed, trying reinstall:', uninstallResult.error);
       } 
       // 重新加载状态
       await loadRoverServiceStatus();
@@ -383,11 +391,11 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
       } else {
         // 用户拒绝安装服务（取消 UAC 提示），不显示错误提示
         if (!installResult.isUserCanceled) {
-          setRoverServiceError(installResult.error || '重新安装失败');
+          setRoverServiceError(installResult.error || t('settings.reinstallFailed'));
         }
       }
     } catch (err: any) {
-      setRoverServiceError(err.message || '重新安装失败');
+      setRoverServiceError(err.message || t('settings.reinstallFailed'));
     } finally {
       setRoverServiceInstalling(false);
     }
@@ -407,23 +415,23 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
 
   return (
     <div className="page-shell">
-      <div className="page-header shrink-0" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
-        <div>
-          <h1 className="page-title">设置</h1>
-          <p className="page-subtitle">配置 API 地址、端口、DNS 与高级分流策略。</p>
+        <div className="page-header shrink-0" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
+          <div>
+            <h1 className="page-title">{t('settings.title')}</h1>
+            <p className="page-subtitle">{t('settings.subtitle')}</p>
+          </div>
+          <div className="toolbar" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+          </div>
         </div>
-        <div className="toolbar" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-        </div>
-      </div>
 
       <div className="page-content">
         {/* Tab 导航 */}
         <div className="flex gap-1 mb-4 p-1 bg-[rgba(39,44,54,0.06)] rounded-xl w-fit">
           {[
-            { id: 'basic' as SettingsTab, label: '基础设置', icon: SettingsIcon },
-            { id: 'advanced' as SettingsTab, label: '高级设置', icon: Sliders },
-            { id: 'dns' as SettingsTab, label: 'DNS 服务器', icon: Globe },
-            { id: 'about' as SettingsTab, label: '关于', icon: Info },
+            { id: 'basic' as SettingsTab, label: t('settings.basic'), icon: SettingsIcon },
+            { id: 'advanced' as SettingsTab, label: t('settings.advanced'), icon: Sliders },
+            { id: 'dns' as SettingsTab, label: t('settings.dns'), icon: Globe },
+            { id: 'about' as SettingsTab, label: t('settings.about'), icon: Info },
           ].map(({ id, label, icon: Icon }) => (
             <button
               key={id}
@@ -449,15 +457,15 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
             <Card>
               <SectionHeader>
                 <div>
-                  <h2 className="text-[12px] font-semibold uppercase tracking-[0.18em] text-[var(--app-text-quaternary)]">服务端配置</h2>
-                  <p className="text-[12px] text-[var(--app-text-quaternary)] mt-1">与核心进程直接关联的参数。</p>
+                  <h2 className="text-[12px] font-semibold uppercase tracking-[0.18em] text-[var(--app-text-quaternary)]">{t('settings.serverConfig')}</h2>
+                  <p className="text-[12px] text-[var(--app-text-quaternary)] mt-1">{t('settings.serverConfigDesc')}</p>
                 </div>
               </SectionHeader>
               <div className="panel-section">
                 <ListRow>
                   <div>
-                    <div className="list-row-title">端口</div>
-                    <div className="list-row-description">Mixed Port (HTTP/SOCKS)</div>
+                    <div className="list-row-title">{t('settings.port')}</div>
+                    <div className="list-row-description">{t('settings.portDesc')}</div>
                   </div>
                   <Input
                     type="number"
@@ -470,8 +478,8 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
 
                 <ListRow>
                   <div>
-                    <div className="list-row-title">局域网访问</div>
-                    <div className="list-row-description">Allow LAN connections</div>
+                    <div className="list-row-title">{t('settings.allowLan')}</div>
+                    <div className="list-row-description">{t('settings.allowLanDesc')}</div>
                   </div>
                   <Switch
                     checked={allowLan}
@@ -481,8 +489,8 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
 
                 <ListRow>
                   <div>
-                    <div className="list-row-title">日志级别</div>
-                    <div className="list-row-description">Service diagnostic level</div>
+                    <div className="list-row-title">{t('settings.logLevel')}</div>
+                    <div className="list-row-description">{t('settings.logLevelDesc')}</div>
                   </div>
                   <Select
                     value={logLevel}
@@ -499,30 +507,30 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
 
                 <ListRow>
                   <div>
-                    <div className="list-row-title">API 地址</div>
-                    <div className="list-row-description">External controller URL</div>
+                    <div className="list-row-title">{t('settings.apiUrl')}</div>
+                    <div className="list-row-description">{t('settings.apiUrlDesc')}</div>
                   </div>
                   <Input
                     type="text"
                     value={apiUrl}
                     onChange={(e) => setApiUrl(e.target.value)}
                     onBlur={() => handleUpdateConfig('api-url', apiUrl)}
-                    placeholder="http://127.0.0.1:9090"
+                    placeholder={t('settings.apiUrlPlaceholder')}
                     className="w-[180px]"
                   />
                 </ListRow>
 
                 <ListRow>
                   <div>
-                    <div className="list-row-title">API 密钥</div>
-                    <div className="list-row-description">External controller secret</div>
+                    <div className="list-row-title">{t('settings.apiSecret')}</div>
+                    <div className="list-row-description">{t('settings.apiSecretDesc')}</div>
                   </div>
                   <Input
                     type="password"
                     value={apiSecret}
                     onChange={(e) => setApiSecret(e.target.value)}
                     onBlur={() => handleUpdateConfig('api-secret', apiSecret)}
-                    placeholder="Optional"
+                    placeholder={t('settings.apiSecretPlaceholder')}
                     className="w-[180px]"
                   />
                 </ListRow>
@@ -535,30 +543,30 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
             <Card>
               <SectionHeader>
                 <div>
-                  <h2 className="text-[12px] font-semibold uppercase tracking-[0.18em] text-[var(--app-text-quaternary)]">应用配置</h2>
-                  <p className="text-[12px] text-[var(--app-text-quaternary)] mt-1">应用程序相关的设置选项。</p>
+                  <h2 className="text-[12px] font-semibold uppercase tracking-[0.18em] text-[var(--app-text-quaternary)]">{t('settings.appConfig')}</h2>
+                  <p className="text-[12px] text-[var(--app-text-quaternary)] mt-1">{t('settings.appConfigDesc')}</p>
                 </div>
               </SectionHeader>
               <div className="panel-section">
                 <ListRow>
                   <div>
-                    <div className="list-row-title">订阅下载 User-Agent</div>
-                    <div className="list-row-description">下载订阅配置时使用的 HTTP 请求头，留空使用默认值</div>
+                    <div className="list-row-title">{t('settings.subscriptionUserAgent')}</div>
+                    <div className="list-row-description">{t('settings.subscriptionUserAgentDesc')}</div>
                   </div>
                   <Input
                     type="text"
                     value={subscriptionUserAgent}
                     onChange={(e) => setSubscriptionUserAgent(e.target.value)}
                     onBlur={() => handleUpdateConfig('subscription-user-agent', subscriptionUserAgent)}
-                    placeholder="mihomo/1.19.16; sing-box 1.12.0"
+                    placeholder={t('settings.subscriptionUaPlaceholder')}
                     className="min-w-[200px] flex-1 max-w-[320px]"
                   />
                 </ListRow>
 
                 <ListRow>
                   <div>
-                    <div className="list-row-title">启动自动打开内核</div>
-                    <div className="list-row-description">应用启动时自动打开内核</div>
+                    <div className="list-row-title">{t('settings.autoStartProxy')}</div>
+                    <div className="list-row-description">{t('settings.autoStartProxyDesc')}</div>
                   </div>
                   <Switch
                     checked={autoStartProxy}
@@ -568,30 +576,37 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
 
                 <ListRow>
                   <div>
-                    <div className="list-row-title">主题</div>
-                    <div className="list-row-description">Light / Dark mode</div>
+                    <div className="list-row-title">{t('settings.themeLabel')}</div>
+                    <div className="list-row-description">{t('settings.themeDesc')}</div>
                   </div>
                   <Select
                     defaultValue="light"
                     className="w-[132px]"
                   >
-                    <option value="light">Light</option>
-                    <option value="dark" disabled>Dark (未支持)</option>
+                    <option value="light">{t('settings.themeLight')}</option>
+                    <option value="dark" disabled>{t('settings.themeDark')}</option>
                   </Select>
                 </ListRow>
 
                 <ListRow>
                   <div>
-                    <div className="list-row-title">语言</div>
-                    <div className="list-row-description">UI Language</div>
+                    <div className="list-row-title">{t('settings.languageLabel')}</div>
+                    <div className="list-row-description">{t('settings.languageDesc')}</div>
                   </div>
                   <Select
                     value={lang}
-                    onChange={(e) => setLang(e.target.value)}
+                    onChange={async (e) => {
+                      const newLang = e.target.value;
+                      await changeLanguage(newLang);
+                      setLang(newLang);
+                    }}
                     className="w-[132px]"
                   >
-                    <option value="en">English</option>
-                    <option value="zh">中文</option>
+                    {availableLanguages.map((language) => (
+                      <option key={language.code} value={language.code}>
+                        {t(language.nameKey)}
+                      </option>
+                    ))}
                   </Select>
                 </ListRow>
               </div>
@@ -606,15 +621,15 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
             <Card>
               <SectionHeader>
                 <div>
-                  <h2 className="text-[12px] font-semibold uppercase tracking-[0.18em] text-[var(--app-text-quaternary)]">高级设置</h2>
-                  <p className="text-[12px] text-[var(--app-text-quaternary)] mt-1">DNS解析与网络高级选项配置。</p>
+                  <h2 className="text-[12px] font-semibold uppercase tracking-[0.18em] text-[var(--app-text-quaternary)]">{t('settings.advancedSettings')}</h2>
+                  <p className="text-[12px] text-[var(--app-text-quaternary)] mt-1">{t('settings.advancedSettingsDesc')}</p>
                 </div>
               </SectionHeader>
               <div className="panel-section">
                 <ListRow>
                   <div>
-                    <div className="list-row-title">自定义分流策略</div>
-                    <div className="list-row-description">使用自定义的分流策略替换订阅中的规则</div>
+                    <div className="list-row-title">{t('settings.overrideRules')}</div>
+                    <div className="list-row-description">{t('settings.overrideRulesDesc')}</div>
                   </div>
                   <Switch
                     checked={overrideRules}
@@ -633,8 +648,8 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
 
                 <ListRow>
                   <div>
-                    <div className="list-row-title">自定义代理分组</div>
-                    <div className="list-row-description">使用自定义的代理分组替换订阅中的原始分组</div>
+                    <div className="list-row-title">{t('settings.customProxyGroups')}</div>
+                    <div className="list-row-description">{t('settings.customProxyGroupsDesc')}</div>
                   </div>
                   <Switch
                     checked={customProxyGroups}
@@ -644,8 +659,8 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
 
                 <ListRow>
                   <div>
-                    <div className="list-row-title">IPv6</div>
-                    <div className="list-row-description">Enable IPv6 support</div>
+                    <div className="list-row-title">{t('settings.ipv6')}</div>
+                    <div className="list-row-description">{t('settings.ipv6Desc')}</div>
                   </div>
                   <Switch
                     checked={ipv6}
@@ -655,17 +670,14 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
 
                 <ListRow className="flex-col items-stretch gap-2 py-3">
                   <div>
-                    <div className="list-row-title">Hosts 配置</div>
-                    <div className="list-row-description">类似 hosts格式，每行：IP + 空格/制表符 + 域名，支持 IPv4/IPv6（如 ::1）及泛解析（*.example.com）</div>
+                    <div className="list-row-title">{t('settings.hostsConfig')}</div>
+                    <div className="list-row-description">{t('settings.hostsConfigDesc')}</div>
                   </div>
                   <div className="w-full">
                     <textarea
                       value={hostsText}
                       onChange={(e) => setHostsText(e.target.value)}
-                      placeholder={`# 支持注释
-127.0.0.1   localhost
-::1         localhost
-127.0.0.1   *.example.com`}
+                      placeholder={t('settings.hostsPlaceholder')}
                       rows={6}
                       className="w-full px-3 py-2 text-[13px] font-mono rounded-[10px] resize-y bg-white text-[var(--app-text)] placeholder:text-[var(--app-text-quaternary)] input-field focus:border-[var(--app-stroke-strong)] focus:outline-none"
                     />
@@ -673,11 +685,11 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
                       {hostsSaved && (
                         <span className="inline-flex items-center gap-1 text-[11px] text-green-600">
                           <Check className="w-3 h-3" />
-                          已保存
+                          {t('settings.saved')}
                         </span>
                       )}
                       <Button variant="secondary" size="sm" onClick={handleSaveHosts}>
-                        保存
+                        {t('actions.save')}
                       </Button>
                     </div>
                   </div>
@@ -685,18 +697,14 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
 
                 <ListRow className="flex-col items-stretch gap-2 py-3">
                   <div>
-                    <div className="list-row-title">TUN 排除地址</div>
-                    <div className="list-row-description">在 TUN 模式下排除的 IP 地址范围，每行一个 CIDR（如 192.168.0.0/16），这些地址的流量将不经过 TUN 虚拟网卡</div>
+                    <div className="list-row-title">{t('settings.tunExcludeAddress')}</div>
+                    <div className="list-row-description">{t('settings.tunExcludeAddressDesc')}</div>
                   </div>
                   <div className="w-full">
                     <textarea
                       value={tunExcludeAddressText}
                       onChange={(e) => setTunExcludeAddressText(e.target.value)}
-                      placeholder={`# 支持注释
-192.168.0.0/16
-10.0.0.0/8
-172.16.0.0/12
-fc00::/7`}
+                      placeholder={t('settings.tunExcludePlaceholder')}
                       rows={6}
                       className="w-full px-3 py-2 text-[13px] font-mono rounded-[10px] resize-y bg-white text-[var(--app-text)] placeholder:text-[var(--app-text-quaternary)] input-field focus:border-[var(--app-stroke-strong)] focus:outline-none"
                     />
@@ -730,20 +738,20 @@ fc00::/7`}
             <Card>
               <SectionHeader>
                 <div>
-                  <h2 className="text-[12px] font-semibold uppercase tracking-[0.18em] text-[var(--app-text-quaternary)]">关于</h2>
-                  <p className="text-[12px] text-[var(--app-text-quaternary)] mt-1">应用版本、主目录与配置备份。</p>
+                  <h2 className="text-[12px] font-semibold uppercase tracking-[0.18em] text-[var(--app-text-quaternary)]">{t('settings.aboutSection')}</h2>
+                  <p className="text-[12px] text-[var(--app-text-quaternary)] mt-1">{t('settings.aboutSectionDesc')}</p>
                 </div>
               </SectionHeader>
               <div className="panel-section">
                 <ListRow>
                   <div>
-                    <div className="list-row-title">应用名称</div>
+                    <div className="list-row-title">{t('settings.appName')}</div>
                     <div className="list-row-description font-medium">Rover</div>
                   </div>
                 </ListRow>
                 <ListRow>
                   <div>
-                    <div className="list-row-title">应用版本</div>
+                    <div className="list-row-title">{t('settings.appVersion')}</div>
                     <div className="list-row-description">
                       <div className="flex flex-col gap-0.5">
                         <div className="font-medium">{appVersion}</div>
@@ -754,14 +762,14 @@ fc00::/7`}
                 </ListRow>
                 <ListRow>
                   <div>
-                    <div className="list-row-title">内核版本</div>
+                    <div className="list-row-title">{t('settings.coreVersion')}</div>
                     <div className="list-row-description">{singboxVersion}</div>
                   </div>
                 </ListRow>
                 <ListRow>
                   <div>
-                    <div className="list-row-title">项目链接</div>
-                    <div className="list-row-description">GitHub 开源仓库</div>
+                    <div className="list-row-title">{t('settings.projectLink')}</div>
+                    <div className="list-row-description">{t('settings.projectLinkDesc')}</div>
                   </div>
                   <Button
                     variant="secondary"
@@ -769,20 +777,20 @@ fc00::/7`}
                     onClick={() => window.ipcRenderer.core.openExternalUrl('https://github.com/roverlab/rover')}
                   >
                     <ExternalLink className="w-3.5 h-3.5 mr-1" />
-                    打开
+                    {t('settings.open')}
                   </Button>
                 </ListRow>
                 <ListRow>
                   <div>
-                    <div className="list-row-title">主目录</div>
-                    <div className="list-row-description">UserData folder</div>
+                    <div className="list-row-title">{t('settings.userDataPath')}</div>
+                    <div className="list-row-description">{t('settings.userDataPathDesc')}</div>
                   </div>
-                  <Button variant="secondary" size="sm" onClick={() => window.ipcRenderer.core.openUserDataPath()}>打开</Button>
+                  <Button variant="secondary" size="sm" onClick={() => window.ipcRenderer.core.openUserDataPath()}>{t('settings.open')}</Button>
                 </ListRow>
                 <ListRow>
                   <div>
-                    <div className="list-row-title">导出/导入配置</div>
-                    <div className="list-row-description">备份或恢复数据</div>
+                    <div className="list-row-title">{t('settings.exportImportConfig')}</div>
+                    <div className="list-row-description">{t('settings.exportImportConfigDesc')}</div>
                   </div>
                   <div className="flex items-center gap-2">
                     <Button
@@ -792,7 +800,7 @@ fc00::/7`}
                       disabled={configExporting}
                     >
                       <Download className="w-3.5 h-3.5 mr-1" />
-                      导出
+                      {t('settings.export')}
                     </Button>
                     <Button
                       variant="secondary"
@@ -801,11 +809,11 @@ fc00::/7`}
                       disabled={configImporting}
                     >
                       <Upload className="w-3.5 h-3.5 mr-1" />
-                      导入
+                      {t('settings.import')}
                     </Button>
                     {configImporting && configImportStep && configImportStep !== 'done' && (
                       <span className="text-[12px] text-[var(--app-text-secondary)]">
-                        {CONFIG_IMPORT_STEP_LABELS[configImportStep] || configImportStep}
+                        {configImportStepLabel(configImportStep)}
                       </span>
                     )}
                     {(configImportError || configExportError) && (
@@ -829,16 +837,16 @@ fc00::/7`}
                   {/* 状态显示 */}
                   <ListRow>
                     <div>
-                      <div className="list-row-title">服务状态</div>
+                      <div className="list-row-title">{t('settings.serviceStatus')}</div>
                       <div className="list-row-description">
                         {roverserviceStatus.running ? (
                           <span className="text-green-600">
-                            运行中 (PID: {roverserviceStatus.pid}, 版本: {roverserviceStatus.version})
+                            {t('settings.serviceRunningDetail', { pid: roverserviceStatus.pid ?? 0, version: roverserviceStatus.version ?? '' })}
                           </span>
                         ) : roverserviceStatus.binaryInstalled ? (
-                          <span className="text-yellow-600">已安装但未运行</span>
+                          <span className="text-yellow-600">{t('settings.serviceInstalledNotRunning')}</span>
                         ) : (
-                          <span className="text-[var(--app-text-tertiary)]">未安装</span>
+                          <span className="text-[var(--app-text-tertiary)]">{t('settings.serviceNotInstalled')}</span>
                         )}
                       </div>
                     </div>
@@ -850,7 +858,7 @@ fc00::/7`}
                           onClick={handleUninstallRoverService}
                           disabled={roverserviceUninstalling}
                         >
-                          {roverserviceUninstalling ? '卸载中...' : '卸载'}
+                          {roverserviceUninstalling ? t('settings.uninstalling') : t('settings.uninstall')}
                         </Button>
                       ) : (
                         <Button
@@ -859,7 +867,7 @@ fc00::/7`}
                           onClick={handleInstallRoverService}
                           disabled={roverserviceInstalling}
                         >
-                          {roverserviceInstalling ? '安装中...' : '安装'}
+                          {roverserviceInstalling ? t('settings.installing') : t('settings.install')}
                         </Button>
                       )}
                     </div>
@@ -869,8 +877,8 @@ fc00::/7`}
                   {roverserviceStatus.binaryInstalled && (
                     <ListRow>
                       <div>
-                        <div className="list-row-title">重新安装</div>
-                        <div className="list-row-description">如果服务异常，可以尝试重新安装系统服务</div>
+                        <div className="list-row-title">{t('settings.reinstall')}</div>
+                        <div className="list-row-description">{t('settings.reinstallDesc')}</div>
                       </div>
                       <Button
                         variant="secondary"
@@ -878,7 +886,7 @@ fc00::/7`}
                         onClick={handleReinstallRoverService}
                         disabled={roverserviceInstalling}
                       >
-                        {roverserviceInstalling ? '安装中...' : '重新安装'}
+                        {roverserviceInstalling ? t('settings.installing') : t('settings.reinstall')}
                       </Button>
                     </ListRow>
                   )}
@@ -907,13 +915,13 @@ fc00::/7`}
       <Modal
         open={configImportSuccessModal}
         onClose={handleImportSuccessConfirm}
-        title="配置已导入"
+        title={t('settings.configImported')}
         maxWidth="max-w-md"
         contentClassName="p-5"
-        footer={<Button onClick={handleImportSuccessConfirm}>确定</Button>}
+        footer={<Button onClick={handleImportSuccessConfirm}>{t('common.confirm')}</Button>}
       >
         <p className="text-[13px] text-[var(--app-text-secondary)]">
-          配置已导入成功。点击确定刷新页面以应用新配置，页面将返回首页。
+          {t('settings.configImportedDesc')}
         </p>
       </Modal>
     </div>

@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import type { DnsPolicy } from '../../types/dns-policy';
 import { getDnsPolicyRuleSet } from '../../services/dns-policy';
 import { DNS_SERVER_OPTIONS } from '../../types/dns-policy';
@@ -39,9 +40,8 @@ const DNS_FIELD_DATA_CONFIG: PolicyFieldDataConfig<DnsPolicyEditFormState> = {
 };
 
 // DNS策略字段UI配置（用于Modal渲染）- 使用空选项，实际选项从数据库动态加载
-const DNS_FIELD_CONFIG: PolicyFieldConfig<DnsPolicyEditFormState> = {
+const DNS_FIELD_CONFIG_BASE: Omit<PolicyFieldConfig<DnsPolicyEditFormState>, 'fieldLabel' | 'options'> = {
     fieldName: 'server',
-    fieldLabel: 'DNS服务器',
     options: [], // 动态加载
 };
 
@@ -65,6 +65,7 @@ export function DnsPolicyEditModalContainer({
     onSaved,
     addNotification,
 }: DnsPolicyEditModalContainerProps) {
+    const { t } = useTranslation();
 
     return (
         <PolicyEditModalBaseContainer<DnsPolicyEditFormState, BasePolicy>
@@ -76,7 +77,7 @@ export function DnsPolicyEditModalContainer({
             addNotification={addNotification}
             getPolicyRuleSet={(policy) => getDnsPolicyRuleSet(policy as unknown as DnsPolicy)}
             getInitialFormState={getInitialFormState}
-            buildPolicyData={(params) => buildPolicyData({ ...params, addNotification })}
+            buildPolicyData={(params) => buildPolicyData({ ...params, addNotification, t })}
             savePolicy={async ({ editingPolicy, policyData, form }) => {
                 const dnsPolicy = editingPolicy as unknown as DnsPolicy | null;
                 let policyId: string;
@@ -151,34 +152,35 @@ export function DnsPolicyEditModalContainer({
                 const extraFields = dnsServers && dnsServers.length > 0 && (
                     <>
                         <div className="space-y-1.5">
-                            <label className="text-[12px] font-medium text-[var(--app-text-secondary)] pl-1">订阅DNS服务器</label>
+                            <label className="text-[12px] font-medium text-[var(--app-text-secondary)] pl-1">{t('policies.tableColPreferredDns')}</label>
                             <Select
                                 value={form.dnsServerId || ''}
                                 onChange={(e) => onFormChange({ dnsServerId: e.target.value || null })}
                                 className="w-full"
                             >
-                                <option value="">不指定</option>
+                                <option value="">{t('dnsPolicies.preferredDnsPlaceholder')}</option>
                                 {dnsServers.map((server) => (
                                     <option key={server.id} value={server.id}>
                                         {server.name || server.id} ({server.type})
                                     </option>
                                 ))}
                             </Select>
-                            <p className="text-[11px] text-[var(--app-text-quaternary)] pl-1">选择订阅的DNS服务器后，将覆盖上面的默认DNS服务器</p>
+                            <p className="text-[11px] text-[var(--app-text-quaternary)] pl-1">{t('dnsPolicies.preferredDnsHint')}</p>
                         </div>
                     </>
                 );
 
                 // 构建动态的fieldConfig
                 const dynamicFieldConfig: PolicyFieldConfig<DnsPolicyEditFormState> = {
-                    ...DNS_FIELD_CONFIG,
+                    ...DNS_FIELD_CONFIG_BASE,
+                    fieldLabel: t('policies.fieldDnsServer'),
                     options: dynamicDnsServerOptions,
                 };
 
                 return (
                     <PolicyEditModalBase
                         open={open}
-                        title="DNS策略"
+                        title={t('dnsPolicies.editModalTitle')}
                         editingPolicy={policy}
                         form={form}
                         ruleSetGroups={ruleSetGroups}
@@ -189,7 +191,7 @@ export function DnsPolicyEditModalContainer({
                         onSave={onSave}
                         addNotification={addNotification}
                         fieldConfig={dynamicFieldConfig}
-                        ruleFieldsEditorTitle="规则编辑器"
+                        ruleFieldsEditorTitle={t('common.ruleEditor')}
                         extraFields={extraFields}
                     />
                 );

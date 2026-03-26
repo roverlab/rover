@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import type { Policy } from '../../types/policy';
 import { getPolicyRuleSet } from '../../services/policy';
-import { OUTBOUND_OPTIONS } from '../../types/policy';
+import { OUTBOUND_OPTION_DEFS } from '../../types/policy';
+import { useTranslation } from 'react-i18next';
 import {
     PolicyEditModalBase,
     type PolicyEditFormStateBase,
@@ -37,13 +38,6 @@ const POLICY_FIELD_DATA_CONFIG: PolicyFieldDataConfig<PolicyEditFormState> = {
     validValues: ['direct_out', 'block_out', 'selector_out'],
 };
 
-// Policy字段UI配置（用于Modal渲染）
-const POLICY_FIELD_CONFIG: PolicyFieldConfig<PolicyEditFormState> = {
-    fieldName: 'outbound',
-    fieldLabel: '出站',
-    options: OUTBOUND_OPTIONS,
-};
-
 // 使用工厂函数创建 getInitialFormState，额外字段为 preferredOutbound
 const getInitialFormState = createGetInitialFormState(
     POLICY_FIELD_DATA_CONFIG,
@@ -64,6 +58,16 @@ export function PolicyEditModalContainer({
     onSaved,
     addNotification,
 }: PolicyEditModalContainerProps) {
+    const { t } = useTranslation();
+
+    const outboundFieldConfig: PolicyFieldConfig<PolicyEditFormState> = useMemo(
+        () => ({
+            fieldName: 'outbound',
+            fieldLabel: t('policies.fieldOutbound'),
+            options: OUTBOUND_OPTION_DEFS.map((o) => ({ value: o.value, label: t(o.labelKey) })),
+        }),
+        [t]
+    );
 
     return (
         <PolicyEditModalBaseContainer<PolicyEditFormState, BasePolicy>
@@ -75,7 +79,7 @@ export function PolicyEditModalContainer({
             addNotification={addNotification}
             getPolicyRuleSet={(policy) => getPolicyRuleSet(policy as unknown as Policy)}
             getInitialFormState={getInitialFormState}
-            buildPolicyData={(params) => buildPolicyData({ ...params, addNotification })}
+            buildPolicyData={(params) => buildPolicyData({ ...params, addNotification, t })}
             savePolicy={async ({ editingPolicy, policyData, form }) => {
                 const policy = editingPolicy as unknown as Policy | null;
                 let policyId: string;
@@ -114,7 +118,6 @@ export function PolicyEditModalContainer({
                 onSave,
                 addNotification,
             }) => {
-                // 额外处理 preferredOutbound
                 const policy = editingPolicy as unknown as Policy | null;
 
                 React.useEffect(() => {
@@ -133,14 +136,13 @@ export function PolicyEditModalContainer({
                     }
                 }, [open, policy?.id]);
 
-                // 订阅出站节点选择器（单选模式，不过滤 direct 和 block）
                 const extraFields = (
                     <OutboundSelector
                         value={form.preferredOutbound}
                         onChange={(tag) => onFormChange({ preferredOutbound: tag })}
-                        label="订阅出站节点"
-                        placeholder="请选择节点"
-                        hint="选择订阅的出站节点后，将覆盖上面的默认出站"
+                        label={t('policies.tableColPreferredOutbound')}
+                        placeholder={t('outboundSelector.placeholder')}
+                        hint={t('outboundSelector.hint')}
                         filterDirectBlock={false}
                     />
                 );
@@ -148,7 +150,7 @@ export function PolicyEditModalContainer({
                 return (
                     <PolicyEditModalBase
                         open={open}
-                        title="策略"
+                        title={t('policies.policyEntity')}
                         editingPolicy={policy}
                         form={form}
                         ruleSetGroups={ruleSetGroups}
@@ -158,7 +160,7 @@ export function PolicyEditModalContainer({
                         setShowRuleSetModal={setShowRuleSetModal}
                         onSave={onSave}
                         addNotification={addNotification}
-                        fieldConfig={POLICY_FIELD_CONFIG}
+                        fieldConfig={outboundFieldConfig}
                         extraFields={extraFields}
                     />
                 );

@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Field';
 import { X, Check, Search } from 'lucide-react';
@@ -32,6 +33,7 @@ export function PolicyAllRuleSetModal({
     onConfirm,
     onClose,
 }: PolicyAllRuleSetModalProps) {
+    const { t } = useTranslation();
     const [searchKeyword, setSearchKeyword] = useState('');
     const [activeTab, setActiveTab] = useState<string | null>(null);
     
@@ -127,7 +129,7 @@ export function PolicyAllRuleSetModal({
                 >
                     {/* Header - 固定 */}
                     <div className="flex shrink-0 items-center justify-between px-6 py-4 border-b border-[var(--app-divider)] bg-[var(--app-sidebar)]/50">
-                        <h2 className="text-[15px] font-semibold text-[var(--app-text)]">选择规则集</h2>
+                        <h2 className="text-[15px] font-semibold text-[var(--app-text)]">{t('policies.ruleSetPickerTitle')}</h2>
                         <button
                             type="button"
                             onClick={onClose}
@@ -144,7 +146,7 @@ export function PolicyAllRuleSetModal({
                             <Input
                                 value={searchKeyword}
                                 onChange={e => setSearchKeyword(e.target.value)}
-                                placeholder="搜索规则集名称或 ID..."
+                                placeholder={t('policies.ruleSetPickerSearch')}
                                 className="w-full pl-9 pr-3 py-2 text-[13px]"
                             />
                         </div>
@@ -180,7 +182,7 @@ export function PolicyAllRuleSetModal({
                             <div className="flex flex-col items-center justify-center py-12">
                                 <Search className="w-8 h-8 text-[var(--app-text-quaternary)] mb-2 opacity-20" />
                                 <p className="text-[13px] text-[var(--app-text-quaternary)]">
-                                    {searchKeyword.trim() ? '未找到匹配的规则集' : '暂无规则集'}
+                                    {searchKeyword.trim() ? t('policies.ruleSetPickerNoMatch') : t('policies.ruleSetPickerEmpty')}
                                 </p>
                             </div>
                         ) : (
@@ -208,7 +210,7 @@ export function PolicyAllRuleSetModal({
                                             </div>
                                             <span className="text-[13px] text-[var(--app-text)]">{item.name}</span>
                                             {!item.enabled && (
-                                                <span className="text-[10px] text-[var(--app-text-quaternary)]">(已禁用)</span>
+                                                <span className="text-[10px] text-[var(--app-text-quaternary)]">{t('policies.disabledBadge')}</span>
                                             )}
                                         </div>
                                     );
@@ -220,11 +222,11 @@ export function PolicyAllRuleSetModal({
                     {/* Footer - 固定 */}
                     <div className="flex shrink-0 items-center justify-between px-6 py-4 border-t border-[var(--app-divider)] bg-[var(--app-sidebar)]/30">
                         <span className="text-[12px] text-[var(--app-text-quaternary)] font-medium">
-                            已选择 {localSelectedIds.size} 个规则集
+                            {t('policies.ruleSetPickerSelected', { count: localSelectedIds.size })}
                         </span>
                         <div className="flex items-center gap-2">
-                            <Button variant="ghost" onClick={onClose}>取消</Button>
-                            <Button variant="primary" onClick={handleConfirm}>确定</Button>
+                            <Button variant="ghost" onClick={onClose}>{t('common.cancel')}</Button>
+                            <Button variant="primary" onClick={handleConfirm}>{t('common.confirm')}</Button>
                         </div>
                     </div>
                 </motion.div>

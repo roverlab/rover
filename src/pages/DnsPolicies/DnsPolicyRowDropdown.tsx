@@ -1,6 +1,7 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
 import { motion } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 import { Eye, Edit2, Trash2 } from 'lucide-react';
 import type { DnsPolicy } from '../../types/dns-policy';
 
@@ -19,6 +20,7 @@ export function DnsPolicyRowDropdown({
     onEdit,
     onDelete,
 }: DnsPolicyRowDropdownProps) {
+    const { t } = useTranslation();
     return createPortal(
         <motion.div
             initial={{ opacity: 0, scale: 0.95, y: -5 }}
@@ -33,20 +35,20 @@ export function DnsPolicyRowDropdown({
                 className="flex items-center px-3 py-1.5 text-[12px] text-[var(--app-text-secondary)] hover:bg-[var(--app-hover)] hover:text-[var(--app-text)] text-left"
                 onClick={() => onViewDetail(policy)}
             >
-                <Eye className="w-3.5 h-3.5 mr-2" />查看详情
+                <Eye className="w-3.5 h-3.5 mr-2" />{t('policies.rowViewDetail')}
             </button>
             <button
                 className="flex items-center px-3 py-1.5 text-[12px] text-[var(--app-text-secondary)] hover:bg-[var(--app-hover)] hover:text-[var(--app-text)] text-left"
                 onClick={() => onEdit(policy)}
             >
-                <Edit2 className="w-3.5 h-3.5 mr-2" />编辑
+                <Edit2 className="w-3.5 h-3.5 mr-2" />{t('policies.rowEdit')}
             </button>
             <div className="mx-2 my-1 border-t border-[rgba(39,44,54,0.06)]" />
             <button
                 className="flex items-center px-3 py-1.5 text-[12px] text-red-500 hover:bg-red-50 text-left"
                 onClick={() => onDelete(policy.id, policy.name)}
             >
-                <Trash2 className="w-3.5 h-3.5 mr-2" />删除
+                <Trash2 className="w-3.5 h-3.5 mr-2" />{t('policies.rowDelete')}
             </button>
         </motion.div>,
         document.body

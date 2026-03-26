@@ -18,6 +18,7 @@ import { validateProfileContent } from './validation';
 import { setCachedIsServiceInstalled, getCachedIsServiceInstalled } from './roverservice-cache';
 import { clearAllDns } from './dns-macos';
 import type { LogLevel, LogEntry } from './logger';
+import { t } from './i18n-main';
 
 const log = createLogger('AppUtils');
 
@@ -59,9 +60,9 @@ export async function exportConfig(event: any): Promise<{ ok: boolean; path: str
     const parentWindow = BrowserWindow.fromWebContents(event.sender) || undefined;
     const defaultName = `rover-config-${new Date().toISOString().slice(0, 10)}.zip`;
     const result = await dialog.showSaveDialog(parentWindow, {
-        title: '导出应用配置',
+        title: t('main.dialogs.exportTitle'),
         defaultPath: defaultName,
-        filters: [{ name: 'ZIP 备份', extensions: ['zip'] }, { name: 'All Files', extensions: ['*'] }],
+        filters: [{ name: t('main.dialogs.zipBackup'), extensions: ['zip'] }, { name: t('main.dialogs.allFiles'), extensions: ['*'] }],
     });
     if (result.canceled || !result.filePath) return { ok: false, path: null };
     try {
@@ -70,8 +71,8 @@ export async function exportConfig(event: any): Promise<{ ok: boolean; path: str
         log.info(`[Config] export success: ${result.filePath}`);
         await dialog.showMessageBox(parentWindow ?? undefined, {
             type: 'info',
-            title: '导出成功',
-            message: '配置已导出',
+            title: t('main.dialogs.exportSuccessTitle'),
+            message: t('main.dialogs.exportSuccessMessage'),
             detail: result.filePath,
         });
         return { ok: true, path: result.filePath };
@@ -90,8 +91,8 @@ export async function importConfig(
 ): Promise<{ ok: boolean }> {
     const parentWindow = BrowserWindow.fromWebContents(event.sender) || undefined;
     const result = await dialog.showOpenDialog(parentWindow, {
-        title: '导入应用配置',
-        filters: [{ name: 'ZIP 备份', extensions: ['zip'] }, { name: 'All Files', extensions: ['*'] }],
+        title: t('main.dialogs.importTitle'),
+        filters: [{ name: t('main.dialogs.zipBackup'), extensions: ['zip'] }, { name: t('main.dialogs.allFiles'), extensions: ['*'] }],
         properties: ['openFile'],
     });
     if (result.canceled || result.filePaths.length === 0) return { ok: false };
@@ -189,7 +190,7 @@ export async function importLocalProfile(event: any): Promise<string | null> {
         return profileId;
     } catch (err: any) {
         console.error('Failed to import local profile:', err);
-        throw new Error(`Failed to import local profile: ${err.message}`);
+        throw new Error(t('main.errors.appUtils.importLocalFailed', { message: err.message }));
     }
 }
 
@@ -198,28 +199,28 @@ export async function importLocalProfile(event: any): Promise<string | null> {
  */
 export async function restartSingbox(): Promise<boolean> {
     try {
-        log.info('IPC core:restart 开始重启内核');
-        log.info('[重启内核] 正在停止当前内核...');
+        log.info('IPC core:restart starting kernel restart');
+        log.info('[RestartKernel] Stopping current kernel...');
         await singbox.stopSingbox();
-        log.info('[重启内核] 内核已停止，等待 2000ms 后重新启动');
+        log.info('[RestartKernel] Kernel stopped, waiting 2000ms before restart');
         await new Promise((r) => setTimeout(r, 2000));
         const configPath = getConfigPath();
         if (!fs.existsSync(configPath)) {
-            log.error('[重启内核] config.json 不存在');
-            throw new Error('config.json not found. Please generate the config first.');
+            log.error('[RestartKernel] config.json not found');
+            throw new Error(t('main.errors.appUtils.configNotFound'));
         }
-        log.info(`[重启内核] 配置文件: ${configPath}`);
+            log.info(`[RestartKernel] Config file: ${configPath}`);
         const binaryPath = singbox.getSingboxBinaryPath();
         if (!fs.existsSync(binaryPath)) {
-            log.error(`[重启内核] Sing-box 二进制不存在: ${binaryPath}`);
-            throw new Error(`Sing-box binary not found at ${binaryPath}`);
+            log.error(`[RestartKernel] Sing-box binary not found: ${binaryPath}`);
+            throw new Error(t('main.errors.appUtils.binaryNotFound', { path: binaryPath }));
         }
-        log.info(`[重启内核] 二进制路径: ${binaryPath}`);
+            log.info(`[RestartKernel] Binary path: ${binaryPath}`);
         await singbox.startSingbox(configPath, binaryPath);
-        log.info('[重启内核] 内核已成功重启');
+            log.info('[RestartKernel] Kernel restarted successfully');
         return true;
     } catch (err: any) {
-        log.error(`[重启内核] 失败: ${err?.message || err}`);
+        log.error(`[RestartKernel] Failed: ${err?.message || err}`);
         throw err;
     }
 }
@@ -236,7 +237,7 @@ export async function startSingbox(): Promise<boolean> {
         const configPath = getConfigPath();
 
         if (!fs.existsSync(configPath)) {
-            throw new Error('config.json not found. Please generate the config first.');
+            throw new Error(t('main.errors.appUtils.configNotFound'));
         }
 
         // 迁移：修复旧版写入的根级 config.mode（sing-box 不支持，需在 experimental.clash_api.default_mode）
@@ -255,7 +256,7 @@ export async function startSingbox(): Promise<boolean> {
         console.log(`Starting sing-box using binary: ${binaryPath}`);
 
         if (!fs.existsSync(binaryPath)) {
-            throw new Error(`Sing-box binary not found at ${binaryPath}`);
+            throw new Error(t('main.errors.appUtils.binaryNotFound', { path: binaryPath }));
         }
 
         await singbox.startSingbox(configPath, binaryPath);
@@ -276,7 +277,7 @@ export async function generateConfig(
         const selectedProfile = dbUtils.getSelectedProfile();
         log.info(`IPC core:generateConfig profile=${selectedProfile?.id ?? 'none'}`);
         if (!selectedProfile) {
-            throw new Error('No profile selected');
+            throw new Error(t('main.errors.noProfileSelected'));
         }
         const result = await generateConfigFile(selectedProfile.id, sendToRendererFn);
         log.info(`Config generated successfully at ${result}`);

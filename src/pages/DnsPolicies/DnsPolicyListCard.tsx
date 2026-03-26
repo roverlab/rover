@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useState, useMemo, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useDropdownPosition } from '../../hooks/useDropdownPosition';
 import { Card, Badge } from '../../components/ui/Surface';
 import { Button } from '../../components/ui/Button';
@@ -40,6 +41,7 @@ export function DnsPolicyListCard({
     onBatchDisable,
     onBatchDelete,
 }: DnsPolicyListCardProps) {
+    const { t } = useTranslation();
     const [searchQuery, setSearchQuery] = useState('');
     const [statusFilter, setStatusFilter] = useState<'all' | 'enabled' | 'disabled' | 'selected'>('all');
     const [selectedPolicyIds, setSelectedPolicyIds] = useState<Set<string>>(new Set());
@@ -87,11 +89,12 @@ export function DnsPolicyListCard({
                 serverId,
                 dnsServer?.id,
                 dnsServer?.name,
+                getServerLabel(serverId, t),
                 getSubscriptionServer(policy),
             ];
             return searchFields.some((value) => value?.toLowerCase().includes(query));
         });
-    }, [policies, searchQuery, selectedPolicyIds, statusFilter, getSubscriptionServer, dnsServers]);
+    }, [policies, searchQuery, selectedPolicyIds, statusFilter, getSubscriptionServer, dnsServers, t]);
 
     const policyStats = useMemo(() => {
         const enabledCount = policies.filter((p) => p.enabled).length;
@@ -138,15 +141,15 @@ export function DnsPolicyListCard({
                         <input
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            placeholder="搜索策略、规则集、域名..."
+                            placeholder={t('policies.listSearchPlaceholder')}
                             className="input-field h-8 pl-8 pr-2.5 text-[12px]"
                         />
                     </div>
                     {[
-                        { key: 'all', label: '全部' },
-                        { key: 'enabled', label: '启用' },
-                        { key: 'disabled', label: '停用' },
-                        { key: 'selected', label: '已选' }
+                        { key: 'all' as const, label: t('common.all') },
+                        { key: 'enabled' as const, label: t('common.enabled') },
+                        { key: 'disabled' as const, label: t('common.disabled') },
+                        { key: 'selected' as const, label: t('ruleProviders.filterSelected') },
                     ].map((option) => (
                         <button
                             key={option.key}
@@ -163,19 +166,19 @@ export function DnsPolicyListCard({
                         </button>
                     ))}
                     <span className="text-[11px] text-[var(--app-text-quaternary)]">
-                        {policyStats.total} 条 · 展示 {filteredPolicies.length}
+                        {t('policies.statsLine', { total: policyStats.total, filtered: filteredPolicies.length })}
                     </span>
                 </div>
                 <div className="flex flex-wrap items-center gap-1.5">
-                    <Button variant="ghost" size="sm" className="h-7 px-2 text-[11px]" onClick={() => onReorder('top', selectedPolicyIds)} disabled={selectedPolicyIds.size === 0}>置顶</Button>
+                    <Button variant="ghost" size="sm" className="h-7 px-2 text-[11px]" onClick={() => onReorder('top', selectedPolicyIds)} disabled={selectedPolicyIds.size === 0}>{t('policies.moveTop')}</Button>
                     <Button variant="ghost" size="sm" className="h-7 px-2 text-[11px]" onClick={() => onReorder('up', selectedPolicyIds)} disabled={selectedPolicyIds.size === 0}>↑</Button>
                     <Button variant="ghost" size="sm" className="h-7 px-2 text-[11px]" onClick={() => onReorder('down', selectedPolicyIds)} disabled={selectedPolicyIds.size === 0}>↓</Button>
-                    <Button variant="ghost" size="sm" className="h-7 px-2 text-[11px]" onClick={() => onReorder('bottom', selectedPolicyIds)} disabled={selectedPolicyIds.size === 0}>置底</Button>
-                    <Button variant="ghost" size="sm" className="h-7 px-2 text-[11px] text-emerald-600 hover:text-emerald-700" onClick={() => onBatchEnable(selectedPolicyIds)} disabled={selectedPolicyIds.size === 0}>启用</Button>
-                    <Button variant="ghost" size="sm" className="h-7 px-2 text-[11px] text-amber-600 hover:text-amber-700" onClick={() => onBatchDisable(selectedPolicyIds)} disabled={selectedPolicyIds.size === 0}>禁用</Button>
-                    <Button variant="ghost" size="sm" className="h-7 px-2 text-[11px] text-red-500 hover:text-red-600" onClick={() => onBatchDelete(selectedPolicyIds)} disabled={selectedPolicyIds.size === 0}>删除</Button>
+                    <Button variant="ghost" size="sm" className="h-7 px-2 text-[11px]" onClick={() => onReorder('bottom', selectedPolicyIds)} disabled={selectedPolicyIds.size === 0}>{t('policies.moveBottom')}</Button>
+                    <Button variant="ghost" size="sm" className="h-7 px-2 text-[11px] text-emerald-600 hover:text-emerald-700" onClick={() => onBatchEnable(selectedPolicyIds)} disabled={selectedPolicyIds.size === 0}>{t('common.enable')}</Button>
+                    <Button variant="ghost" size="sm" className="h-7 px-2 text-[11px] text-amber-600 hover:text-amber-700" onClick={() => onBatchDisable(selectedPolicyIds)} disabled={selectedPolicyIds.size === 0}>{t('common.disable')}</Button>
+                    <Button variant="ghost" size="sm" className="h-7 px-2 text-[11px] text-red-500 hover:text-red-600" onClick={() => onBatchDelete(selectedPolicyIds)} disabled={selectedPolicyIds.size === 0}>{t('common.delete')}</Button>
                     <div className="mx-1 w-px h-5 bg-[var(--app-divider)]" />
-                    <Button variant="primary" size="sm" className="h-7 px-2.5 text-[11px]" onClick={onAdd}><Plus className="w-3 h-3 mr-1" />添加</Button>
+                    <Button variant="primary" size="sm" className="h-7 px-2.5 text-[11px]" onClick={onAdd}><Plus className="w-3 h-3 mr-1" />{t('common.add')}</Button>
                 </div>
             </div>
 
@@ -183,7 +186,7 @@ export function DnsPolicyListCard({
                 {filteredPolicies.length === 0 ? (
                     <div className="flex min-h-[180px] flex-col items-center justify-center py-8 text-center">
                         <Search className="h-6 w-6 text-[var(--app-text-quaternary)]" />
-                        <p className="mt-3 text-[13px] text-[var(--app-text-tertiary)]">没有匹配的策略</p>
+                        <p className="mt-3 text-[13px] text-[var(--app-text-tertiary)]">{t('policies.noMatchingPolicies')}</p>
                     </div>
                 ) : (
                     <table className="data-table w-full">
@@ -212,17 +215,17 @@ export function DnsPolicyListCard({
                                                 }
                                             }}
                                             className="h-3.5 w-3.5 rounded border-[rgba(39,44,54,0.2)] text-[var(--app-accent)] focus:ring-[var(--app-accent)]"
-                                            aria-label="全选"
+                                            aria-label={t('actions.selectAll')}
                                         />
                                     )}
                                 </th>
-                                <th className="w-8 shrink-0 px-3 py-1.5 text-center text-[11px] font-medium text-[var(--app-text-quaternary)]">#</th>
-                                <th className="w-[52px] px-3 py-1.5 text-center text-[11px] font-medium text-[var(--app-text-quaternary)]">启用</th>
-                                <th className="min-w-[140px] px-3 py-1.5 text-left text-[11px] font-medium text-[var(--app-text-quaternary)]">策略名称</th>
-                                <th className="w-[60px] min-w-[60px] px-3 py-1.5 text-center text-[11px] font-medium text-[var(--app-text-quaternary)]">类型</th>
-                                <th className="w-[100px] min-w-[100px] px-3 py-1.5 text-center text-[11px] font-medium text-[var(--app-text-quaternary)] whitespace-nowrap">DNS服务器</th>
-                                <th className="min-w-[120px] px-3 py-1.5 text-left text-[11px] font-medium text-[var(--app-text-quaternary)] whitespace-nowrap">订阅DNS服务器</th>
-                                <th className="w-[80px] pl-3 pr-4 py-1.5 text-right text-[11px] font-medium text-[var(--app-text-quaternary)]">操作</th>
+                                <th className="w-8 shrink-0 px-3 py-1.5 text-center text-[11px] font-medium text-[var(--app-text-quaternary)]">{t('policies.tableColIndex')}</th>
+                                <th className="w-[52px] px-3 py-1.5 text-center text-[11px] font-medium text-[var(--app-text-quaternary)]">{t('policies.tableColEnabled')}</th>
+                                <th className="min-w-[140px] px-3 py-1.5 text-left text-[11px] font-medium text-[var(--app-text-quaternary)]">{t('policies.tableColName')}</th>
+                                <th className="w-[60px] min-w-[60px] px-3 py-1.5 text-center text-[11px] font-medium text-[var(--app-text-quaternary)]">{t('policies.tableColType')}</th>
+                                <th className="w-[100px] min-w-[100px] px-3 py-1.5 text-center text-[11px] font-medium text-[var(--app-text-quaternary)] whitespace-nowrap">{t('policies.tableColDnsServer')}</th>
+                                <th className="min-w-[120px] px-3 py-1.5 text-left text-[11px] font-medium text-[var(--app-text-quaternary)] whitespace-nowrap">{t('policies.tableColPreferredDns')}</th>
+                                <th className="w-[80px] pl-3 pr-4 py-1.5 text-right text-[11px] font-medium text-[var(--app-text-quaternary)]">{t('policies.tableColActions')}</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -245,7 +248,7 @@ export function DnsPolicyListCard({
                                             checked={selectedPolicyIds.has(policy.id)}
                                             onChange={() => togglePolicySelection(policy.id)}
                                             className="h-3.5 w-3.5 rounded border-[rgba(39,44,54,0.2)] text-[var(--app-accent)] focus:ring-[var(--app-accent)]"
-                                            aria-label={`选择 ${policy.name}`}
+                                            aria-label={t('policies.selectRowAria', { name: policy.name })}
                                         />
                                     </td>
                                     <td className="w-8 shrink-0 px-3 py-1.5 text-center text-[11px] text-[var(--app-text-quaternary)] align-middle">
@@ -263,7 +266,7 @@ export function DnsPolicyListCard({
                                     <td className={cn("w-[60px] min-w-[60px] shrink-0 px-3 py-1.5 text-center align-middle", !policy.enabled && "opacity-60")}>
                                         <div className="flex items-center justify-center h-full">
                                             <Badge tone={policy.type === 'raw' ? 'warning' : 'accent'} className="text-[10px] px-1.5 py-0.5 whitespace-nowrap inline-block truncate max-w-[56px]">
-                                                {policy.type === 'raw' ? '原始' : '标准'}
+                                                {policy.type === 'raw' ? t('policies.typeRaw') : t('policies.typeStandard')}
                                             </Badge>
                                         </div>
                                     </td>
@@ -308,7 +311,7 @@ export function DnsPolicyListCard({
                                                 ref={(el) => { dropdownButtonRefs.current[policy.id] = el; }}
                                                 onClick={(e) => { e.stopPropagation(); handleOpenDropdown(e, policy.id); }}
                                                 className="rounded p-1 text-[var(--app-text-quaternary)] hover:bg-[var(--app-hover)] hover:text-[var(--app-text)]"
-                                                title="更多"
+                                                title={t('logs.more')}
                                             >
                                                 <MoreVertical className="h-3.5 w-3.5" />
                                             </button>

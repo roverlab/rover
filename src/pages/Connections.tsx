@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { X, Search, Activity } from 'lucide-react';
 import { cn } from '../components/Sidebar';
 import { Button } from '../components/ui/Button';
@@ -44,6 +45,7 @@ interface ConnectionsProps {
 }
 
 export function Connections({ isActive = true }: ConnectionsProps) {
+  const { t } = useTranslation();
   const { apiUrl, apiSecret } = useApi();
   const [connections, setConnections] = useState<Connection[]>([]);
   const [search, setSearch] = useState('');
@@ -177,9 +179,9 @@ export function Connections({ isActive = true }: ConnectionsProps) {
     <div className="page-shell min-w-0">
       <div className="page-header flex-wrap gap-3" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
         <div className="min-w-0 shrink-0" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-          <h1 className="page-title">连接</h1>
+          <h1 className="page-title">{t('connections.title')}</h1>
           <div className="flex items-center gap-2 mt-2">
-            <Badge tone="accent">{connections.length} 活跃</Badge>
+            <Badge tone="accent">{connections.length} {t('connections.active')}</Badge>
           </div>
         </div>
 
@@ -188,7 +190,7 @@ export function Connections({ isActive = true }: ConnectionsProps) {
             <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--app-text-quaternary)] shrink-0" />
             <Input
               type="text"
-              placeholder="搜索..."
+              placeholder={t('connections.searchPlaceholder')}
               className="pl-9 text-[12px] w-full min-w-0 pr-8"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -208,30 +210,30 @@ export function Connections({ isActive = true }: ConnectionsProps) {
       <div className="page-content min-w-0 px-4 sm:px-6 flex flex-col min-h-0 overflow-hidden">
       <Card className="flex-1 overflow-hidden min-w-0 flex flex-col min-h-0">
         <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--app-divider)] shrink-0">
-          <div className="text-[13px] font-medium text-[var(--app-text-secondary)]">实时连接列表</div>
+          <div className="text-[13px] font-medium text-[var(--app-text-secondary)]">{t('connections.realtimeConnectionList')}</div>
           <Button
             onClick={handleCloseAll}
             variant="secondary"
             size="sm"
-            title="关闭全部连接"
+            title={t('connections.closeAllTitle')}
             className="h-7 px-2.5 text-[11px] gap-1"
           >
             <X className="w-3 h-3" />
-            全部关闭
+            {t('connections.closeAll')}
           </Button>
         </div>
         <div className="table-scroll-x flex-1 min-w-0 min-h-0">
           <table className="data-table text-[12px] min-w-[700px]">
           <thead className="sticky top-0 z-10 text-[12px] font-semibold text-[var(--app-text-secondary)] !bg-[rgba(255,255,255,0.9)]">
             <tr>
-              <th className="px-5 py-2.5">进程</th>
-              <th className="px-5 py-2.5">地址</th>
-              <th className="px-5 py-2.5">网络</th>
-              <th className="px-5 py-2.5">链路</th>
-              <th className="px-5 py-2.5">规则</th>
-              <th className="px-5 py-2.5 text-right min-w-[140px]">流量</th>
-              <th className="px-5 py-2.5 text-right">时间</th>
-              <th className="px-5 py-2.5 text-center">操作</th>
+              <th className="px-5 py-2.5">{t('connections.process')}</th>
+              <th className="px-5 py-2.5">{t('connections.address')}</th>
+              <th className="px-5 py-2.5">{t('connections.network')}</th>
+              <th className="px-5 py-2.5">{t('connections.chain')}</th>
+              <th className="px-5 py-2.5">{t('connections.rule')}</th>
+              <th className="px-5 py-2.5 text-right min-w-[140px]">{t('connections.traffic')}</th>
+              <th className="px-5 py-2.5 text-right">{t('connections.time')}</th>
+              <th className="px-5 py-2.5 text-center">{t('connections.action')}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--app-divider)]">
@@ -297,7 +299,7 @@ export function Connections({ isActive = true }: ConnectionsProps) {
               <tr>
                 <td colSpan={8} className="px-5 py-10 text-center text-[var(--app-text-quaternary)]">
                   <Activity className="w-6 h-6 mx-auto mb-2 text-[var(--app-text-quaternary)]" />
-                  <p className="text-[13px]">无活跃连接</p>
+                  <p className="text-[13px]">{t('connections.noActiveConnections')}</p>
                 </td>
               </tr>
             )}

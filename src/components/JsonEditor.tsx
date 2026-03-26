@@ -3,6 +3,7 @@
  * 支持 JSON 格式化、校验功能
  */
 import React, { useMemo, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Button } from './ui/Button';
 import { AlignLeft } from 'lucide-react';
 
@@ -44,22 +45,23 @@ export interface JsonEditorProps {
  * @param requireObject 是否要求必须是对象
  * @returns 格式化结果：成功返回格式化后的文本，失败返回错误信息
  */
+/** Error values are i18n keys under jsonEditor.* */
 export function formatJsonText(text: string, requireObject: boolean = true): { success: true; data: string } | { success: false; error: string } {
     const content = text.trim();
     if (!content) {
-        return { success: false, error: '请输入 JSON 内容' };
+        return { success: false, error: 'jsonEditor.formatEmpty' };
     }
-    
+
     try {
         const parsed = JSON.parse(content);
-        
+
         if (requireObject && (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed))) {
-            return { success: false, error: 'JSON 内容必须是有效的对象格式' };
+            return { success: false, error: 'jsonEditor.formatNotObject' };
         }
-        
+
         return { success: true, data: JSON.stringify(parsed, null, 2) };
     } catch {
-        return { success: false, error: 'JSON 格式错误，请检查输入' };
+        return { success: false, error: 'jsonEditor.formatInvalid' };
     }
 }
 
@@ -99,25 +101,26 @@ export function JsonEditor({
     textareaClassName = '',
     requireObject = true,
 }: JsonEditorProps) {
+    const { t } = useTranslation();
     const handleFormat = useCallback(() => {
         const result = formatJsonText(value, requireObject);
-        
+
         if (result.success) {
             onChange(result.data);
             onFormatSuccess?.();
         } else {
-            onFormatError?.(result.error);
+            onFormatError?.(t((result as { success: false; error: string }).error));
         }
-    }, [value, requireObject, onChange, onFormatSuccess, onFormatError]);
+    }, [value, requireObject, onChange, onFormatSuccess, onFormatError, t]);
 
-    const defaultPlaceholder = useMemo(() => `{\n  "key": "value"\n}`, []);
+    const defaultPlaceholder = useMemo(() => t('jsonEditor.defaultPlaceholder'), [t]);
 
     return (
         <div className={`space-y-1.5 ${className}`}>
             {showFormatButton && (
                 <div className="flex items-center justify-between gap-2 pl-1">
                     <label className="text-[12px] font-medium text-[var(--app-text-secondary)]">
-                        JSON 配置
+                        {t('jsonEditor.configLabel')}
                     </label>
                     <Button
                         variant="ghost"
@@ -126,7 +129,7 @@ export function JsonEditor({
                         disabled={disabled}
                     >
                         <AlignLeft className="w-3.5 h-3.5 mr-1" />
-                        格式化
+                        {t('jsonEditor.format')}
                     </Button>
                 </div>
             )}
@@ -144,7 +147,7 @@ export function JsonEditor({
                     {hint}
                     {docLink && (
                         <>
-                            {'，参考 '}
+                            {t('jsonEditor.docRefPrefix')}
                             <a
                                 href={docLink.url}
                                 target="_blank"

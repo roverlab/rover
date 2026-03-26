@@ -7,12 +7,11 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import axios from 'axios';
-import * as iconv from 'iconv-lite';
-import * as jschardet from 'jschardet';
 import * as singbox from './core-controller';
 import {  clashRuleSetToSingbox } from './clash-rule-set';
 import { getRulesetsDir } from './paths';
 import type { RouteLogicRule } from '../src/types/singbox';
+import { t } from './i18n-main';
 
 /**
  * 本地规则集数据结构
@@ -114,7 +113,7 @@ export async function downloadAndConvertRuleSet(
                 });
                 if (result.status !== 0) {
                     try { fs.unlinkSync(srsPath);  } catch { }
-                    return { srsPath: null, error: '文件类型错误：非有效的 sing-box .srs 规则集格式' };
+                    return { srsPath: null, error: t('main.errors.ruleset.invalidSrs') };
                 }
 
                 try {fs.unlinkSync(jsonPath); } catch { }
@@ -122,16 +121,8 @@ export async function downloadAndConvertRuleSet(
             return { srsPath, error: null };
         }
 
-        // Clash 规则集处理
-        // 检测编码并转换
-        const detected = jschardet.detect(buffer);
-        let content: string;
-        if (detected.encoding && detected.encoding.toLowerCase() !== 'utf-8' && detected.encoding.toLowerCase() !== 'ascii') {
-            console.log(`Rule provider encoding detected: ${detected.encoding}, converting to UTF-8`);
-            content = iconv.decode(buffer, detected.encoding);
-        } else {
-            content = buffer.toString('utf-8');
-        }
+        // Clash 规则集处理 - 默认 UTF-8
+        let content = buffer.toString('utf-8');
         // 移除 BOM
         if (content.charCodeAt(0) === 0xfeff) content = content.slice(1);
 
@@ -139,7 +130,7 @@ export async function downloadAndConvertRuleSet(
         const singboxRuleSet = clashRuleSetToSingbox(content);
         const rules = singboxRuleSet.rules;
         if (!rules || rules.length === 0) {
-            return { srsPath: null, error: '文件类型错误：非有效的 Clash 规则集格式（未找到有效规则）' };
+            return { srsPath: null, error: t('main.errors.ruleset.invalidClashRuleset') };
         }
 
         // 保存 JSON 文件（用于编译）
@@ -150,8 +141,8 @@ export async function downloadAndConvertRuleSet(
             // 使用 sing-box 编译为 .srs
             const singboxPath = singbox.getSingboxBinaryPath();
             if (!fs.existsSync(singboxPath)) {
-                console.error('sing-box 可执行文件不存在，无法转换为 SRS 格式');
-                return { srsPath: null, error: 'sing-box 可执行文件不存在，无法转换' };
+                console.error('sing-box executable not found, cannot convert to SRS format');
+                return { srsPath: null, error: 'sing-box executable not found, cannot convert' };
             }
 
             const result = spawnSync(singboxPath, ['rule-set', 'compile', '--output', srsPath, jsonPath], {
@@ -160,12 +151,12 @@ export async function downloadAndConvertRuleSet(
             });
 
             if (result.status !== 0) {
-                const errMsg = (result.stderr || result.stdout || result.error?.message || `退出码 ${result.status}`).trim();
-                console.error(`SRS编译失败: ${errMsg}`);
-                return { srsPath: null, error: `SRS编译失败: ${errMsg}` };
+                const errMsg = (result.stderr || result.stdout || result.error?.message || `exit code ${result.status}`).trim();
+                console.error(`SRS compilation failed: ${errMsg}`);
+                return { srsPath: null, error: `SRS compilation failed: ${errMsg}` };
             }
 
-            console.log(`规则集已编译为 .srs: ${srsPath}`);
+            console.log(`Ruleset compiled to .srs: ${srsPath}`);
             return { srsPath, error: null };
         } finally {
             // 清理所有临时文件和 JSON 文件
@@ -174,12 +165,12 @@ export async function downloadAndConvertRuleSet(
                     fs.unlinkSync(jsonPath);
                 }
             } catch (cleanupError: any) {
-                console.error(`清理临时文件失败: ${cleanupError.message}`);
+                console.error(`Failed to cleanup temp file: ${cleanupError.message}`);
             }
         }
     } catch (dlErr: any) {
         console.error('Failed to download rule set:', dlErr.message);
-        return { srsPath: null, error: `下载失败: ${dlErr.message}` };
+        return { srsPath: null, error: `Download failed: ${dlErr.message}` };
     }
 }
 
@@ -200,7 +191,7 @@ export function compileLocalRuleSet(
 
     // 验证规则数据
     if (!rawData.rules || rawData.rules.length === 0) {
-        return { srsPath: null, error: '规则数据为空' };
+        return { srsPath: null, error: 'Rules data is empty' };
     }
 
     try {
@@ -217,8 +208,8 @@ export function compileLocalRuleSet(
             // 使用 sing-box 编译为 .srs
             const singboxPath = singbox.getSingboxBinaryPath();
             if (!singboxPath || !fs.existsSync(singboxPath)) {
-                console.error('sing-box 可执行文件不存在，无法转换为 SRS 格式');
-                return { srsPath: null, error: 'sing-box 可执行文件不存在，无法转换' };
+                console.error('sing-box executable not found, cannot convert to SRS format');
+                return { srsPath: null, error: 'sing-box executable not found, cannot convert' };
             }
 
             const result = spawnSync(singboxPath, ['rule-set', 'compile', '--output', srsPath, jsonPath], {
@@ -227,12 +218,12 @@ export function compileLocalRuleSet(
             });
 
             if (result.status !== 0) {
-                const errMsg = (result.stderr || result.stdout || result.error?.message || `退出码 ${result.status}`).trim();
-                console.error(`SRS编译失败: ${errMsg}`);
-                return { srsPath: null, error: `SRS编译失败: ${errMsg}` };
+                const errMsg = (result.stderr || result.stdout || result.error?.message || `exit code ${result.status}`).trim();
+                console.error(`SRS compilation failed: ${errMsg}`);
+                return { srsPath: null, error: `SRS compilation failed: ${errMsg}` };
             }
 
-            console.log(`本地规则集已编译为 .srs: ${srsPath}`);
+            console.log(`Local ruleset compiled to .srs: ${srsPath}`);
             return { srsPath, error: null };
         } finally {
             // 清理临时 JSON 文件
@@ -241,7 +232,7 @@ export function compileLocalRuleSet(
                     fs.unlinkSync(jsonPath);
                 }
             } catch (cleanupError: any) {
-                console.error(`清理临时文件失败: ${cleanupError.message}`);
+                console.error(`Failed to cleanup temp file: ${cleanupError.message}`);
             }
         }
     } catch (err: any) {

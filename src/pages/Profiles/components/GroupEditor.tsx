@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 import { X, Plus, Trash2, ChevronDown, ChevronUp, Edit2 } from 'lucide-react';
 import { Button } from '../../../components/ui/Button';
 import type { CustomProxyGroup, ProxyNode } from '../../../electron';
@@ -92,7 +93,7 @@ export function GroupEditor({ profileId, profileName, onClose, onSave }: GroupEd
 
     // 删除分组
     const deleteGroup = (groupName: string) => {
-        if (!confirm(`确定删除分组 "${groupName}" 吗？`)) return;
+        if (!confirm(t('profiles.groupEditor.deleteConfirm', { name: groupName }))) return;
         setGroups(prev => prev.filter(g => g.name !== groupName));
     };
 
@@ -135,7 +136,7 @@ export function GroupEditor({ profileId, profileName, onClose, onSave }: GroupEd
             onClose();
         } catch (err: any) {
             console.error('Failed to save groups:', err);
-            alert('保存失败: ' + err.message);
+            alert(t('profiles.groupEditor.saveFailed', { error: err.message }));
         } finally {
             setSaving(false);
         }
@@ -165,14 +166,14 @@ export function GroupEditor({ profileId, profileName, onClose, onSave }: GroupEd
                     {/* Header */}
                     <div className="flex shrink-0 items-center justify-between px-6 py-4 border-b border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/50">
                         <div>
-                            <h2 className="text-[15px] font-semibold text-[var(--app-text)]">分组编辑</h2>
+                            <h2 className="text-[15px] font-semibold text-[var(--app-text)]">{t('profiles.groupEditor.title')}</h2>
                             <p className="text-[12px] text-[var(--app-text-tertiary)]">{profileName}</p>
                         </div>
                         <button
                             type="button"
                             onClick={onClose}
                             className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[var(--app-text-tertiary)] hover:bg-[var(--app-hover)] hover:text-[var(--app-text)] transition-colors"
-                            aria-label="关闭"
+                            aria-label={t('common.close')}
                         >
                             <X className="w-4 h-4" />
                         </button>
@@ -182,13 +183,13 @@ export function GroupEditor({ profileId, profileName, onClose, onSave }: GroupEd
                     <div className="flex-1 overflow-y-auto p-6">
                         {loading ? (
                             <div className="flex items-center justify-center py-12 text-[var(--app-text-tertiary)]">
-                                加载中...
+                                {t('profiles.groupEditor.loading')}
                             </div>
                         ) : (
                             <div className="space-y-4">
                                 {/* 说明 */}
                                 <div className="text-[12px] text-[var(--app-text-tertiary)] bg-[var(--app-bg-secondary)] rounded-[10px] p-3">
-                                    自定义分组会替换订阅中原有的代理组。Selector 类型需要手动选择节点，Urltest 类型会自动选择延迟最低的节点。
+                                    {t('profiles.groupEditor.intro')}
                                 </div>
 
                                 {/* 分组列表 */}
@@ -222,11 +223,14 @@ export function GroupEditor({ profileId, profileName, onClose, onSave }: GroupEd
                                                     <div className="flex items-center gap-2">
                                                         <span className="font-medium text-[13px] text-[var(--app-text)] truncate">{group.name}</span>
                                                         <span className="text-[10px] px-1.5 py-0.5 rounded-[4px] bg-[var(--app-accent-soft)] text-[var(--app-accent-strong)]">
-                                                            {group.type === 'selector' ? '选择' : '测速'}
+                                                            {group.type === 'selector' ? t('profiles.groupEditor.badgeSelector') : t('profiles.groupEditor.badgeUrltest')}
                                                         </span>
                                                     </div>
                                                     <div className="text-[11px] text-[var(--app-text-quaternary)] truncate mt-0.5">
-                                                        {group.outbounds.length} 个节点: {group.outbounds.slice(0, 3).join(', ')}{group.outbounds.length > 3 ? '...' : ''}
+                                                        {t('profiles.groupEditor.nodesLine', {
+                                                            count: group.outbounds.length,
+                                                            preview: group.outbounds.slice(0, 3).join(', ') + (group.outbounds.length > 3 ? '...' : ''),
+                                                        })}
                                                     </div>
                                                 </div>
 
@@ -254,13 +258,13 @@ export function GroupEditor({ profileId, profileName, onClose, onSave }: GroupEd
                                     className="w-full flex items-center justify-center gap-2 p-3 text-[13px] text-[var(--app-text-secondary)] bg-[var(--app-panel-soft)] rounded-[10px] border border-dashed border-[var(--app-stroke)] hover:border-[var(--app-accent)] hover:text-[var(--app-accent-strong)] transition-colors"
                                 >
                                     <Plus className="w-4 h-4" />
-                                    添加分组
+                                    {t('profiles.groupEditor.addGroup')}
                                 </button>
 
                                 {/* 无节点提示 */}
                                 {availableNodes.length === 0 && !loading && (
                                     <div className="text-center py-6 text-[var(--app-text-tertiary)] text-[13px]">
-                                        当前订阅没有可用节点，请先更新订阅或检查配置
+                                        {t('profiles.groupEditor.noNodesHint')}
                                     </div>
                                 )}
                             </div>
@@ -270,14 +274,14 @@ export function GroupEditor({ profileId, profileName, onClose, onSave }: GroupEd
                     {/* Footer */}
                     <div className="flex items-center justify-between gap-2 px-6 py-4 border-t border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/30">
                         <div className="text-[12px] text-[var(--app-text-tertiary)]">
-                            {groups.length > 0 ? `已定义 ${groups.length} 个自定义分组` : '未定义自定义分组'}
+                            {groups.length > 0 ? t('profiles.groupEditor.footerDefined', { count: groups.length }) : t('profiles.groupEditor.footerNone')}
                         </div>
                         <div className="flex gap-2">
                             <Button variant="ghost" onClick={onClose}>
-                                取消
+                                {t('common.cancel')}
                             </Button>
                             <Button variant="primary" onClick={saveAll} disabled={saving || loading}>
-                                {saving ? '保存中...' : '保存更改'}
+                                {saving ? t('profiles.groupEditor.saving') : t('profiles.groupEditor.saveChanges')}
                             </Button>
                         </div>
                     </div>

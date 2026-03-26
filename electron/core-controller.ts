@@ -9,6 +9,7 @@
 import { ChildProcess } from 'node:child_process';
 import * as net from 'node:net';
 import { getSingboxBinaryPath as getSingboxBinaryPathFromPaths } from './paths';
+import { t } from './i18n-main';
 
 /**
  * 检查端口是否可绑定（通过实际 bind 检测，避免 TIME_WAIT 误判）
@@ -41,7 +42,7 @@ async function waitForPortBindable(host: string, port: number, timeoutMs: number
         if (bindable) return;
         await new Promise((r) => setTimeout(r, pollInterval));
     }
-    throw new Error(`端口 ${host}:${port} 在 ${timeoutMs}ms 内未能释放，请稍后重试`);
+    throw new Error(t('main.errors.core.portNotReleased', { host, port, timeoutMs }));
 }
 
 /**
@@ -219,18 +220,18 @@ async function killByPid(pid: number): Promise<boolean> {
     }
 
     // Local termination failed, try RoverService if available
-    log.info(`本地终止进程 ${pid} 失败，尝试通过 RoverService 终止`);
+    log.info(`Failed to kill process ${pid} locally, trying via RoverService`);
     try {
         if (await isRoverServiceAvailable()) {
             const response = await roverservice.killProcess(pid, true);
             if (response.success) {
-                log.info(`通过 RoverService 成功终止进程 ${pid}`);
+                log.info(`Successfully killed process ${pid} via RoverService`);
                 return true;
             }
-            log.warn(`RoverService 终止进程 ${pid} 失败: ${response.error}`);
+            log.warn(`RoverService failed to kill process ${pid}: ${response.error}`);
         }
     } catch (err: any) {
-        log.warn(`调用 RoverService 失败: ${err.message}`);
+        log.warn(`RoverService call failed: ${err.message}`);
     }
 
     return false;
@@ -242,14 +243,14 @@ async function killByPid(pid: number): Promise<boolean> {
 function killByPidLocal(pid: number): Promise<boolean> {
     return new Promise((resolve) => {
         if (process.platform === 'win32') {
-            log.info(`使用 taskkill 终止进程树，PID: ${pid}`);
+            log.info(`Using taskkill to terminate process tree, PID: ${pid}`);
             const killer = spawn('taskkill', ['/pid', String(pid), '/f', '/t'], { stdio: 'ignore' });
             killer.once('error', (err) => {
-                log.error(`taskkill 执行失败: ${err.message}`);
+                log.error(`taskkill execution failed: ${err.message}`);
                 resolve(false);
             });
             killer.once('exit', (code) => {
-                log.info(`taskkill 执行完成，退出码: ${code}`);
+                log.info(`taskkill completed, exit code: ${code}`);
                 resolve(code === 0);
             });
             return;
@@ -258,14 +259,14 @@ function killByPidLocal(pid: number): Promise<boolean> {
         try {
             process.kill(pid, 'SIGTERM');
         } catch (err: any) {
-            log.warn(`发送 SIGTERM 失败: ${err?.message || err}`);
+            log.warn(`Failed to send SIGTERM: ${err?.message || err}`);
         }
         setTimeout(() => {
             if (isProcessAlive(pid)) {
                 try {
                     process.kill(pid, 'SIGKILL');
                 } catch (err: any) {
-                    log.warn(`发送 SIGKILL 失败: ${err?.message || err}`);
+                    log.warn(`Failed to send SIGKILL: ${err?.message || err}`);
                 }
             }
             resolve(!isProcessAlive(pid));
@@ -302,31 +303,31 @@ export class LocalSingboxController implements CoreController {
         const hasRunning = ourProcessAlive || systemPids.length > 0;
 
         if (hasRunning) {
-            log.warn('检测到已有 sing-box 进程，先停止');
-            // 如果是TUN模式且是macOS平台，使用完整的停止流程来确保DNS恢复
+            log.warn('Detected existing sing-box process, stopping first');
+            // TUN mode on macOS: use full stop flow to restore DNS
             if (process.platform === 'darwin' && isTunModeEnabled()) {
-                log.info('macOS TUN模式，使用完整停止流程恢复DNS');
+                log.info('macOS TUN mode, using full stop flow to restore DNS');
                 await stopSingbox();
             } else {
                 await this.stop();
             }
-            log.info(`等待 ${this.options.portReleaseDelayMs}ms 以便端口释放`);
+            log.info(`Waiting ${this.options.portReleaseDelayMs}ms for port release`);
             await new Promise((r) => setTimeout(r, this.options.portReleaseDelayMs));
         } else if (this.process || this.pid) {
-            log.info('进程已退出，清理残留状态');
+            log.info('Process exited, cleaning residual state');
             this.clearState();
         }
 
-        // 启动前确保 clash API 端口 9090 已释放（SIGTERM 优雅退出可缩短等待）
-        // log.info('[Local] 等待 clash API 端口 127.0.0.1:9090 可绑定...');
+        // Ensure clash API port 9090 is released before starting (SIGTERM graceful exit reduces wait)
+        // log.info('[Local] Waiting for clash API port 127.0.0.1:9090 to be bindable...');
         // await waitForPortBindable('127.0.0.1', 9090, 12000);
-        // log.info('[Local] 端口已就绪');
+        // log.info('[Local] Port ready');
 
         const singboxLogPath = getSingboxLogPath();
 
-        log.info(`[Local] 启动 sing-box 内核`);
-        log.info(`[Local] 配置文件: ${configPath}`);
-        log.info(`[Local] 内核日志文件: ${singboxLogPath}`);
+        log.info(`[Local] Starting sing-box kernel`);
+        log.info(`[Local] Config file: ${configPath}`);
+        log.info(`[Local] Kernel log file: ${singboxLogPath}`);
 
         // Ensure log file exists and is writable (handle permission issues from previous service runs)
         try {
@@ -360,18 +361,18 @@ export class LocalSingboxController implements CoreController {
 
         this.pid = this.process.pid ?? null;
         this.startTime = Date.now();
-        log.info(`[Local] sing-box 进程已启动，PID: ${this.pid ?? '未知'}`);
+        log.info(`[Local] sing-box process started, PID: ${this.pid ?? 'unknown'}`);
 
         this.process.stderr?.pipe(logStream);
 
         this.process.on('error', (err) => {
-            log.error(`[Local] 启动 sing-box 失败: ${err.message}`);
+            log.error(`[Local] Failed to start sing-box: ${err.message}`);
             fs.appendFileSync(singboxLogPath, `ERROR: ${err.message}\n`);
             logStream.end();
         });
 
         this.process.on('exit', (code) => {
-            log.info(`[Local] sing-box 内核已退出，退出码: ${code}`);
+            log.info(`[Local] sing-box kernel exited, exit code: ${code}`);
             if (code !== 0) {
                 fs.appendFileSync(singboxLogPath, `EXIT: status ${code}\n`);
             }
@@ -386,11 +387,11 @@ export class LocalSingboxController implements CoreController {
     async stop(): Promise<void> {
         const currentPid = this.process?.pid ?? this.pid;
         const actuallyAlive = currentPid ? isProcessAlive(currentPid) : false;
-        log.info(`[Local] 请求停止 sing-box 内核，当前状态: ${actuallyAlive ? '运行中' : '未运行'}`);
+        log.info(`[Local] Request to stop sing-box kernel, current status: ${actuallyAlive ? 'running' : 'not running'}`);
 
         // 进程已退出，直接清理状态
         if (currentPid && !actuallyAlive) {
-            log.info(`[Local] 进程已退出，清理状态，PID: ${currentPid}`);
+            log.info(`[Local] Process exited, cleaning state, PID: ${currentPid}`);
             this.clearState();
             return;
         }
@@ -402,7 +403,7 @@ export class LocalSingboxController implements CoreController {
                 return;
             }
 
-            log.warn(`[Local] 检测到系统 sing-box 进程: ${pids.join(', ')}`);
+            log.warn(`[Local] Detected system sing-box processes: ${pids.join(', ')}`);
 
             // 尝试终止
             for (const fallbackPid of pids) {
@@ -411,10 +412,10 @@ export class LocalSingboxController implements CoreController {
 
             const remaining = listSystemSingboxPids();
             if (remaining.length > 0) {
-                log.warn(`[Local] 停止后仍有进程存活: ${remaining.join(', ')}`);
+                log.warn(`[Local] Processes still running after stop: ${remaining.join(', ')}`);
                 this.process = null;
                 this.pid = remaining[0];
-                throw new Error(`停止失败，仍有 sing-box 进程在运行（PID: ${remaining.join(', ')}），可能是权限不足`);
+                throw new Error(t('main.errors.core.stopFailedStillRunning', { pids: remaining.join(', ') }));
             }
 
             this.clearState();
@@ -424,18 +425,18 @@ export class LocalSingboxController implements CoreController {
         const stopped = await killByPid(currentPid);
 
         if (!stopped || isProcessAlive(currentPid)) {
-            log.warn(`[Local] 停止后进程仍在运行，PID: ${currentPid}`);
+            log.warn(`[Local] Process still running after stop, PID: ${currentPid}`);
             this.process = null;
             this.pid = currentPid;
-            throw new Error(`停止失败，进程仍在运行（PID: ${currentPid}），可能是权限不足`);
+            throw new Error(t('main.errors.core.stopFailedPidRunning', { pid: String(currentPid) }));
         }
 
-        log.info(`[Local] sing-box 内核已停止，PID: ${currentPid}`);
+        log.info(`[Local] sing-box kernel stopped, PID: ${currentPid}`);
         this.clearState();
     }
 
     async restart(configPath: string, binaryPath: string): Promise<void> {
-        log.info('[Local] 重启 sing-box');
+        log.info('[Local] Restarting sing-box');
         await this.stop();
         await new Promise((r) => setTimeout(r, this.options.portReleaseDelayMs!));
         await this.start(configPath, binaryPath);
@@ -490,7 +491,7 @@ export class LocalSingboxController implements CoreController {
     private async waitForStartup(graceMs: number): Promise<void> {
         const proc = this.process;
         if (!proc) {
-            throw new Error('sing-box 进程创建失败');
+            throw new Error(t('main.errors.core.processCreationFailed'));
         }
 
         return new Promise((resolve, reject) => {
@@ -505,14 +506,21 @@ export class LocalSingboxController implements CoreController {
                 if (settled) return;
                 settled = true;
                 cleanup();
-                reject(new Error(`sing-box 启动后立即退出（code=${code ?? 'null'}, signal=${signal ?? 'null'}），请检查配置和内核日志`));
+                reject(
+                    new Error(
+                        t('main.errors.core.exitedImmediately', {
+                            code: String(code ?? 'null'),
+                            signal: String(signal ?? 'null')
+                        })
+                    )
+                );
             };
 
             const onEarlyError = (err: Error) => {
                 if (settled) return;
                 settled = true;
                 cleanup();
-                reject(new Error(`启动 sing-box 失败: ${err.message}`));
+                reject(new Error(t('main.errors.core.failedToStart', { message: err.message })));
             };
 
             const timer = setTimeout(() => {
@@ -522,7 +530,7 @@ export class LocalSingboxController implements CoreController {
                 if (!alive) {
                     settled = true;
                     cleanup();
-                    reject(new Error('sing-box 启动后立即退出，请检查配置和内核日志'));
+                    reject(new Error(t('main.errors.core.exitedImmediatelyShort')));
                     return;
                 }
                 settled = true;
@@ -573,7 +581,7 @@ export class ServiceSingboxController implements CoreController {
     }
 
     async start(configPath: string, binaryPath: string): Promise<void> {
-        log.info('[Service] 使用 RoverService 模式启动 sing-box');
+        log.info('[Service] Using RoverService mode to start sing-box');
         log.info(`[Service] Config: ${configPath}`);
         log.info(`[Service] Binary: ${binaryPath}`);
 
@@ -585,18 +593,26 @@ export class ServiceSingboxController implements CoreController {
         if (!response.success) {
             // 如果错误是因为进程已在运行，先停止再启动
             if (response.error?.includes('already running')) {
-                log.warn('[Service] sing-box 已在运行，先停止再启动');
+                log.warn('[Service] sing-box already running, stopping first then starting');
                 await roverservice.stopSingbox();
                 await new Promise((r) => setTimeout(r, this.options.portReleaseDelayMs!));
                 // 重试启动
                 const retryResponse = await roverservice.startSingbox(configPath, binaryPath);
                 if (!retryResponse.success) {
-                    throw new Error(`RoverService 启动失败: ${retryResponse.error || retryResponse.message || '未知错误'}`);
+                    throw new Error(
+                        t('main.errors.core.roverServiceStartFailed', {
+                            detail: String(retryResponse.error || retryResponse.message || 'unknown error')
+                        })
+                    );
                 }
                 this.pid = retryResponse.data?.pid ?? null;
                 this.startTime = retryResponse.data?.startTime ? retryResponse.data.startTime * 1000 : Date.now();
             } else {
-                throw new Error(`RoverService 启动失败: ${response.error || response.message || '未知错误'}`);
+                throw new Error(
+                    t('main.errors.core.roverServiceStartFailed', {
+                        detail: String(response.error || response.message || 'unknown error')
+                    })
+                );
             }
         } else {
             // 更新本地状态
@@ -604,38 +620,40 @@ export class ServiceSingboxController implements CoreController {
             this.startTime = response.data?.startTime ? response.data.startTime * 1000 : Date.now();
         }
 
-        log.info(`[Service] 通过 RoverService 启动成功，PID: ${this.pid}`);
+        log.info(`[Service] Started via RoverService, PID: ${this.pid}`);
     }
 
     async stop(): Promise<void> {
-        log.info('[Service] 使用 RoverService 模式停止 sing-box');
+        log.info('[Service] Using RoverService mode to stop sing-box');
 
         const response = await roverservice.stopSingbox();
 
         if (!response.success) {
             if (response.error?.includes('not running')) {
-                log.info('[Service] RoverService 报告 sing-box 未运行');
+                log.info('[Service] RoverService reports sing-box not running');
             } else {
-                throw new Error(`RoverService 停止失败: ${response.error || '未知错误'}`);
+                throw new Error(
+                    t('main.errors.core.roverServiceStopFailed', { detail: String(response.error || 'unknown error') })
+                );
             }
         }
 
         this.clearState();
-        log.info('[Service] 通过 RoverService 停止成功');
+        log.info('[Service] Stopped via RoverService');
     }
 
     async restart(configPath: string, binaryPath: string): Promise<void> {
-        log.info('[Service] 重启 sing-box');
+        log.info('[Service] Restarting sing-box');
 
         // 使用服务的 restart API
         const response = await roverservice.restartSingbox();
 
         if (!response.success) {
             // 如果 restart 失败，尝试手动 stop + start
-            log.warn('[Service] restart API 失败，尝试手动 stop + start');
-            // 如果是TUN模式且是macOS平台，使用完整的停止流程来确保DNS恢复
+            log.warn('[Service] restart API failed, trying manual stop + start');
+            // TUN mode on macOS: use full stop flow to restore DNS
             if (process.platform === 'darwin' && isTunModeEnabled()) {
-                log.info('macOS TUN模式，使用完整停止流程恢复DNS');
+                log.info('macOS TUN mode, using full stop flow to restore DNS');
                 await stopSingbox();
             } else {
                 await this.stop();
@@ -648,7 +666,7 @@ export class ServiceSingboxController implements CoreController {
         this.pid = response.data?.pid ?? null;
         this.startTime = response.data?.startTime ? response.data.startTime * 1000 : Date.now();
 
-        log.info(`[Service] 通过 RoverService 重启成功，PID: ${this.pid}`);
+        log.info(`[Service] Restarted via RoverService, PID: ${this.pid}`);
     }
 
     async getStatus(): Promise<SingboxStatus> {
@@ -713,16 +731,16 @@ export interface CreateControllerOptions extends ControllerOptions {
 export async function createSingboxController(options?: CreateControllerOptions): Promise<CoreController> {
     // 强制使用本地模式
     if (options?.forceLocal) {
-        log.info('使用本地控制器模式（强制）');
+        log.info('Using local controller mode (forced)');
         return new LocalSingboxController(options);
     }
 
     // 强制使用服务模式
     if (options?.forceService) {
-        log.info('使用服务控制器模式（强制）');
+        log.info('Using service controller mode (forced)');
         const controller = new ServiceSingboxController(options);
         if (!(await controller.isAvailable())) {
-            throw new Error('RoverService 服务不可用');
+            throw new Error(t('main.errors.core.roverServiceUnavailable'));
         }
         return controller;
     }
@@ -732,10 +750,10 @@ export async function createSingboxController(options?: CreateControllerOptions)
         if (options.shouldUseService()) {
             const controller = new ServiceSingboxController(options);
             if (await controller.isAvailable()) {
-                log.info('使用服务控制器模式（自定义判断）');
+                log.info('Using service controller mode (custom check)');
                 return controller;
             }
-            log.warn('服务控制器不可用，回退到本地模式');
+            log.warn('Service controller unavailable, falling back to local mode');
         }
         return new LocalSingboxController(options);
     }
@@ -743,11 +761,11 @@ export async function createSingboxController(options?: CreateControllerOptions)
     // 默认：检查服务是否可用
     const serviceController = new ServiceSingboxController(options);
     if (await serviceController.isAvailable()) {
-        log.info('使用服务控制器模式（自动检测）');
+        log.info('Using service controller mode (auto detected)');
         return serviceController;
     }
 
-    log.info('使用本地控制器模式（自动检测）');
+    log.info('Using local controller mode (auto detected)');
     return new LocalSingboxController(options);
 }
 
@@ -790,13 +808,13 @@ async function getController(): Promise<CoreController> {
 
     // 简化逻辑：TUN 模式启用 → 使用 ServiceSingboxController
     if (isTunModeEnabled()) {
-        managerLog.info('TUN 模式已启用，使用 ServiceSingboxController');
+        managerLog.info('TUN mode enabled, using ServiceSingboxController');
         controllerInstance = new ServiceSingboxController();
         return controllerInstance;
     }
 
     // TUN 模式未启用 → 使用 LocalSingboxController
-    managerLog.info('TUN 模式未启用，使用 LocalSingboxController');
+        managerLog.info('TUN mode disabled, using LocalSingboxController');
     controllerInstance = new LocalSingboxController();
     return controllerInstance;
 }
@@ -811,29 +829,29 @@ export async function resetController(): Promise<void> {
         try {
             const running = await controllerInstance.isRunning();
             if (running) {
-                managerLog.info('重置控制器前停止 sing-box 进程...');
+                managerLog.info('Resetting controller, stopping sing-box process...');
                 
                 // 在重置控制器前先恢复DNS（如果是在TUN模式下）
                 if (process.platform === 'darwin' && isTunModeEnabled()) {
-                    managerLog.info('macOS TUN模式，恢复系统DNS...');
+                    managerLog.info('macOS TUN mode, restoring system DNS...');
                     await restoreDns();
                 }
                 
                 await controllerInstance.stop();
-                managerLog.info('sing-box 进程已停止');
+                managerLog.info('sing-box process stopped');
 
                 // 等待端口释放（TUN 模式下进程停止后端口释放可能较慢，尤其是 clash_api 9090）
                 const portReleaseDelay = 600;
-                managerLog.info(`等待 ${portReleaseDelay}ms 以确保端口释放...`);
+                managerLog.info(`Waiting ${portReleaseDelay}ms for port release...`);
                 await new Promise((r) => setTimeout(r, portReleaseDelay));
-                managerLog.info('端口释放等待完成');
+                managerLog.info('Port release wait complete');
             }
         } catch (err: any) {
-            managerLog.warn(`停止 sing-box 进程时出错: ${err.message}`);
+            managerLog.warn(`Error stopping sing-box process: ${err.message}`);
         }
     }
     controllerInstance = null;
-    managerLog.info('控制器已重置');
+    managerLog.info('Controller reset');
 }
 
 /**

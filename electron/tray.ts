@@ -5,6 +5,7 @@ import * as singbox from './core-controller';
 import * as dbUtils from './db';
 import { getSetting } from './db';
 import { handleAppQuit } from './app-utils';
+import { t } from './i18n-main';
 
 let tray: Tray | null = null;
 let updateMenuFn: (() => Promise<void>) | null = null;
@@ -25,7 +26,7 @@ async function getCurrentMode(): Promise<'rule' | 'global' | 'direct'> {
 
 // 设置代理模式 - 只发送事件通知前端处理
 async function setProxyMode(mode: 'rule' | 'global' | 'direct') {
-    console.log(`[Tray] 请求切换代理模式: ${mode}`);
+    console.log(`[Tray] Request to switch proxy mode: ${mode}`);
     
     // 通知前端处理模式切换
     const mainWindow = BrowserWindow.getAllWindows()[0];
@@ -129,12 +130,12 @@ export function createTray(mainWindow: BrowserWindow) {
 
         const contextMenu = Menu.buildFromTemplate([
             {
-                label: '显示',
+                label: t('tray.show'),
                 click: () => mainWindow.show()
             },
             { type: 'separator' },
             {
-                label: '规则',
+                label: t('tray.modeRule'),
                 type: 'checkbox',
                 checked: currentMode === 'rule',
                 click: async () => {
@@ -142,7 +143,7 @@ export function createTray(mainWindow: BrowserWindow) {
                 }
             },
             {
-                label: '全局',
+                label: t('tray.modeGlobal'),
                 type: 'checkbox',
                 checked: currentMode === 'global',
                 click: async () => {
@@ -150,7 +151,7 @@ export function createTray(mainWindow: BrowserWindow) {
                 }
             },
             {
-                label: '直连',
+                label: t('tray.modeDirect'),
                 type: 'checkbox',
                 checked: currentMode === 'direct',
                 click: async () => {
@@ -159,14 +160,14 @@ export function createTray(mainWindow: BrowserWindow) {
             },
             { type: 'separator' },
             {
-                label: '复制环境变量',
+                label: t('tray.copyEnv'),
                 click: () => {
                     copyEnvVariables();
                 }
             },
             { type: 'separator' },
             {
-                label: '退出',
+                label: t('tray.quit'),
                 click: () => {
                     console.log('Quit from tray...');
                     // 直接调用 app.quit()，让 before-quit 事件处理清理逻辑
@@ -176,7 +177,7 @@ export function createTray(mainWindow: BrowserWindow) {
         ]);
 
         tray?.setContextMenu(contextMenu);
-        tray?.setToolTip('Rover');
+        tray?.setToolTip(t('tray.tooltip'));
     };
 
     updateMenuFn = updateMenu;

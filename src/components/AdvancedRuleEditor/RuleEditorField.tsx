@@ -4,6 +4,7 @@
  * 供策略编辑和规则集编辑复用
  */
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { RouteLogicRule } from '../../types/singbox';
 import type { RuleFieldConfig } from './types';
 import { AdvancedRuleEditor } from './AdvancedRuleEditor.tsx';
@@ -18,13 +19,13 @@ export interface RuleEditorFieldProps {
     value?: RouteLogicRule | null;
     /** 值变化回调 */
     onChange: (value: RouteLogicRule | null) => void;
-    /** 字段标签，默认"规则内容" */
+    /** 字段标签，默认使用 advancedRuleEditor.fieldLabel */
     label?: string;
-    /** 提示文本，默认"点击打开规则编辑器，支持复杂规则逻辑" */
+    /** 提示文本，默认使用 advancedRuleEditor.fieldHint */
     hint?: string;
     /** 字段配置，默认使用 RULE_FIELD_CONFIG */
     fieldConfig?: RuleFieldConfig[];
-    /** 弹窗标题 */
+    /** 弹窗标题，默认使用 advancedRuleEditor.modalTitleDefault */
     modalTitle?: string;
     /** 是否显示清空按钮 */
     showClearButton?: boolean;
@@ -39,13 +40,17 @@ export interface RuleEditorFieldProps {
 export function RuleEditorField({
     value,
     onChange,
-    label = '规则内容',
-    hint = '点击打开规则编辑器，支持复杂规则逻辑',
+    label,
+    hint,
     fieldConfig = RULE_FIELD_CONFIG,
-    modalTitle = '规则编辑器',
+    modalTitle,
     showClearButton = true,
     disabled = false,
 }: RuleEditorFieldProps) {
+    const { t } = useTranslation();
+    const labelText = label ?? t('advancedRuleEditor.fieldLabel');
+    const hintText = hint ?? t('advancedRuleEditor.fieldHint');
+    const modalTitleText = modalTitle ?? t('advancedRuleEditor.modalTitleDefault');
     const [showEditor, setShowEditor] = useState(false);
 
     const handleOpenEditor = () => {
@@ -65,7 +70,7 @@ export function RuleEditorField({
     return (
         <div className="space-y-1.5">
             <div className="flex items-center justify-between gap-2 pl-1">
-                <label className="text-[12px] font-medium text-[var(--app-text-secondary)]">{label}</label>
+                <label className="text-[12px] font-medium text-[var(--app-text-secondary)]">{labelText}</label>
                 <div className="flex items-center gap-2">
                     {showClearButton && value && (
                         <button
@@ -74,7 +79,7 @@ export function RuleEditorField({
                             disabled={disabled}
                             className="px-3 py-1.5 rounded-[8px] border border-[rgba(39,44,54,0.12)] bg-white hover:bg-red-50 hover:border-red-200 hover:text-red-600 transition-colors text-[12px] text-[var(--app-text-tertiary)] disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                            清空规则
+                            {t('advancedRuleEditor.clearRules')}
                         </button>
                     )}
                     <button
@@ -83,7 +88,7 @@ export function RuleEditorField({
                         disabled={disabled}
                         className="px-3 py-1.5 rounded-[8px] border border-[rgba(39,44,54,0.12)] bg-white hover:bg-[var(--app-hover)] transition-colors text-[12px] text-[var(--app-text)] disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                        打开规则编辑器
+                        {t('advancedRuleEditor.openEditor')}
                     </button>
                 </div>
             </div>
@@ -91,7 +96,7 @@ export function RuleEditorField({
                 node={previewNode}
                 formConfig={fieldConfig}
             />
-            <p className="text-[11px] text-[var(--app-text-quaternary)] pl-1">{hint}</p>
+            <p className="text-[11px] text-[var(--app-text-quaternary)] pl-1">{hintText}</p>
 
             {/* 高级规则编辑器弹窗 */}
             <AdvancedRuleEditor
@@ -99,7 +104,7 @@ export function RuleEditorField({
                 onClose={() => setShowEditor(false)}
                 onConfirm={handleConfirm}
                 initialLogicRule={value}
-                title={modalTitle}
+                title={modalTitleText}
                 fieldConfig={fieldConfig}
             />
         </div>
@@ -125,15 +130,17 @@ export interface RuleEditorViewProps {
  */
 export function RuleEditorView({
     value,
-    label = '规则内容',
+    label,
     fieldConfig = RULE_FIELD_CONFIG,
 }: RuleEditorViewProps) {
+    const { t } = useTranslation();
+    const labelText = label ?? t('advancedRuleEditor.fieldLabel');
     // 将 RouteLogicRule 转换为 RuleTreeNode 用于展示
     const previewNode = value ? singboxLogicalToRuleTreeNodeRoot(value) : null;
 
     return (
         <div className="space-y-1.5">
-            <label className="text-[12px] font-medium text-[var(--app-text-secondary)] pl-1">{label}</label>
+            <label className="text-[12px] font-medium text-[var(--app-text-secondary)] pl-1">{labelText}</label>
             <RuleTreeView
                 node={previewNode}
                 formConfig={fieldConfig}

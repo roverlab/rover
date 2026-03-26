@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { Card } from '../../components/ui/Surface';
 import { Button } from '../../components/ui/Button';
 import { Plus, Sparkles } from 'lucide-react';
@@ -8,6 +9,8 @@ interface DnsPolicyEmptyStateProps {
 }
 
 export function DnsPolicyEmptyState({ onAdd }: DnsPolicyEmptyStateProps) {
+    const { t } = useTranslation();
+    
     return (
         <Card className="relative overflow-hidden p-0">
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(85,96,111,0.16),transparent_40%),linear-gradient(180deg,rgba(255,255,255,0.98),rgba(246,248,251,0.92))]" />
@@ -16,14 +19,14 @@ export function DnsPolicyEmptyState({ onAdd }: DnsPolicyEmptyStateProps) {
                     <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-[20px] border border-[var(--app-accent-border)] bg-white/80 text-[var(--app-accent-strong)] shadow-[0_18px_40px_rgba(67,76,88,0.12)]">
                         <Sparkles className="h-7 w-7" />
                     </div>
-                    <h2 className="text-[22px] font-semibold tracking-tight text-[var(--app-text)]">暂无DNS策略</h2>
+                    <h2 className="text-[22px] font-semibold tracking-tight text-[var(--app-text)]">{t('dnsPolicies.emptyState.title')}</h2>
                     <p className="mt-3 max-w-[460px] text-[13px] leading-6 text-[var(--app-text-tertiary)]">
-                        添加DNS策略以配置域名分流规则，为不同域名指定不同的DNS服务器
+                        {t('dnsPolicies.emptyState.description')}
                     </p>
                     <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
                         <Button variant="primary" size="sm" onClick={onAdd}>
                             <Plus className="w-3.5 h-3.5 mr-1" />
-                            新建DNS策略
+                            {t('dnsPolicies.emptyState.createPolicy')}
                         </Button>
                     </div>
                 </div>

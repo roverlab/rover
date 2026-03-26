@@ -4,8 +4,6 @@
  */
 
 import axios from 'axios';
-import * as iconv from 'iconv-lite';
-import * as jschardet from 'jschardet';
 import yaml from 'js-yaml';
 import * as dbUtils from './db';
 import { validateProfileContent } from './validation';
@@ -16,6 +14,7 @@ import fs from 'node:fs';
 import type { RuleProvider as ClashRuleProvider } from '../src/types/clash';
 import type { SubscriptionUserinfo, ProxyNode } from './db';
 import { convertClashToSingbox } from '../src/services/singbox';
+import { t } from './i18n-main';
 
 const DEFAULT_SUBSCRIPTION_USER_AGENT = 'clash-verge/v2.4.2';
 
@@ -432,7 +431,7 @@ export function saveProfileFile(profileId: string | number, content: string): st
 }
 
 /**
- * 读取配置文件内容（自动检测编码并转换为 UTF-8）
+ * 读取配置文件内容（默认 UTF-8）
  */
 export function readProfileContent(profileId: string | number, profilePath?: string): string | null {
     const filePath = profilePath || path.join(getProfilesDir(), `profile_${profileId}`);
@@ -440,23 +439,10 @@ export function readProfileContent(profileId: string | number, profilePath?: str
         return null;
     }
 
-    // Read file as buffer first for encoding detection
-    const buffer = fs.readFileSync(filePath);
+    // 默认 UTF-8
+    let content = fs.readFileSync(filePath, 'utf-8');
 
-    // Detect encoding
-    const detected = jschardet.detect(buffer);
-    let content: string;
-
-    // Check if encoding is detected and not UTF-8
-    if (detected.encoding && detected.encoding.toLowerCase() !== 'utf-8' && detected.encoding.toLowerCase() !== 'ascii') {
-        console.log(`Detected encoding: ${detected.encoding}, converting to UTF-8`);
-        content = iconv.decode(buffer, detected.encoding);
-    } else {
-        // Use UTF-8 decoding
-        content = buffer.toString('utf-8');
-    }
-
-    // Remove BOM if present (common in Windows-saved files)
+    // 移除 BOM
     if (content.charCodeAt(0) === 0xfeff) {
         content = content.slice(1);
     }
@@ -470,8 +456,8 @@ export function readProfileContent(profileId: string | number, profilePath?: str
  */
 export async function downloadProfile(profileId: string): Promise<string> {
     const profile = dbUtils.getProfileById(profileId);
-    if (!profile) throw new Error('Profile not found');
-    if (!profile.url) throw new Error('Profile has no URL');
+    if (!profile) throw new Error(t('main.errors.profileNotFound'));
+    if (!profile.url) throw new Error(t('main.errors.profileHasNoUrl'));
 
     const ua = getSubscriptionUserAgent();
     console.log(`Downloading profile from ${profile.url}...`);
@@ -485,21 +471,11 @@ export async function downloadProfile(profileId: string): Promise<string> {
             }
         });
 
-        // Get raw buffer
         const buffer = Buffer.from(response.data);
+        // 默认 UTF-8
+        let content = buffer.toString('utf-8');
 
-        // Detect encoding and convert to UTF-8
-        const detected = jschardet.detect(buffer);
-        let content: string;
-
-        if (detected.encoding && detected.encoding.toLowerCase() !== 'utf-8' && detected.encoding.toLowerCase() !== 'ascii') {
-            console.log(`Remote file encoding detected: ${detected.encoding}, converting to UTF-8`);
-            content = iconv.decode(buffer, detected.encoding);
-        } else {
-            content = buffer.toString('utf-8');
-        }
-
-        // Remove BOM if present
+        // 移除 BOM
         if (content.charCodeAt(0) === 0xfeff) {
             content = content.slice(1);
         }
@@ -525,7 +501,7 @@ export async function downloadProfile(profileId: string): Promise<string> {
         return content;
     } catch (dlErr: any) {
         console.error('Failed to update profile:', dlErr.message);
-        throw new Error(`Update failed: ${dlErr.message}`);
+        throw new Error(t('main.errors.subscription.updateFailed', { message: dlErr.message }));
     }
 }
 
@@ -560,7 +536,7 @@ export async function processProfileContent(content: string, profileId: string):
  * @returns 新配置文件的 ID
  */
 export async function addSubscriptionProfile(url: string): Promise<string> {
-    if (!url?.trim()) throw new Error('订阅地址不能为空');
+    if (!url?.trim()) throw new Error(t('main.errors.subscription.urlRequired'));
 
     const ua = getSubscriptionUserAgent();
     console.log(`Downloading subscription from ${url}...`);
@@ -572,13 +548,8 @@ export async function addSubscriptionProfile(url: string): Promise<string> {
     });
 
     const buffer = Buffer.from(response.data);
-    const detected = jschardet.detect(buffer);
-    let content: string;
-    if (detected.encoding && detected.encoding.toLowerCase() !== 'utf-8' && detected.encoding.toLowerCase() !== 'ascii') {
-        content = iconv.decode(buffer, detected.encoding);
-    } else {
-        content = buffer.toString('utf-8');
-    }
+    // 默认 UTF-8
+    let content = buffer.toString('utf-8');
     if (content.charCodeAt(0) === 0xfeff) content = content.slice(1);
 
     content = validateProfileContent(content);
@@ -620,7 +591,7 @@ export async function addSubscriptionProfile(url: string): Promise<string> {
  * @returns 下载的配置内容
  */
 export async function fetchSubscriptionContent(url: string): Promise<string> {
-    if (!url?.trim()) throw new Error('订阅地址不能为空');
+    if (!url?.trim()) throw new Error(t('main.errors.subscription.urlRequired'));
 
     const ua = getSubscriptionUserAgent();
     console.log(`Fetching subscription content from ${url}...`);
@@ -632,13 +603,8 @@ export async function fetchSubscriptionContent(url: string): Promise<string> {
     });
 
     const buffer = Buffer.from(response.data);
-    const detected = jschardet.detect(buffer);
-    let content: string;
-    if (detected.encoding && detected.encoding.toLowerCase() !== 'utf-8' && detected.encoding.toLowerCase() !== 'ascii') {
-        content = iconv.decode(buffer, detected.encoding);
-    } else {
-        content = buffer.toString('utf-8');
-    }
+    // 默认 UTF-8
+    let content = buffer.toString('utf-8');
     if (content.charCodeAt(0) === 0xfeff) content = content.slice(1);
 
     return validateProfileContent(content);

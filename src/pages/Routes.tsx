@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Card, Badge } from '../components/ui/Surface';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Field';
@@ -39,8 +40,8 @@ const getRuleSetIcon = (tag: string) => {
 
 // 数组截断预览（最多显示前 N 项）
 const PREVIEW_LIMIT = 2;
-const truncatePreview = (arr: string[], limit = PREVIEW_LIMIT) =>
-    arr.slice(0, limit).join(', ') + (arr.length > limit ? ` 等${arr.length}项` : '');
+const truncatePreview = (arr: string[], t: (key: string, options?: Record<string, unknown>) => string, limit = PREVIEW_LIMIT) =>
+    arr.slice(0, limit).join(', ') + (arr.length > limit ? t('routes.moreItems', { count: arr.length }) : '');
 
 // 辅助函数：安全地获取规则字段值（处理联合类型）
 function getRuleField<T>(rule: OriginRouteRule, field: string): T | undefined {
@@ -48,7 +49,7 @@ function getRuleField<T>(rule: OriginRouteRule, field: string): T | undefined {
 }
 
 // 获取规则描述（列表仅展示一小部分内容）
-function getRuleDescription(rule: OriginRouteRule): string {
+function getRuleDescription(rule: OriginRouteRule, t: (key: string, options?: Record<string, unknown>) => string): string {
     const action = getRuleField<string>(rule, 'action') || 'route';
     const protocol = getRuleField<string | string[]>(rule, 'protocol');
     const network = getRuleField<string>(rule, 'network');
@@ -61,9 +62,9 @@ function getRuleDescription(rule: OriginRouteRule): string {
     const port = getRuleField<number[]>(rule, 'port');
     const process_name = getRuleField<string[]>(rule, 'process_name');
 
-    if (protocol === 'dns' && action === 'hijack-dns') return 'DNS 劫持';
-    if (protocol === 'quic') return 'QUIC 协议';
-    if (network === 'icmp') return 'ICMP 协议';
+    if (protocol === 'dns' && action === 'hijack-dns') return t('routes.ruleTypes.dnsHijack');
+    if (protocol === 'quic') return t('routes.ruleTypes.quic');
+    if (network === 'icmp') return t('routes.ruleTypes.icmp');
     if (rule_set && rule_set.length > 0) {
         const names = rule_set.map(r => {
             if (r.startsWith('GeoIP-')) return r.replace('GeoIP-', '');
@@ -72,14 +73,14 @@ function getRuleDescription(rule: OriginRouteRule): string {
         });
         return names.slice(0, 2).join(', ') + (names.length > 2 ? ` +${names.length - 2}` : '');
     }
-    if (domain?.length) return `域名: ${truncatePreview(domain)}`;
-    if (domain_suffix?.length) return `域名后缀: ${truncatePreview(domain_suffix)}`;
-    if (domain_keyword?.length) return `关键词: ${truncatePreview(domain_keyword)}`;
-    if (ip_cidr?.length) return `IP: ${truncatePreview(ip_cidr)}`;
-    if (source_ip_cidr?.length) return `源IP: ${truncatePreview(source_ip_cidr)}`;
-    if (port?.length) return `端口: ${port.slice(0, 2).join(', ')}${port.length > 2 ? ` 等${port.length}项` : ''}`;
-    if (process_name?.length) return `进程: ${truncatePreview(process_name)}`;
-    return '自定义规则';
+    if (domain?.length) return `${t('routes.ruleTypes.domain')}: ${truncatePreview(domain, t)}`;
+    if (domain_suffix?.length) return `${t('routes.ruleTypes.domainSuffix')}: ${truncatePreview(domain_suffix, t)}`;
+    if (domain_keyword?.length) return `${t('routes.ruleTypes.keyword')}: ${truncatePreview(domain_keyword, t)}`;
+    if (ip_cidr?.length) return `${t('routes.ruleTypes.ip')}: ${truncatePreview(ip_cidr, t)}`;
+    if (source_ip_cidr?.length) return `${t('routes.ruleTypes.sourceIp')}: ${truncatePreview(source_ip_cidr, t)}`;
+    if (port?.length) return `${t('routes.ruleTypes.port')}: ${port.slice(0, 2).join(', ')}${port.length > 2 ? t('routes.moreItems', { count: port.length }) : ''}`;
+    if (process_name?.length) return `${t('routes.ruleTypes.process')}: ${truncatePreview(process_name, t)}`;
+    return t('routes.ruleTypes.custom');
 }
 
 // 详情中数组最多展示项数（内联展开用）
@@ -87,6 +88,7 @@ const DETAIL_ARRAY_LIMIT = 5;
 
 // 规则详情弹窗（显示所有内容，无截断）
 function RuleDetailModal({ rule, index, open, onClose }: { rule: OriginRouteRule; index: number; open: boolean; onClose: () => void }) {
+    const { t } = useTranslation();
     const detailItems: { label: string; value: any }[] = [];
 
     // 按固定顺序展示常用字段
@@ -132,7 +134,7 @@ function RuleDetailModal({ rule, index, open, onClose }: { rule: OriginRouteRule
         <Modal
             open={open}
             onClose={onClose}
-            title={`规则 #${index + 1} 详情`}
+            title={`${t('routes.ruleDetail')} #${index + 1}`}
             maxWidth="max-w-2xl"
             contentClassName="overflow-y-auto max-h-[70vh]"
         >
@@ -150,7 +152,7 @@ function RuleDetailModal({ rule, index, open, onClose }: { rule: OriginRouteRule
                     ))}
                 </div>
                 <div className="pt-4 border-t border-[var(--app-divider)]">
-                    <div className="text-[11px] text-[var(--app-text-quaternary)] font-medium mb-2">原始 JSON</div>
+                    <div className="text-[11px] text-[var(--app-text-quaternary)] font-medium mb-2">{t('routes.rawJson')}</div>
                     <pre className="text-[11px] text-[var(--app-text-tertiary)] bg-[var(--app-bg-secondary)] rounded-lg p-4 overflow-x-auto max-h-48 overflow-y-auto">
                         {JSON.stringify(rule, null, 2)}
                     </pre>
@@ -162,6 +164,7 @@ function RuleDetailModal({ rule, index, open, onClose }: { rule: OriginRouteRule
 
     // 规则详情展开组件（数组仅展示前 N 项，避免内容过长）
 function RuleDetail({ rule }: { rule: OriginRouteRule }) {
+    const { t } = useTranslation();
     const detailItems: { label: string; value: any }[] = [];
 
     const protocol = getRuleField<string | string[]>(rule, 'protocol');
@@ -178,40 +181,40 @@ function RuleDetail({ rule }: { rule: OriginRouteRule }) {
     const process_path = getRuleField<string[]>(rule, 'process_path');
 
     if (protocol) {
-        detailItems.push({ label: '协议', value: Array.isArray(protocol) ? protocol.join(', ') : protocol });
+        detailItems.push({ label: t('routes.detailLabels.protocol'), value: Array.isArray(protocol) ? protocol.join(', ') : protocol });
     }
     if (network) {
-        detailItems.push({ label: '网络', value: network });
+        detailItems.push({ label: t('routes.detailLabels.network'), value: network });
     }
     if (rule_set && rule_set.length > 0) {
-        detailItems.push({ label: '规则集', value: rule_set });
+        detailItems.push({ label: t('routes.detailLabels.ruleSet'), value: rule_set });
     }
     if (domain && domain.length > 0) {
-        detailItems.push({ label: '域名', value: domain });
+        detailItems.push({ label: t('routes.detailLabels.domain'), value: domain });
     }
     if (domain_suffix && domain_suffix.length > 0) {
-        detailItems.push({ label: '域名后缀', value: domain_suffix });
+        detailItems.push({ label: t('routes.detailLabels.domainSuffix'), value: domain_suffix });
     }
     if (domain_keyword && domain_keyword.length > 0) {
-        detailItems.push({ label: '域名关键词', value: domain_keyword });
+        detailItems.push({ label: t('routes.detailLabels.domainKeyword'), value: domain_keyword });
     }
     if (ip_cidr && ip_cidr.length > 0) {
-        detailItems.push({ label: 'IP CIDR', value: ip_cidr });
+        detailItems.push({ label: t('routes.detailLabels.ipCidr'), value: ip_cidr });
     }
     if (source_ip_cidr && source_ip_cidr.length > 0) {
-        detailItems.push({ label: '源 IP', value: source_ip_cidr });
+        detailItems.push({ label: t('routes.detailLabels.sourceIp'), value: source_ip_cidr });
     }
     if (port && port.length > 0) {
-        detailItems.push({ label: '端口', value: port.join(', ') });
+        detailItems.push({ label: t('routes.detailLabels.port'), value: port.join(', ') });
     }
     if (source_port && source_port.length > 0) {
-        detailItems.push({ label: '源端口', value: source_port.join(', ') });
+        detailItems.push({ label: t('routes.detailLabels.sourcePort'), value: source_port.join(', ') });
     }
     if (process_name && process_name.length > 0) {
-        detailItems.push({ label: '进程名', value: process_name });
+        detailItems.push({ label: t('routes.detailLabels.processName'), value: process_name });
     }
     if (process_path && process_path.length > 0) {
-        detailItems.push({ label: '进程路径', value: process_path });
+        detailItems.push({ label: t('routes.detailLabels.processPath'), value: process_path });
     }
 
     const knownKeys = ['action', 'outbound', 'protocol', 'network', 'rule_set', 'domain', 'domain_suffix', 'domain_keyword', 'ip_cidr', 'source_ip_cidr', 'port', 'source_port', 'process_name', 'process_path'];
@@ -242,7 +245,7 @@ function RuleDetail({ rule }: { rule: OriginRouteRule }) {
                                 ))}
                                 {item.value.length > DETAIL_ARRAY_LIMIT && (
                                     <span className="inline-flex items-center px-1.5 py-0.5 rounded-[4px] bg-[var(--app-bg-secondary)] text-[var(--app-text-quaternary)]">
-                                        等{item.value.length}项
+                                        {t('routes.moreItems', { count: item.value.length })}
                                     </span>
                                 )}
                             </div>
@@ -258,6 +261,7 @@ function RuleDetail({ rule }: { rule: OriginRouteRule }) {
 
 // 规则行组件（紧凑列表样式）
 function RuleItem({ rule, index }: { rule: OriginRouteRule; index: number; key?: React.Key }) {
+    const { t } = useTranslation();
     const action = rule.action || 'route';
     const outbound = rule.outbound || '-';
     const [detailOpen, setDetailOpen] = useState(false);
@@ -270,7 +274,7 @@ function RuleItem({ rule, index }: { rule: OriginRouteRule; index: number; key?:
                         {index + 1}
                     </span>
                     <span className="text-[13px] font-medium text-[var(--app-text)] truncate">
-                        {getRuleDescription(rule)}
+                        {getRuleDescription(rule, t)}
                     </span>
                     <div className="flex items-center gap-1 shrink-0">
                         <Badge tone={getActionTone(action)}>{action}</Badge>
@@ -287,7 +291,7 @@ function RuleItem({ rule, index }: { rule: OriginRouteRule; index: number; key?:
                         onClick={() => setDetailOpen(true)}
                     >
                         <Eye className="w-3 h-3 mr-1" />
-                        查看详情
+                        {t('routes.viewDetail')}
                     </Button>
                 </div>
             </div>
@@ -299,6 +303,7 @@ function RuleItem({ rule, index }: { rule: OriginRouteRule; index: number; key?:
 
 // 规则集卡片组件
 function RuleSetCard({ ruleSet }: { ruleSet: RuleSetConfig; key?: React.Key }) {
+    const { t } = useTranslation();
     return (
         <Card className="p-4 hover:border-[var(--app-accent-border)]/60 transition-colors group">
             <div className="flex items-start gap-3">
@@ -324,10 +329,10 @@ function RuleSetCard({ ruleSet }: { ruleSet: RuleSetConfig; key?: React.Key }) {
                     )}
                     <div className="flex items-center gap-4 text-[11px] text-[var(--app-text-quaternary)]">
                         {ruleSet.download_detour && (
-                            <span>下载: {ruleSet.download_detour}</span>
+                            <span>{t('routes.cardLabels.download')}: {ruleSet.download_detour}</span>
                         )}
                         {ruleSet.update_interval && (
-                            <span>更新: {ruleSet.update_interval}</span>
+                            <span>{t('routes.cardLabels.update')}: {ruleSet.update_interval}</span>
                         )}
                     </div>
                 </div>
@@ -338,6 +343,7 @@ function RuleSetCard({ ruleSet }: { ruleSet: RuleSetConfig; key?: React.Key }) {
 
 // DNS 服务器卡片组件
 function DnsServerCard({ server }: { server: any; key?: React.Key }) {
+    const { t } = useTranslation();
     const serverType = server.type || 'udp';
     const serverAddr = server.server || '';
     const serverPort = server.server_port;
@@ -354,7 +360,7 @@ function DnsServerCard({ server }: { server: any; key?: React.Key }) {
     // 构建显示地址
     const getDisplayAddress = () => {
         if (serverType === 'local' || serverType === 'hosts') {
-            return server.path ? `路径: ${server.path}` : '本地解析';
+            return server.path ? `${t('routes.cardLabels.path')}: ${server.path}` : t('routes.cardLabels.localResolve');
         }
         if (serverType === 'https') {
             return serverAddr + (serverPath || '');
@@ -382,10 +388,10 @@ function DnsServerCard({ server }: { server: any; key?: React.Key }) {
                     </p>
                     <div className="flex items-center gap-4 text-[11px] text-[var(--app-text-quaternary)]">
                         {server.detour && (
-                            <span>出站: {server.detour}</span>
+                            <span>{t('routes.cardLabels.outbound')}: {server.detour}</span>
                         )}
                         {server.domain_resolver && (
-                            <span>解析器: {server.domain_resolver}</span>
+                            <span>{t('routes.cardLabels.resolver')}: {server.domain_resolver}</span>
                         )}
                     </div>
                 </div>
@@ -421,6 +427,7 @@ function TabButton({ active, onClick, icon: Icon, label }: {
 
 // 配置详情弹窗
 function ConfigDetailModal({ config, open, onClose }: { config: ConfigData | null; open: boolean; onClose: () => void }) {
+    const { t } = useTranslation();
     const [copied, setCopied] = useState(false);
     
     const handleCopy = async () => {
@@ -438,7 +445,7 @@ function ConfigDetailModal({ config, open, onClose }: { config: ConfigData | nul
         <Modal
             open={open}
             onClose={onClose}
-            title="当前配置"
+            title={t('routes.currentConfig')}
             maxWidth="max-w-4xl"
             contentClassName="overflow-hidden p-0"
         >
@@ -448,18 +455,18 @@ function ConfigDetailModal({ config, open, onClose }: { config: ConfigData | nul
                         {copied ? (
                             <>
                                 <Check className="w-3.5 h-3.5 mr-1.5 text-green-500" />
-                                已复制
+                                {t('common.copied')}
                             </>
                         ) : (
                             <>
                                 <Copy className="w-3.5 h-3.5 mr-1.5" />
-                                复制
+                                {t('common.copy')}
                             </>
                         )}
                     </Button>
                 </div>
                 <pre className="text-[12px] text-[var(--app-text-secondary)] bg-[var(--app-bg-secondary)] p-4 overflow-auto max-h-[70vh] font-mono">
-                    {config ? JSON.stringify(config, null, 2) : '暂无配置'}
+                    {config ? JSON.stringify(config, null, 2) : t('routes.noConfig')}
                 </pre>
             </div>
         </Modal>
@@ -505,20 +512,23 @@ function getDnsRuleDescription(rule: DnsRule): string {
         });
         return names.slice(0, 2).join(', ') + (names.length > 2 ? ` +${names.length - 2}` : '');
     }
-    if (domain?.length) return `域名: ${truncatePreview(domain)}`;
-    if (domainSuffix?.length) return `域名后缀: ${truncatePreview(domainSuffix)}`;
-    if (domainKeyword?.length) return `关键词: ${truncatePreview(domainKeyword)}`;
-    if (ipCidr?.length) return `IP: ${truncatePreview(ipCidr)}`;
-    if (sourceIpCidr?.length) return `源IP: ${truncatePreview(sourceIpCidr)}`;
-    if (queryType?.length) return `查询类型: ${truncatePreview(queryType.map(String))}`;
-    if (protocol?.length) return `协议: ${truncatePreview(protocol)}`;
-    if (processName?.length) return `进程: ${truncatePreview(processName)}`;
+    // Note: DNS rule description uses raw Chinese strings because getDnsRuleDescription is called in useMemo
+    // and doesn't have access to t function. The label translations are not critical for filtering.
+    if (domain?.length) return `域名: ${domain.slice(0, 2).join(', ')}${domain.length > 2 ? ` +${domain.length - 2}` : ''}`;
+    if (domainSuffix?.length) return `域名后缀: ${domainSuffix.slice(0, 2).join(', ')}${domainSuffix.length > 2 ? ` +${domainSuffix.length - 2}` : ''}`;
+    if (domainKeyword?.length) return `关键词: ${domainKeyword.slice(0, 2).join(', ')}${domainKeyword.length > 2 ? ` +${domainKeyword.length - 2}` : ''}`;
+    if (ipCidr?.length) return `IP: ${ipCidr.slice(0, 2).join(', ')}${ipCidr.length > 2 ? ` +${ipCidr.length - 2}` : ''}`;
+    if (sourceIpCidr?.length) return `源IP: ${sourceIpCidr.slice(0, 2).join(', ')}${sourceIpCidr.length > 2 ? ` +${sourceIpCidr.length - 2}` : ''}`;
+    if (queryType?.length) return `查询类型: ${queryType.slice(0, 2).map(String).join(', ')}${queryType.length > 2 ? ` +${queryType.length - 2}` : ''}`;
+    if (protocol?.length) return `协议: ${protocol.slice(0, 2).join(', ')}${protocol.length > 2 ? ` +${protocol.length - 2}` : ''}`;
+    if (processName?.length) return `进程: ${processName.slice(0, 2).join(', ')}${processName.length > 2 ? ` +${processName.length - 2}` : ''}`;
     if (plainRule.ip_accept_any) return '任意 IP 响应';
     return '自定义规则';
 }
 
 // DNS 规则详情弹窗
 function DnsRuleDetailModal({ rule, index, open, onClose }: { rule: DnsRule; index: number; open: boolean; onClose: () => void }) {
+    const { t } = useTranslation();
     const plainRule = rule as any;
     const detailItems: { label: string; value: any }[] = [];
 
@@ -565,7 +575,7 @@ function DnsRuleDetailModal({ rule, index, open, onClose }: { rule: DnsRule; ind
         <Modal
             open={open}
             onClose={onClose}
-            title={`DNS 规则 #${index + 1} 详情`}
+            title={`${t('routes.dnsRuleDetail')} #${index + 1}`}
             maxWidth="max-w-2xl"
             contentClassName="overflow-y-auto max-h-[70vh]"
         >
@@ -584,7 +594,7 @@ function DnsRuleDetailModal({ rule, index, open, onClose }: { rule: DnsRule; ind
                     ))}
                 </div>
                 <div className="pt-4 border-t border-[var(--app-divider)]">
-                    <div className="text-[11px] text-[var(--app-text-quaternary)] font-medium mb-2">原始 JSON</div>
+                    <div className="text-[11px] text-[var(--app-text-quaternary)] font-medium mb-2">{t('routes.rawJson')}</div>
                     <pre className="text-[11px] text-[var(--app-text-tertiary)] bg-[var(--app-bg-secondary)] rounded-lg p-4 overflow-x-auto max-h-48 overflow-y-auto">
                         {JSON.stringify(rule, null, 2)}
                     </pre>
@@ -596,6 +606,7 @@ function DnsRuleDetailModal({ rule, index, open, onClose }: { rule: DnsRule; ind
 
 // DNS 规则详情展开组件
 function DnsRuleDetail({ rule }: { rule: DnsRule }) {
+    const { t } = useTranslation();
     const plainRule = rule as any;
     const detailItems: { label: string; value: any }[] = [];
 
@@ -610,31 +621,31 @@ function DnsRuleDetail({ rule }: { rule: DnsRule }) {
     const processName = plainRule.process_name;
 
     if (ruleSet && ruleSet.length > 0) {
-        detailItems.push({ label: '规则集', value: ruleSet });
+        detailItems.push({ label: t('routes.detailLabels.ruleSet'), value: ruleSet });
     }
     if (domain && domain.length > 0) {
-        detailItems.push({ label: '域名', value: domain });
+        detailItems.push({ label: t('routes.detailLabels.domain'), value: domain });
     }
     if (domainSuffix && domainSuffix.length > 0) {
-        detailItems.push({ label: '域名后缀', value: domainSuffix });
+        detailItems.push({ label: t('routes.detailLabels.domainSuffix'), value: domainSuffix });
     }
     if (domainKeyword && domainKeyword.length > 0) {
-        detailItems.push({ label: '域名关键词', value: domainKeyword });
+        detailItems.push({ label: t('routes.detailLabels.domainKeyword'), value: domainKeyword });
     }
     if (ipCidr && ipCidr.length > 0) {
-        detailItems.push({ label: 'IP CIDR', value: ipCidr });
+        detailItems.push({ label: t('routes.detailLabels.ipCidr'), value: ipCidr });
     }
     if (sourceIpCidr && sourceIpCidr.length > 0) {
-        detailItems.push({ label: '源 IP', value: sourceIpCidr });
+        detailItems.push({ label: t('routes.detailLabels.sourceIp'), value: sourceIpCidr });
     }
     if (queryType && queryType.length > 0) {
-        detailItems.push({ label: '查询类型', value: queryType.map(String) });
+        detailItems.push({ label: t('routes.detailLabels.queryType'), value: queryType.map(String) });
     }
     if (protocol && protocol.length > 0) {
-        detailItems.push({ label: '协议', value: protocol });
+        detailItems.push({ label: t('routes.detailLabels.protocol'), value: protocol });
     }
     if (processName && processName.length > 0) {
-        detailItems.push({ label: '进程名', value: processName });
+        detailItems.push({ label: t('routes.detailLabels.processName'), value: processName });
     }
 
     const knownKeys = ['server', 'action', 'rcode', 'answer', 'ip_accept_any', 'protocol', 'rule_set', 'domain', 'domain_suffix', 'domain_keyword', 'domain_regex', 'ip_cidr', 'source_ip_cidr', 'port', 'source_port', 'query_type', 'process_name', 'process_path', 'package_name'];
@@ -664,7 +675,7 @@ function DnsRuleDetail({ rule }: { rule: DnsRule }) {
                                 ))}
                                 {item.value.length > DETAIL_ARRAY_LIMIT && (
                                     <span className="inline-flex items-center px-1.5 py-0.5 rounded-[4px] bg-[var(--app-bg-secondary)] text-[var(--app-text-quaternary)]">
-                                        等{item.value.length}项
+                                        {t('routes.moreItems', { count: item.value.length })}
                                     </span>
                                 )}
                             </div>
@@ -680,6 +691,7 @@ function DnsRuleDetail({ rule }: { rule: DnsRule }) {
 
 // DNS 规则行组件
 function DnsRuleItem({ rule, index }: { rule: DnsRule; index: number; key?: React.Key }) {
+    const { t } = useTranslation();
     const plainRule = rule as any;
     const server = plainRule.server;
     const action = plainRule.action;
@@ -697,7 +709,7 @@ function DnsRuleItem({ rule, index }: { rule: DnsRule; index: number; key?: Reac
                         {getDnsRuleDescription(rule)}
                     </span>
                     <div className="flex items-center gap-1 shrink-0">
-                        {server && <Badge tone={getDnsServerTone(server)}>服务器: {server}</Badge>}
+                        {server && <Badge tone={getDnsServerTone(server)}>{t('routes.dnsServers')}: {server}</Badge>}
                         {action && <Badge tone={action === 'reject' ? 'danger' : 'neutral'}>{action}</Badge>}
                         {rcode && <Badge tone="warning">{rcode}</Badge>}
                     </div>
@@ -710,7 +722,7 @@ function DnsRuleItem({ rule, index }: { rule: DnsRule; index: number; key?: Reac
                         onClick={() => setDetailOpen(true)}
                     >
                         <Eye className="w-3 h-3 mr-1" />
-                        查看详情
+                        {t('routes.viewDetail')}
                     </Button>
                 </div>
             </div>
@@ -725,7 +737,8 @@ const RULES_LIST_LIMIT = 50;
 const DNS_RULES_LIST_LIMIT = 50;
 
 export function Routes({ isActive = true }: RoutesProps) {
-    const [config, setConfig] = useState<ConfigData | null>(null);
+const { t } = useTranslation();
+const [config, setConfig] = useState<ConfigData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
@@ -763,13 +776,13 @@ export function Routes({ isActive = true }: RoutesProps) {
         if (!searchQuery.trim()) return rules;
         const q = searchQuery.toLowerCase();
         return rules.filter((rule) => {
-            const desc = getRuleDescription(rule).toLowerCase();
+            const desc = getRuleDescription(rule, t).toLowerCase();
             const outbound = (rule.outbound || '').toLowerCase();
             const action = (rule.action || '').toLowerCase();
             const ruleSetStr = (rule.rule_set || []).join(' ').toLowerCase();
             return desc.includes(q) || outbound.includes(q) || action.includes(q) || ruleSetStr.includes(q);
         });
-    }, [rules, searchQuery]);
+    }, [rules, searchQuery, t]);
 
     // Tab 状态
     const [activeTab, setActiveTab] = useState<TabType>('rules');
@@ -804,13 +817,13 @@ export function Routes({ isActive = true }: RoutesProps) {
         <div className="page-shell text-[var(--app-text-secondary)]">
             <div className="page-header" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
                 <div>
-                    <h1 className="page-title">路由</h1>
-                    <p className="page-subtitle">查看当前配置的路由规则列表与规则集详情。</p>
+                    <h1 className="page-title">{t('routes.title')}</h1>
+                    <p className="page-subtitle">{t('routes.subtitle')}</p>
                 </div>
                 <div className="toolbar" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
                     <Button variant="secondary" size="sm" onClick={() => setConfigModalOpen(true)}>
                         <FileJson className="w-3.5 h-3.5 mr-1.5" />
-                        查看配置
+                        {t('routes.viewConfig')}
                     </Button>
                 </div>
             </div>
@@ -819,7 +832,7 @@ export function Routes({ isActive = true }: RoutesProps) {
                 {loading ? (
                     <div className="empty-state">
                         <RefreshCw className="w-10 h-10 text-[var(--app-text-quaternary)] animate-spin" />
-                        <p className="mt-4 text-[13px] text-[var(--app-text-tertiary)]">正在加载配置...</p>
+                        <p className="mt-4 text-[13px] text-[var(--app-text-tertiary)]">{t('routes.loadingConfig')}</p>
                     </div>
                 ) : error ? (
                     <div className="empty-state">
@@ -828,7 +841,7 @@ export function Routes({ isActive = true }: RoutesProps) {
                         </div>
                         <p className="mt-4 text-[14px] font-medium text-[var(--app-text)]">{error}</p>
                         <Button variant="secondary" size="sm" className="mt-4" onClick={loadConfig}>
-                            重试
+                            {t('common.retry')}
                         </Button>
                     </div>
                 ) : !route ? (
@@ -836,8 +849,8 @@ export function Routes({ isActive = true }: RoutesProps) {
                         <div className="w-14 h-14 rounded-2xl bg-[var(--app-bg-secondary)] flex items-center justify-center">
                             <Route className="w-7 h-7 text-[var(--app-text-quaternary)]" />
                         </div>
-                        <p className="mt-4 text-[14px] font-medium text-[var(--app-text)]">暂无路由配置</p>
-                        <p className="mt-1 text-[12px] text-[var(--app-text-quaternary)]">请先启动内核或生成配置文件</p>
+                        <p className="mt-4 text-[14px] font-medium text-[var(--app-text)]">{t('routes.noRouteConfig')}</p>
+                        <p className="mt-1 text-[12px] text-[var(--app-text-quaternary)]">{t('routes.noRouteConfigHint')}</p>
                     </div>
                 ) : (
                     <>
@@ -847,25 +860,25 @@ export function Routes({ isActive = true }: RoutesProps) {
                                 active={activeTab === 'rules'}
                                 onClick={() => setActiveTab('rules')}
                                 icon={GitBranch}
-                                label="路由规则"
+                                label={t('routes.routeRules')}
                             />
                             <TabButton
                                 active={activeTab === 'dnsRules'}
                                 onClick={() => setActiveTab('dnsRules')}
                                 icon={Wifi}
-                                label="DNS 规则"
+                                label={t('routes.dnsRules')}
                             />
                             <TabButton
                                 active={activeTab === 'ruleSets'}
                                 onClick={() => setActiveTab('ruleSets')}
                                 icon={Database}
-                                label="规则集"
+                                label={t('routes.ruleSets')}
                             />
                             <TabButton
                                 active={activeTab === 'dnsServers'}
                                 onClick={() => setActiveTab('dnsServers')}
                                 icon={Server}
-                                label="DNS 服务器"
+                                label={t('routes.dnsServers')}
                             />
                         </div>
 
@@ -875,7 +888,7 @@ export function Routes({ isActive = true }: RoutesProps) {
                                 {/* 默认出站 */}
                                 {route.final && (
                                     <div className="flex items-center gap-2 mb-4 text-[13px]">
-                                        <span className="text-[var(--app-text-tertiary)]">默认出站</span>
+                                        <span className="text-[var(--app-text-tertiary)]">{t('routes.defaultOutbound')}</span>
                                         <Badge tone={getOutboundTone(route.final)} className="text-[12px]">{route.final}</Badge>
                                     </div>
                                 )}
@@ -886,13 +899,13 @@ export function Routes({ isActive = true }: RoutesProps) {
                                             <div className="panel-title-icon">
                                                 <GitBranch className="w-3.5 h-3.5" />
                                             </div>
-                                            路由规则
+                                            {t('routes.routeRules')}
                                         </div>
                                         <div className="relative w-48">
                                             <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--app-text-quaternary)]" />
                                             <Input
                                                 type="text"
-                                                placeholder="搜索规则..."
+                                                placeholder={t('routes.searchRules')}
                                                 className="pl-8 text-[12px] h-8"
                                                 value={searchQuery}
                                                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -902,7 +915,7 @@ export function Routes({ isActive = true }: RoutesProps) {
                                     {filteredRules.length === 0 ? (
                                         <div className="empty-state min-h-[160px]">
                                             <p className="text-[13px] text-[var(--app-text-tertiary)]">
-                                                {searchQuery ? '未找到匹配的规则' : '暂无路由规则'}
+                                                {searchQuery ? t('routes.noMatchRules') : t('routes.noRouteRules')}
                                             </p>
                                         </div>
                                     ) : (
@@ -923,8 +936,8 @@ export function Routes({ isActive = true }: RoutesProps) {
                                                         onClick={() => setShowAllRules(!showAllRules)}
                                                     >
                                                         {showAllRules
-                                                            ? `收起（显示前 ${RULES_LIST_LIMIT} 条）`
-                                                            : `显示全部 ${filteredRules.length} 条`}
+                                                            ? t('routes.collapseWithLimit', { count: RULES_LIST_LIMIT })
+                                                            : t('routes.showAllCount', { count: filteredRules.length })}
                                                     </Button>
                                                 </div>
                                             )}
@@ -942,12 +955,12 @@ export function Routes({ isActive = true }: RoutesProps) {
                                         <div className="panel-title-icon">
                                             <Database className="w-3.5 h-3.5" />
                                         </div>
-                                        规则集
+                                        {t('routes.ruleSets')}
                                     </div>
                                 </div>
                                 {ruleSets.length === 0 ? (
                                     <div className="empty-state min-h-[120px] p-8">
-                                        <p className="text-[13px] text-[var(--app-text-tertiary)]">暂无规则集</p>
+                                        <p className="text-[13px] text-[var(--app-text-tertiary)]">{t('routes.noRuleSets')}</p>
                                     </div>
                                 ) : (
                                     <div className="p-4 pt-0 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
@@ -965,7 +978,7 @@ export function Routes({ isActive = true }: RoutesProps) {
                                 {/* 默认 DNS 服务器 */}
                                 {dns?.final && (
                                     <div className="flex items-center gap-2 mb-4 text-[13px]">
-                                        <span className="text-[var(--app-text-tertiary)]">默认 DNS 服务器</span>
+                                        <span className="text-[var(--app-text-tertiary)]">{t('routes.defaultDnsServer')}</span>
                                         <Badge tone={getDnsServerTone(dns.final)} className="text-[12px]">{dns.final}</Badge>
                                     </div>
                                 )}
@@ -976,13 +989,13 @@ export function Routes({ isActive = true }: RoutesProps) {
                                             <div className="panel-title-icon">
                                                 <Wifi className="w-3.5 h-3.5" />
                                             </div>
-                                            DNS 规则
+                                            {t('routes.dnsRules')}
                                         </div>
                                         <div className="relative w-48">
                                             <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--app-text-quaternary)]" />
                                             <Input
                                                 type="text"
-                                                placeholder="搜索 DNS 规则..."
+                                                placeholder={t('routes.searchDnsRules')}
                                                 className="pl-8 text-[12px] h-8"
                                                 value={dnsSearchQuery}
                                                 onChange={(e) => setDnsSearchQuery(e.target.value)}
@@ -992,7 +1005,7 @@ export function Routes({ isActive = true }: RoutesProps) {
                                     {filteredDnsRules.length === 0 ? (
                                         <div className="empty-state min-h-[160px]">
                                             <p className="text-[13px] text-[var(--app-text-tertiary)]">
-                                                {dnsSearchQuery ? '未找到匹配的 DNS 规则' : '暂无 DNS 规则'}
+                                                {dnsSearchQuery ? t('routes.noMatchDnsRules') : t('routes.noDnsRules')}
                                             </p>
                                         </div>
                                     ) : (
@@ -1013,8 +1026,8 @@ export function Routes({ isActive = true }: RoutesProps) {
                                                         onClick={() => setShowAllDnsRules(!showAllDnsRules)}
                                                     >
                                                         {showAllDnsRules
-                                                            ? `收起（显示前 ${DNS_RULES_LIST_LIMIT} 条）`
-                                                            : `显示全部 ${filteredDnsRules.length} 条`}
+                                                            ? t('routes.collapseWithLimit', { count: DNS_RULES_LIST_LIMIT })
+                                                            : t('routes.showAllCount', { count: filteredDnsRules.length })}
                                                     </Button>
                                                 </div>
                                             )}
@@ -1032,12 +1045,12 @@ export function Routes({ isActive = true }: RoutesProps) {
                                         <div className="panel-title-icon">
                                             <Server className="w-3.5 h-3.5" />
                                         </div>
-                                        DNS 服务器
+                                        {t('routes.dnsServers')}
                                     </div>
                                 </div>
                                 {dnsServers.length === 0 ? (
                                     <div className="empty-state min-h-[120px] p-8">
-                                        <p className="text-[13px] text-[var(--app-text-tertiary)]">暂无 DNS 服务器</p>
+                                        <p className="text-[13px] text-[var(--app-text-tertiary)]">{t('routes.noDnsServers')}</p>
                                     </div>
                                 ) : (
                                     <div className="p-4 pt-0 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">

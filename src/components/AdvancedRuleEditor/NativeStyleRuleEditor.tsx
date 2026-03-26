@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { useTranslation } from 'react-i18next';
 import { GripVertical, Search, ChevronDown } from 'lucide-react';
 import Sortable from 'sortablejs';
 import type { RuleTreeNode, LogicGroup, LeafRule } from './types';
@@ -8,10 +9,10 @@ import type { RuleFieldConfig } from './types';
 const LOGIC_TYPES = ['all', 'any', 'not'];
 
 /** 规则字段是否匹配搜索词（支持中文、formKey、singboxKey） */
-function fieldMatchesSearch(field: RuleFieldConfig, q: string): boolean {
+function fieldMatchesSearch(field: RuleFieldConfig, q: string, t: (key: string) => string): boolean {
   const s = q.trim().toLowerCase();
   if (!s) return true;
-  const label = field.label.toLowerCase();
+  const label = t(field.label).toLowerCase();
   const formKey = field.formKey.toLowerCase();
   const singboxKey = (field.singboxKey ?? field.formKey).toLowerCase();
   return label.includes(s) || formKey.includes(s) || singboxKey.includes(s);
@@ -32,6 +33,7 @@ function SearchableFieldSelect({
   onConvertToGroup,
   className = '',
 }: SearchableFieldSelectProps) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [dropdownRect, setDropdownRect] = useState<{ top: number; left: number } | null>(null);
@@ -40,7 +42,7 @@ function SearchableFieldSelect({
 
   const safeFields = fields || [];
   const selectedField = safeFields.find(f => f.formKey === value) || safeFields[0];
-  const filtered = safeFields.filter(f => fieldMatchesSearch(f, search));
+  const filtered = safeFields.filter(f => fieldMatchesSearch(f, search, t));
 
   // 打开时计算下拉位置，使用 fixed 避免被父级 overflow 裁剪
   useEffect(() => {
@@ -95,7 +97,7 @@ function SearchableFieldSelect({
             type="text"
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="搜索字段（中文 / domain / domain_suffix）"
+            placeholder={t('advancedRuleEditor.searchFieldsPlaceholder')}
             className="flex-1 min-w-0 text-[12px] bg-transparent outline-none focus:ring-0 placeholder:text-[var(--app-text-quaternary)]"
             autoFocus
           />
@@ -103,7 +105,7 @@ function SearchableFieldSelect({
       </div>
       <div className="overflow-y-auto max-h-[200px] py-1">
         {filtered.length === 0 ? (
-          <div className="px-3 py-4 text-[12px] text-[var(--app-text-quaternary)] text-center">无匹配字段</div>
+          <div className="px-3 py-4 text-[12px] text-[var(--app-text-quaternary)] text-center">{t('advancedRuleEditor.noMatchingFields')}</div>
         ) : (
           filtered.map(field => (
             <button
@@ -118,7 +120,7 @@ function SearchableFieldSelect({
                 value === field.formKey ? 'bg-[var(--app-accent-soft)] text-[var(--app-accent-strong)] font-medium' : 'text-[var(--app-text)]'
               }`}
             >
-              <span>{field.label}</span>
+              <span>{t(field.label)}</span>
               {field.singboxKey && (
                 <span className="text-[10px] text-[var(--app-text-quaternary)] font-mono truncate max-w-[100px]">{field.singboxKey}</span>
               )}
@@ -135,7 +137,7 @@ function SearchableFieldSelect({
           }}
           className="w-full px-3 py-2 text-[12px] text-[var(--app-text-tertiary)] hover:bg-[var(--app-hover)] rounded-[10px] transition-colors"
         >
-          转换为组
+          {t('advancedRuleEditor.convertToGroup')}
         </button>
       </div>
     </div>
@@ -148,7 +150,7 @@ function SearchableFieldSelect({
         onClick={() => setOpen(o => !o)}
         className="w-full flex items-center justify-between gap-2 text-[12px] font-medium text-[var(--app-text-secondary)] bg-[var(--app-panel-soft)] px-3 py-1.5 rounded-[10px] outline-none border border-[var(--app-stroke)] hover:border-[var(--app-stroke-strong)] min-w-[140px] transition"
       >
-        <span className="truncate">{selectedField?.label ?? value}</span>
+        <span className="truncate">{selectedField ? t(selectedField.label) : value}</span>
         <ChevronDown className={`w-3.5 h-3.5 shrink-0 text-[var(--app-text-quaternary)] transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {dropdownContent && createPortal(dropdownContent, document.body)}
@@ -217,6 +219,7 @@ export function NativeStyleRuleEditor({
   stringFields,
   isRoot = false,
 }: NativeStyleRuleEditorProps) {
+  const { t } = useTranslation();
   const [isFolded, setIsFolded] = useState(false);
   const sortableRef = useRef<HTMLDivElement>(null);
   const sortableInstance = useRef<Sortable | null>(null);
@@ -358,15 +361,15 @@ export function NativeStyleRuleEditor({
             onChange={(e) => handleValueChange(path, e.target.value)}
             className="flex-1 min-w-0 text-[13px] bg-[var(--app-panel-soft)] px-3 py-1.5 rounded-[10px] border border-[var(--app-stroke)] hover:border-[var(--app-stroke-strong)] outline-none"
           >
-            <option value="true">是</option>
-            <option value="false">否</option>
+            <option value="true">{t('advancedRuleEditor.yes')}</option>
+            <option value="false">{t('advancedRuleEditor.no')}</option>
           </select>
         ) : (
           <input
             type="text"
             value={leafNode.value}
             onChange={(e) => handleValueChange(path, e.target.value)}
-            placeholder={fieldConfig?.placeholder || '填写匹配值...'}
+            placeholder={fieldConfig?.placeholder || t('advancedRuleEditor.matchValuePlaceholder')}
             className="flex-1 text-[13px] bg-transparent border-none outline-none focus:ring-0 placeholder:text-[var(--app-text-quaternary)] min-w-0"
           />
         )}
@@ -374,7 +377,7 @@ export function NativeStyleRuleEditor({
           type="button"
           onClick={() => handleRemoveNode(path)}
           className="opacity-0 group-hover:opacity-100 p-1.5 text-[var(--app-text-quaternary)] hover:text-[var(--app-danger)] transition"
-          aria-label="删除"
+          aria-label={t('common.delete')}
         >
           <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
             <path d="M6 18L18 6M6 6l12 12" />
@@ -421,9 +424,9 @@ export function NativeStyleRuleEditor({
               onClick={(e) => e.stopPropagation()}
               className="text-[13px] font-semibold bg-transparent outline-none cursor-pointer text-[var(--app-text)] focus:text-[var(--app-accent)]"
             >
-              <option value="all">符合全部</option>
-              <option value="any">符合任一</option>
-              <option value="not">不符合</option>
+              <option value="all">{t('advancedRuleEditor.logicAll')}</option>
+              <option value="any">{t('advancedRuleEditor.logicAny')}</option>
+              <option value="not">{t('advancedRuleEditor.logicNot')}</option>
             </select>
           </div>
           <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
@@ -432,14 +435,14 @@ export function NativeStyleRuleEditor({
               onClick={() => handleAddRule(path)}
               className="text-[12px] font-medium text-[var(--app-accent)] hover:bg-[var(--app-accent-soft)] px-3 py-1.5 rounded-[10px] transition"
             >
-              + 增加
+              {t('advancedRuleEditor.addRule')}
             </button>
             {!isRoot && onRemoveNode && (
               <button
                 type="button"
                 onClick={() => handleRemoveNode(path)}
                 className="p-2 text-[var(--app-text-quaternary)] hover:text-[var(--app-danger)] transition"
-                aria-label="删除"
+                aria-label={t('common.delete')}
               >
                 <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                   <path d="M6 18L18 6M6 6l12 12" />
@@ -459,7 +462,7 @@ export function NativeStyleRuleEditor({
           >
             {groupNode.rules.length === 0 ? (
               <div className="text-center py-4 text-[var(--app-text-quaternary)] text-[13px] italic">
-                暂无规则
+                {t('common.noRules')}
               </div>
             ) : (
               groupNode.rules.map((rule, index) => (

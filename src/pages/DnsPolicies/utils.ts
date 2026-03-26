@@ -1,6 +1,7 @@
 /**
  * DNS策略页面工具函数
  */
+import type { TFunction } from 'i18next';
 import type { DnsPolicy } from '../../types/dns-policy';
 import { getDnsPolicyRuleSet } from '../../services/dns-policy';
 import type { RuleProvider } from '../../types/rule-providers';
@@ -8,24 +9,24 @@ import type { RuleProvider } from '../../types/rule-providers';
 import { DNS_SERVER_LABELS } from '../../types/dns-policy';
 
 export const DNS_SERVER_OPTIONS = [
-    { value: 'local', label: DNS_SERVER_LABELS.local },
-    { value: 'remote', label: DNS_SERVER_LABELS.remote },
-    { value: 'block', label: DNS_SERVER_LABELS.block },
+    { value: 'local', labelKey: 'dnsPolicies.dnsServerLocal' as const },
+    { value: 'remote', labelKey: 'dnsPolicies.dnsServerRemote' as const },
+    { value: 'block', labelKey: 'dnsPolicies.dnsServerBlock' as const },
 ] as const;
 
 export const DNS_SERVER_LABEL_MAP: Record<string, string> = DNS_SERVER_LABELS;
 
-export function formatRuleSetDisplay(value: string, ruleProviders?: RuleProvider[]): string {
+export function formatRuleSetDisplay(value: string, ruleProviders: RuleProvider[] | undefined, t: TFunction): string {
     const colonIdx = value.indexOf(':');
     const prefix = colonIdx >= 0 ? value.substring(0, colonIdx) : '';
     const rawName = colonIdx >= 0 ? value.substring(colonIdx + 1) : value;
 
     if (prefix === 'acl' && ruleProviders) {
         const provider = ruleProviders.find(p => p.id === rawName || p.name === rawName);
-        return `规则:${provider?.name || rawName}`;
+        return t('policies.rulePrefix') + (provider?.name || rawName);
     }
 
-    return `规则:${rawName}`;
+    return t('policies.rulePrefix') + rawName;
 }
 
 export function getRuleSetBadgeClass(value: string): string {
@@ -44,10 +45,18 @@ export function isServerDisplayable(serverValue: string | undefined | null): boo
     return DISPLAYABLE_SERVERS.has(trimmed) || DISPLAYABLE_SERVERS.has(trimmed.toLowerCase());
 }
 
-export function getServerLabel(serverValue: string | undefined | null): string {
-    if (serverValue == null) return '未设置';
-    const option = DNS_SERVER_OPTIONS.find(o => o.value === serverValue);
-    if (option) return option.label;
+const SERVER_KEY: Record<string, string> = {
+    local: 'dnsPolicies.dnsServerLocal',
+    remote: 'dnsPolicies.dnsServerRemote',
+    block: 'dnsPolicies.dnsServerBlock',
+};
+
+export function getServerLabel(serverValue: string | undefined | null, t: TFunction): string {
+    if (serverValue == null) return t('outbound.notSet');
+    const key = SERVER_KEY[serverValue] ?? SERVER_KEY[serverValue.toLowerCase()];
+    if (key) return t(key);
+    const opt = DNS_SERVER_OPTIONS.find(o => o.value === serverValue || o.value === serverValue.toLowerCase());
+    if (opt) return t(opt.labelKey);
     return DNS_SERVER_LABEL_MAP[serverValue] ?? DNS_SERVER_LABEL_MAP[serverValue.toLowerCase()] ?? serverValue;
 }
 
@@ -101,13 +110,14 @@ export function getPolicyMatchCount(policy: DnsPolicy): number {
 
 export function getPolicyPreviewBadges(
     policy: DnsPolicy,
-    ruleProviders?: RuleProvider[]
+    ruleProviders: RuleProvider[] | undefined,
+    t: TFunction
 ): Array<{ label: string; className: string }> {
     const badges: Array<{ label: string; className: string }> = [];
 
     getPolicyRuleSets(policy).slice(0, 2).forEach((value) => {
         badges.push({
-            label: formatRuleSetDisplay(value, ruleProviders),
+            label: formatRuleSetDisplay(value, ruleProviders, t),
             className: getRuleSetBadgeClass(value)
         });
     });
@@ -115,7 +125,7 @@ export function getPolicyPreviewBadges(
     const lr = (policy as any).logical_rule;
     if (lr && typeof lr === 'object' && 'rules' in lr && Array.isArray((lr as { rules: unknown[] }).rules)) {
         const n = countRulesInLogical(lr as { rules: unknown[] });
-        if (n > 0) badges.push({ label: `规则 ×${n}`, className: 'bg-sky-50 text-sky-700 border-sky-100' });
+        if (n > 0) badges.push({ label: t('policies.ruleLogicBadge', { count: n }), className: 'bg-sky-50 text-sky-700 border-sky-100' });
     }
 
     return badges.slice(0, 5);

@@ -2,7 +2,8 @@
  * DNS 服务器管理
  * 基于 sing-box DNS Server 配置：https://sing-box.sagernet.org/configuration/dns/server/
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Field';
 import { Select } from '../../components/ui/Field';
@@ -43,15 +44,6 @@ export interface DnsServerConfig {
   [key: string]: unknown;
 }
 
-const DNS_SERVER_TYPES: { value: DnsServerType; label: string }[] = [
-  { value: 'local', label: 'Local（本地网关）' },
-  { value: 'udp', label: 'UDP' },
-  { value: 'tls', label: 'TLS (DoT)' },
-  { value: 'https', label: 'HTTPS (DoH)' },
-  { value: 'raw', label: 'Raw（原始JSON）' },
-];
-
-
 const DEFAULT_PORTS: Partial<Record<DnsServerType, number>> = {
   udp: 53,
   tls: 853,
@@ -68,6 +60,18 @@ interface DnsServersTabProps {
 }
 
 export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServersTabProps) {
+  const { t } = useTranslation();
+  const dnsServerTypeOptions = useMemo(
+    () =>
+      [
+        { value: 'local' as const, label: t('dnsServersTab.typeLocal') },
+        { value: 'udp' as const, label: t('dnsServersTab.typeUdp') },
+        { value: 'tls' as const, label: t('dnsServersTab.typeTls') },
+        { value: 'https' as const, label: t('dnsServersTab.typeHttps') },
+        { value: 'raw' as const, label: t('dnsServersTab.typeRaw') },
+      ] satisfies { value: DnsServerType; label: string }[],
+    [t]
+  );
   const [dnsServers, setDnsServers] = useState<any[]>([]);
   const [profileId, setProfileId] = useState<string>('');
   const [saved, setSaved] = useState(false);
@@ -123,33 +127,29 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
   }, [isActive]);
 
   const validateForm = (): string => {
-    if (!form.name?.trim()) return '显示名称不能为空';
-    // id 现在由数据库自动生成，不需要验证
+    if (!form.name?.trim()) return t('dnsServersTab.valNameRequired');
     const others = dnsServers.filter((s) => s.id !== editingId);
-    // 检查 name 是否重复（可选，根据需求决定是否允许重名）
     const name = form.name.trim();
     if (others.some((s) => (s.name || '').toLowerCase() === name.toLowerCase())) {
-      return `显示名称 "${name}" 已存在`;
+      return t('dnsServersTab.valNameDuplicate', { name });
     }
     const needsServer = ['udp', 'tls', 'https'].includes(form.type || '');
-    if (needsServer && !form.server?.trim()) return '服务器地址不能为空';
-    // 检查如果 server 是域名，则 domain_resolver 必须填写
+    if (needsServer && !form.server?.trim()) return t('dnsServersTab.valServerRequired');
     if (needsServer && form.server?.trim()) {
       const serverAddr = form.server.trim();
-      // 判断是否为域名（非 IP 地址）
       const isDomain = !/^(\d{1,3}\.){3}\d{1,3}$/.test(serverAddr) &&
                        !/^\[([0-9a-fA-F:]+)\]$/.test(serverAddr) &&
                        !/^[0-9a-fA-F:]+$/.test(serverAddr);
       if (isDomain && !form.domain_resolver?.trim()) {
-        return '服务器地址为域名时，必须指定域名解析器';
+        return t('dnsServersTab.valResolverRequired');
       }
     }
     if (form.type === 'raw') {
       try {
-        if (!rawJsonText.trim()) return '原始 JSON 不能为空';
+        if (!rawJsonText.trim()) return t('dnsServersTab.valRawEmpty');
         JSON.parse(rawJsonText);
       } catch {
-        return '原始 JSON 格式无效';
+        return t('dnsServersTab.valRawInvalid');
       }
     }
     return '';
@@ -283,9 +283,9 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
 
   const getSourceLabel = (source: string) => {
     switch (source) {
-      case 'dns': return 'DNS 策略';
-      case 'route': return '路由策略';
-      case 'dns_server': return 'DNS 服务器域名解析';
+      case 'dns': return t('dnsServersTab.refTypeDns');
+      case 'route': return t('dnsServersTab.refTypeRoute');
+      case 'dns_server': return t('dnsServersTab.refTypeDnsServer');
       default: return source;
     }
   };
@@ -295,7 +295,7 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
     const refs = s.id ? await window.ipcRenderer.db.getDnsServerRefs(s.id) : [];
     if (refs.length > 0) {
       const lines = refs.map((r) => `#${r.index} ${r.name}（${getSourceLabel(r.source)}）`);
-      setErrorMessage(`「${id}」正在被以下规则引用，无法删除：\n\n${lines.join('\n')}\n\n请先移除上述规则中的引用。`);
+      setErrorMessage(t('dnsServersTab.refBlockDelete', { id, lines: lines.join('\n') }));
       setErrorModalOpen(true);
       return;
     }
@@ -313,7 +313,7 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
       const refs = s.id ? await window.ipcRenderer.db.getDnsServerRefs(s.id) : [];
       if (refs.length > 0) {
         const lines = refs.map((r) => `#${r.index} ${r.name}（${getSourceLabel(r.source)}）`);
-        setErrorMessage(`「${id}」正在被以下规则引用，无法禁用：\n\n${lines.join('\n')}\n\n请先移除上述规则中的引用。`);
+        setErrorMessage(t('dnsServersTab.refBlockDisable', { id, lines: lines.join('\n') }));
         setErrorModalOpen(true);
         return;
       }
@@ -359,17 +359,17 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
         <SectionHeader>
           <div>
             <h2 className="text-[12px] font-semibold uppercase tracking-[0.18em] text-[var(--app-text-quaternary)]">
-              DNS 服务器
+              {t('dnsServersTab.title')}
             </h2>
             <p className="text-[12px] text-[var(--app-text-quaternary)] mt-1">
-              管理 sing-box DNS 服务器列表，参考{' '}
+              {t('dnsServersTab.subtitle')}{' '}
               <a
                 href="https://sing-box.sagernet.org/configuration/dns/server/"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-[var(--app-accent)] hover:underline"
               >
-                sing-box 文档
+                {t('dnsServersTab.docLink')}
               </a>
             </p>
           </div>
@@ -377,30 +377,30 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
             {saved && (
               <span className="inline-flex items-center gap-1 text-[11px] text-green-600">
                 <Check className="w-3.5 h-3.5" />
-                已保存
+                {t('dnsServersTab.saved')}
               </span>
             )}
             <Button variant="primary" size="sm" onClick={openAddModal}>
               <Plus className="w-4 h-4 mr-1.5" />
-              添加服务器
+              {t('dnsServersTab.addServer')}
             </Button>
           </div>
         </SectionHeader>
         <div className="panel-section overflow-x-auto">
           {dnsServers.length === 0 ? (
             <div className="py-12 text-center text-[var(--app-text-tertiary)] text-[13px]">
-              暂无 DNS 服务器，点击「添加服务器」开始配置
+              {t('dnsServersTab.emptyHint')}
             </div>
           ) : (
             <table className="data-table w-full">
               <thead className="border-b border-[rgba(39,44,54,0.08)]">
                 <tr className="h-9">
-                  <th className="w-12 shrink-0 pl-4 pr-2 py-1.5 text-center text-[11px] font-medium text-[var(--app-text-quaternary)]">序号</th>
-                  <th className="w-[72px] shrink-0 px-2 py-1.5 text-center text-[11px] font-medium text-[var(--app-text-quaternary)]">类型</th>
-                    <th className="min-w-[100px] px-2 py-1.5 text-left text-[11px] font-medium text-[var(--app-text-quaternary)]">显示名称</th>
-                  <th className="min-w-[140px] px-2 py-1.5 text-left text-[11px] font-medium text-[var(--app-text-quaternary)]">地址</th>
-                  <th className="w-[60px] shrink-0 px-2 py-1.5 text-center text-[11px] font-medium text-[var(--app-text-quaternary)]">出站</th>
-                  <th className="w-[140px] shrink-0 pl-2 pr-4 py-1.5 text-right text-[11px] font-medium text-[var(--app-text-quaternary)]">操作</th>
+                  <th className="w-12 shrink-0 pl-4 pr-2 py-1.5 text-center text-[11px] font-medium text-[var(--app-text-quaternary)]">{t('dnsServersTab.colIndex')}</th>
+                  <th className="w-[72px] shrink-0 px-2 py-1.5 text-center text-[11px] font-medium text-[var(--app-text-quaternary)]">{t('dnsServersTab.colType')}</th>
+                    <th className="min-w-[100px] px-2 py-1.5 text-left text-[11px] font-medium text-[var(--app-text-quaternary)]">{t('dnsServersTab.colName')}</th>
+                  <th className="min-w-[140px] px-2 py-1.5 text-left text-[11px] font-medium text-[var(--app-text-quaternary)]">{t('dnsServersTab.colAddress')}</th>
+                  <th className="w-[60px] shrink-0 px-2 py-1.5 text-center text-[11px] font-medium text-[var(--app-text-quaternary)]">{t('dnsServersTab.colDetour')}</th>
+                  <th className="w-[140px] shrink-0 pl-2 pr-4 py-1.5 text-right text-[11px] font-medium text-[var(--app-text-quaternary)]">{t('dnsServersTab.colActions')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -420,7 +420,7 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
                         {s.is_default && (
                           <span className="inline-flex items-center gap-1 text-[11px] text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full shrink-0">
                             <CircleDot className="w-3 h-3 fill-emerald-600" />
-                            默认
+                            {t('dnsServersTab.defaultBadge')}
                           </span>
                         )}
                       </div>
@@ -437,7 +437,7 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
                     </td>
                     <td className="w-[60px] shrink-0 px-2 py-1.5 text-center align-middle">
                       <span className={`badge text-[10px] ${s.detour ? 'badge-accent' : 'badge-neutral'}`}>
-                        {s.detour ? '代理' : '直连'}
+                        {s.detour ? t('dnsServersTab.detourProxy') : t('dnsServersTab.detourDirect')}
                       </span>
                     </td>
                     <td className="w-[140px] shrink-0 pl-2 pr-4 py-1.5 text-right align-middle">
@@ -446,8 +446,8 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
                           variant="ghost"
                           size="icon"
                           onClick={() => handleToggleEnabled(s)}
-                          aria-label={s.enabled === false ? '启用' : '禁用'}
-                          title={s.enabled === false ? '启用' : '禁用'}
+                          aria-label={s.enabled === false ? t('dnsServersTab.enable') : t('dnsServersTab.disable')}
+                          title={s.enabled === false ? t('dnsServersTab.enable') : t('dnsServersTab.disable')}
                         >
                           <Power className={`w-4 h-4 ${s.enabled === false ? 'text-[var(--app-text-quaternary)]' : 'text-green-600'}`} />
                         </Button>
@@ -455,16 +455,16 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
                           variant="ghost"
                           size="icon"
                           onClick={() => handleSetDefault(s)}
-                          aria-label="设为默认"
-                          title="设为默认"
+                          aria-label={t('dnsServersTab.setDefault')}
+                          title={t('dnsServersTab.setDefault')}
                           disabled={s.is_default === true || s.enabled === false}
                         >
                           <CircleDot className={`w-4 h-4 ${s.is_default ? 'text-emerald-600 fill-emerald-600' : 'text-[var(--app-text-tertiary)]'}`} />
                         </Button>
-                        <Button variant="ghost" size="icon" onClick={() => openEditModal(s)} aria-label="编辑">
+                        <Button variant="ghost" size="icon" onClick={() => openEditModal(s)} aria-label={t('dnsServersTab.edit')}>
                           <Pencil className="w-4 h-4" />
                         </Button>
-                        <Button variant="ghost" size="icon" onClick={() => handleDelete(s)} aria-label="删除">
+                        <Button variant="ghost" size="icon" onClick={() => handleDelete(s)} aria-label={t('dnsServersTab.delete')}>
                           <Trash2 className="w-4 h-4 text-red-500" />
                         </Button>
                       </div>
@@ -481,33 +481,32 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
       <Modal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
-        title={editingId ? '编辑 DNS 服务器' : '添加 DNS 服务器'}
+        title={editingId ? t('dnsServersTab.modalEditTitle') : t('dnsServersTab.modalAddTitle')}
         maxWidth="max-w-md"
         contentClassName="p-5"
         footer={
           <>
             <Button variant="secondary" onClick={() => setModalOpen(false)}>
-              取消
+              {t('common.cancel')}
             </Button>
-            <Button onClick={handleSubmit}>保存</Button>
+            <Button onClick={handleSubmit}>{t('common.save')}</Button>
           </>
         }
       >
         <div className="space-y-4">
           <div>
-            <label className="block text-[12px] font-medium text-[var(--app-text-secondary)] mb-1.5">类型</label>
+            <label className="block text-[12px] font-medium text-[var(--app-text-secondary)] mb-1.5">{t('dnsServersTab.typeLabel')}</label>
             <Select
               value={form.type}
               onChange={(e) => {
-                const t = e.target.value as DnsServerType;
-                // 切换类型时，重置所有字段为默认值
+                const nextType = e.target.value as DnsServerType;
                 setForm({
-                  type: t,
+                  type: nextType,
                   id: form.id ?? '',
                   name: form.name ?? '',
                   server: '',
-                  server_port: DEFAULT_PORTS[t] ?? 53,
-                  path: getDefaultPath(t),
+                  server_port: DEFAULT_PORTS[nextType] ?? 53,
+                  path: getDefaultPath(nextType),
                   detour: '',
                   preferred_detour: '',
                   domain_resolver: '',
@@ -518,7 +517,7 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
               }}
               className="w-full"
             >
-              {DNS_SERVER_TYPES.map(({ value, label }) => (
+              {dnsServerTypeOptions.map(({ value, label }) => (
                 <option key={value} value={value}>
                   {label}
                 </option>
@@ -527,31 +526,29 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
           </div>
 
           <div>
-            <label className="block text-[12px] font-medium text-[var(--app-text-secondary)] mb-1.5">显示名称</label>
+            <label className="block text-[12px] font-medium text-[var(--app-text-secondary)] mb-1.5">{t('dnsServersTab.displayName')}</label>
             <Input
               value={form.name}
               onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-              placeholder="例如: Google DNS, 阿里云 DNS"
+              placeholder={t('dnsServersTab.displayNamePlaceholder')}
               className="w-full"
             />
-            <p className="text-[11px] text-[var(--app-text-quaternary)] mt-1">用于界面显示，便于识别</p>
+            <p className="text-[11px] text-[var(--app-text-quaternary)] mt-1">{t('dnsServersTab.displayNameHint')}</p>
           </div>
 
           {needsServerField && (
             <>
               <div>
-                <label className="block text-[12px] font-medium text-[var(--app-text-secondary)] mb-1.5">服务器地址</label>
+                <label className="block text-[12px] font-medium text-[var(--app-text-secondary)] mb-1.5">{t('dnsServersTab.serverAddress')}</label>
                 <Input
                   value={form.server}
                   onChange={(e) => setForm((f) => ({ ...f, server: e.target.value }))}
-                  placeholder={
-                      '8.8.8.8 或 dns.example.com'
-                  }
+                  placeholder={t('dnsServersTab.serverAddressPlaceholder')}
                   className="w-full"
                 />
               </div>
               <div>
-                <label className="block text-[12px] font-medium text-[var(--app-text-secondary)] mb-1.5">端口</label>
+                <label className="block text-[12px] font-medium text-[var(--app-text-secondary)] mb-1.5">{t('dnsServersTab.port')}</label>
                 <Input
                   type="number"
                   value={form.server_port ?? defaultPort}
@@ -564,7 +561,7 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
 
           {needsPathField && (
             <div>
-              <label className="block text-[12px] font-medium text-[var(--app-text-secondary)] mb-1.5">路径</label>
+              <label className="block text-[12px] font-medium text-[var(--app-text-secondary)] mb-1.5">{t('dnsServersTab.path')}</label>
               <Input
                 value={form.path}
                 onChange={(e) => setForm((f) => ({ ...f, path: e.target.value }))}
@@ -577,14 +574,14 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
           {needsDomainResolver && (
             <div>
               <label className="block text-[12px] font-medium text-[var(--app-text-secondary)] mb-1.5">
-                域名解析 <span className="text-red-500">*</span>
+                {t('dnsServersTab.domainResolver')} <span className="text-red-500">*</span>
               </label>
               <Select
                 value={form.domain_resolver || ''}
                 onChange={(e) => setForm((f) => ({ ...f, domain_resolver: e.target.value }))}
                 className="w-full"
               >
-                <option value="">请选择 DNS 服务器</option>
+                <option value="">{t('dnsServersTab.selectDnsServer')}</option>
                 {dnsServers
                   .filter((s) => s.id !== editingId && s.enabled !== false)
                   .map((s) => (
@@ -594,7 +591,7 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
                   ))}
               </Select>
               <p className="text-[11px] text-[var(--app-text-quaternary)] mt-1">
-                服务器地址为域名时必须指定，用于解析服务器的域名
+                {t('dnsServersTab.domainResolverRequired')}
               </p>
             </div>
           )}
@@ -603,26 +600,26 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
             <>
               {/* 出站字段：只有 selector_out 或不选 */}
               <div>
-                <label className="block text-[12px] font-medium text-[var(--app-text-secondary)] mb-1.5">出站</label>
+                <label className="block text-[12px] font-medium text-[var(--app-text-secondary)] mb-1.5">{t('dnsServersTab.detourLabel')}</label>
                 <Select
                   value={form.detour || ''}
                   onChange={(e) => setForm((f) => ({ ...f, detour: e.target.value }))}
                   className="w-full"
                 >
-                  <option value="">直连</option>
-                  <option value="selector_out">代理</option>
+                  <option value="">{t('dnsServersTab.detourDirect')}</option>
+                  <option value="selector_out">{t('dnsServersTab.detourProxy')}</option>
                 </Select>
                 <p className="text-[11px] text-[var(--app-text-quaternary)] mt-1">
-                  可选，指定连接此 DNS 服务器的出站
+                  {t('dnsServersTab.detourOptionalHint')}
                 </p>
               </div>
               {/* 订阅出站节点 */}
               <OutboundSelector
                 value={form.preferred_detour || null}
                 onChange={(tag) => setForm((f) => ({ ...f, preferred_detour: tag || '' }))}
-                label="订阅出站节点"
-                placeholder="不指定"
-                hint="选择后将覆盖上面的出站（当前订阅有效）"
+                label={t('dnsServersTab.preferredOutbound')}
+                placeholder={t('dnsServersTab.preferredOutboundPlaceholder')}
+                hint={t('dnsServersTab.preferredOutboundHint')}
                 filterDirectBlock={true}
               />
             </>
@@ -630,17 +627,17 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
 
           {form.type === 'local' && (
             <div>
-              <label className="block text-[12px] font-medium text-[var(--app-text-secondary)] mb-1.5">解析方式</label>
+              <label className="block text-[12px] font-medium text-[var(--app-text-secondary)] mb-1.5">{t('dnsServersTab.resolverMode')}</label>
               <Select
                 value={form.prefer_go ? 'true' : 'false'}
                 onChange={(e) => setForm((f) => ({ ...f, prefer_go: e.target.value === 'true' }))}
                 className="w-full"
               >
-                <option value="false">系统原生解析</option>
-                <option value="true">Go 解析（prefer_go）</option>
+                <option value="false">{t('dnsServersTab.resolverSystem')}</option>
+                <option value="true">{t('dnsServersTab.resolverGo')}</option>
               </Select>
               <p className="text-[11px] text-[var(--app-text-quaternary)] mt-1">
-                Go 解析可避免部分系统 DNS 问题，但可能稍慢
+                {t('dnsServersTab.resolverGoHint')}
               </p>
             </div>
           )}
@@ -649,16 +646,9 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
             <JsonEditor
               value={rawJsonText}
               onChange={setRawJsonText}
-              placeholder={`输入 sing-box DNS 服务器 JSON 配置，例如：
-{
-  "type": "udp",
-  "tag": "my-dns",
-  "server": "8.8.8.8",
-  "server_port": 53,
-  "detour": "proxy"
-}`}
+              placeholder={t('dnsServersTab.rawEditorPlaceholder')}
               rows={12}
-              hint="输入完整的JSON 配置，其中tag字段会被名称覆盖"
+              hint={t('dnsServersTab.rawHint')}
               onFormatError={(err) => {
                 setErrorMessage(err);
                 setErrorModalOpen(true);
@@ -672,10 +662,10 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
       <Modal
         open={errorModalOpen}
         onClose={() => setErrorModalOpen(false)}
-        title="配置错误"
+        title={t('dnsServersTab.errorModalTitle')}
         maxWidth="max-w-md"
         contentClassName="p-5"
-        footer={<Button onClick={() => setErrorModalOpen(false)}>确定</Button>}
+        footer={<Button onClick={() => setErrorModalOpen(false)}>{t('dnsServersTab.ok')}</Button>}
       >
         <div className="flex items-start gap-3">
           <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />

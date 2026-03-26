@@ -8,8 +8,6 @@ import * as dbUtils from './db';
 import axios from 'axios';
 import fs from 'node:fs';
 import path from 'node:path';
-import * as jschardet from 'jschardet';
-import * as iconv from 'iconv-lite';
 import { createLogger } from './logger';
 import { getProfilesDir, getRulesetsDir } from './paths';
 import { downloadAndConvertRuleSet, getRuleProviderFileBaseName } from './ruleset-utils';
@@ -64,8 +62,8 @@ async function updateProfile(profileId: string): Promise<boolean> {
         return false;
     }
 
-    log.info(`开始更新订阅配置: ${profile.name} (ID: ${profileId})`);
-    log.info(`订阅地址: ${profile.url}`);
+    log.info(`Starting profile update: ${profile.name} (ID: ${profileId})`);
+    log.info(`Profile URL: ${profile.url}`);
 
     const subscriptionUserAgent = getSubscriptionUserAgent();
     log.info(`User-Agent: ${subscriptionUserAgent}`);
@@ -80,15 +78,8 @@ async function updateProfile(profileId: string): Promise<boolean> {
         });
 
         const buffer = Buffer.from(response.data);
-        const detected = jschardet.detect(buffer);
-        let content: string;
-
-        if (detected.encoding && detected.encoding.toLowerCase() !== 'utf-8' && detected.encoding.toLowerCase() !== 'ascii') {
-            log.debug(`检测到编码: ${detected.encoding}, 转换为 UTF-8`);
-            content = iconv.decode(buffer, detected.encoding);
-        } else {
-            content = buffer.toString('utf-8');
-        }
+        // 默认 UTF-8
+        let content = buffer.toString('utf-8');
 
         if (content.charCodeAt(0) === 0xfeff) {
             content = content.slice(1);
@@ -114,11 +105,11 @@ async function updateProfile(profileId: string): Promise<boolean> {
             await onProfileUpdatedHook(profileId);
         }
 
-        log.info(`订阅配置更新成功: ${profile.name} (ID: ${profileId})`);
-        log.debug(`文件保存至: ${filePath}`);
+        log.info(`Profile update success: ${profile.name} (ID: ${profileId})`);
+        log.debug(`File saved to: ${filePath}`);
         return true;
     } catch (err: any) {
-        log.error(`订阅配置更新失败: ${profile.name} (ID: ${profileId}) - ${err.message}`);
+        log.error(`Profile update failed: ${profile.name} (ID: ${profileId}) - ${err.message}`);
         return false;
     }
 }
@@ -138,8 +129,8 @@ async function updateRuleProvider(providerId: string): Promise<boolean> {
         return false;
     }
 
-    log.info(`开始更新规则集: ${provider.name} (ID: ${providerId})`);
-    log.info(`规则集地址: ${provider.url}`);
+    log.info(`Starting ruleset update: ${provider.name} (ID: ${providerId})`);
+    log.info(`Ruleset URL: ${provider.url}`);
 
     try {
         const providerType = (provider.type || 'clash') as 'clash' | 'singbox';
@@ -156,11 +147,11 @@ async function updateRuleProvider(providerId: string): Promise<boolean> {
         lastRuleProviderUpdate.set(providerId, new Date());
         // 注意：不再在这里调用 hook，由批量更新函数统一调用
 
-        log.info(`规则集更新成功: ${provider.name} (ID: ${providerId})`);
-        log.debug(`文件保存至: ${result.srsPath}`);
+        log.info(`Ruleset update success: ${provider.name} (ID: ${providerId})`);
+        log.debug(`File saved to: ${result.srsPath}`);
         return true;
     } catch (err: any) {
-        log.error(`规则集更新失败: ${provider.name} (ID: ${providerId}) - ${err.message}`);
+        log.error(`Ruleset update failed: ${provider.name} (ID: ${providerId}) - ${err.message}`);
         return false;
     }
 }
@@ -185,7 +176,7 @@ function startProfileScheduler(profileId: string, intervalSeconds: number) {
         }
     }
 
-    log.info(`启动订阅配置定时更新: Profile ${profileId}, 间隔 ${intervalSeconds} 秒`);
+    log.info(`Starting profile scheduled update: Profile ${profileId}, interval ${intervalSeconds} seconds`);
 
     // 记录启动时间
     lastProfileUpdate.set(profileId, new Date());
@@ -203,7 +194,7 @@ function startProfileScheduler(profileId: string, intervalSeconds: number) {
 
         const elapsedSeconds = Math.floor((now.getTime() - lastUpdate.getTime()) / 1000);
         if (elapsedSeconds >= intervalSeconds) {
-            log.debug(`订阅配置 ${profileId} 已经过 ${elapsedSeconds} 秒，需要更新`);
+            log.debug(`Profile ${profileId} elapsed ${elapsedSeconds} seconds, needs update`);
             await updateProfile(profileId);
         }
     }, CHECK_INTERVAL * 1000);
@@ -240,14 +231,14 @@ async function checkAndUpdateAllRuleProviders(): Promise<void> {
         return;
     }
 
-    log.info(`批量更新规则集: ${providersToUpdate.length} 个需要更新`);
+    log.info(`Batch updating rulesets: ${providersToUpdate.length} need update`);
 
     // 依次更新所有规则集
     for (const providerId of providersToUpdate) {
         try {
             await updateRuleProvider(providerId);
         } catch (err: any) {
-            log.error(`规则集 ${providerId} 更新失败: ${err.message}`);
+            log.error(`Ruleset ${providerId} update failed: ${err.message}`);
         }
     }
 
@@ -255,9 +246,9 @@ async function checkAndUpdateAllRuleProviders(): Promise<void> {
     if (onRuleProviderUpdatedHook) {
         try {
             await onRuleProviderUpdatedHook();
-            log.info('规则集批量更新完成，已通知前台');
+            log.info('Ruleset batch update complete, frontend notified');
         } catch (err: any) {
-            log.error(`规则集更新 hook 调用失败: ${err.message}`);
+            log.error(`Ruleset update hook call failed: ${err.message}`);
         }
     }
 }
@@ -268,7 +259,7 @@ async function checkAndUpdateAllRuleProviders(): Promise<void> {
 function startRuleProviderScheduler(providerId: string, intervalSeconds: number) {
     // 记录启动时间
     lastRuleProviderUpdate.set(providerId, new Date());
-    log.debug(`记录规则集启动时间: Provider ${providerId}`);
+    log.debug(`Recording ruleset start time: Provider ${providerId}`);
 }
 
 /**
@@ -284,11 +275,11 @@ function startGlobalRuleProviderTimer(intervalSeconds: number) {
     ruleProviderGlobalInterval = intervalSeconds;
 
     if (intervalSeconds <= 0) {
-        log.info('规则集全局更新已禁用');
+        log.info('Ruleset global update disabled');
         return;
     }
 
-    log.info(`启动规则集全局定时更新检查，间隔 ${CHECK_INTERVAL} 秒`);
+    log.info(`Starting ruleset global scheduled update check, interval ${CHECK_INTERVAL} seconds`);
 
     // 创建全局定时器，每分钟检查一次是否有规则集需要更新
     ruleProviderGlobalTimer = setInterval(async () => {
@@ -301,7 +292,7 @@ function startGlobalRuleProviderTimer(intervalSeconds: number) {
  * 从数据库加载所有配置，启动相应的定时器
  */
 export function initSchedulers() {
-    log.info('初始化定时任务调度器...');
+    log.info('Initializing scheduler...');
 
     // 清除所有现有定时器
     profileTimers.forEach((timer) => clearInterval(timer));
@@ -311,7 +302,7 @@ export function initSchedulers() {
 
     // 加载需要自动更新的订阅配置
     const autoUpdateProfiles = dbUtils.getAutoUpdateProfiles();
-    log.info(`发现 ${autoUpdateProfiles.length} 个需要自动更新的订阅配置`);
+    log.info(`Found ${autoUpdateProfiles.length} profiles needing auto update`);
 
     for (const profile of autoUpdateProfiles) {
         if (profile.updateInterval && profile.updateInterval > 0) {
@@ -325,8 +316,8 @@ export function initSchedulers() {
     const autoUpdateProviders = ruleProviders.filter((p) => p.enabled && p.url && !p.profile_id);
     log.info(
         globalInterval > 0
-            ? `发现 ${autoUpdateProviders.length} 个规则集，全局更新间隔 ${globalInterval} 秒`
-            : `发现 ${autoUpdateProviders.length} 个规则集，更新已禁用`
+            ? `Found ${autoUpdateProviders.length} rule providers; global update interval ${globalInterval} seconds`
+            : `Found ${autoUpdateProviders.length} rule providers; auto-update is disabled`
     );
 
     // 记录所有规则集的启动时间
@@ -338,18 +329,18 @@ export function initSchedulers() {
         startGlobalRuleProviderTimer(globalInterval);
     }
 
-    log.info('定时任务调度器初始化完成');
+    log.info('Scheduler initialization complete');
 }
 
 /**
  * 停止所有定时任务
  */
 export function stopAllSchedulers() {
-    log.info('停止所有定时任务...');
+    log.info('Stopping all scheduled tasks...');
 
     profileTimers.forEach((timer, profileId) => {
         clearInterval(timer);
-        log.info(`停止订阅配置定时更新: Profile ${profileId}`);
+        log.info(`Stopping profile scheduled update: Profile ${profileId}`);
     });
     profileTimers.clear();
 
@@ -357,14 +348,14 @@ export function stopAllSchedulers() {
     if (ruleProviderGlobalTimer) {
         clearInterval(ruleProviderGlobalTimer);
         ruleProviderGlobalTimer = null;
-        log.info('停止规则集全局定时更新');
+        log.info('Stopping ruleset global scheduled update');
     }
 
     lastProfileUpdate.clear();
     lastRuleProviderUpdate.clear();
     ruleProviderGlobalInterval = 0;
 
-    log.info('所有定时任务已停止');
+    log.info('All scheduled tasks stopped');
 }
 
 /**

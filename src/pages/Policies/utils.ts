@@ -1,36 +1,23 @@
 /**
  * 策略页面工具函数
  */
+import type { TFunction } from 'i18next';
 import type { Policy } from '../../types/policy';
+import { OUTBOUND_OPTION_DEFS } from '../../types/policy';
 import { getPolicyRuleSet } from '../../services/policy';
 import type { RuleProvider } from '../../types/rule-providers';
-import { OUTBOUND_OPTIONS } from '../../types/policy';
 
-import { OUTBOUND_LABELS, POLICY_FINAL_LABELS } from '../../constants/outboundLabels';
-
-export const POLICY_FINAL_OPTIONS = [
-    { value: 'direct_out', label: POLICY_FINAL_LABELS.direct_out },
-    { value: 'block_out', label: POLICY_FINAL_LABELS.block_out },
-    { value: 'selector_out', label: POLICY_FINAL_LABELS.selector_out },
-] as const;
-
-export const OUTBOUND_LABEL_MAP: Record<string, string> = {
-    direct_out: OUTBOUND_LABELS.direct_out,
-    block_out: OUTBOUND_LABELS.block_out,
-    selector_out: OUTBOUND_LABELS.selector_out,
-};
-
-export function formatRuleSetDisplay(value: string, ruleProviders?: RuleProvider[]): string {
+export function formatRuleSetDisplay(value: string, ruleProviders: RuleProvider[] | undefined, t: TFunction): string {
     const colonIdx = value.indexOf(':');
     const prefix = colonIdx >= 0 ? value.substring(0, colonIdx) : '';
     const rawName = colonIdx >= 0 ? value.substring(colonIdx + 1) : value;
 
     if (prefix === 'acl' && ruleProviders) {
         const provider = ruleProviders.find(p => p.id === rawName || p.name === rawName);
-        return `规则:${provider?.name || rawName}`;
+        return t('policies.rulePrefix') + (provider?.name || rawName);
     }
 
-    return `规则:${rawName}`;
+    return t('policies.rulePrefix') + rawName;
 }
 
 export function getRuleSetBadgeClass(value: string): string {
@@ -49,11 +36,19 @@ export function isOutboundDisplayable(outboundValue: string | undefined | null):
     return DISPLAYABLE_OUTBOUNDS.has(trimmed) || DISPLAYABLE_OUTBOUNDS.has(trimmed.toLowerCase());
 }
 
-export function getOutboundLabel(outboundValue: string | undefined | null): string {
-    if (outboundValue == null) return '未设置';
-    const option = OUTBOUND_OPTIONS.find(o => o.value === outboundValue);
-    if (option) return option.label;
-    return OUTBOUND_LABEL_MAP[outboundValue] ?? OUTBOUND_LABEL_MAP[outboundValue.toLowerCase()] ?? outboundValue;
+const OUTBOUND_KEY_BY_VALUE: Record<string, string> = {
+    direct_out: 'outbound.directOut',
+    block_out: 'outbound.blockOut',
+    selector_out: 'outbound.proxy',
+};
+
+export function getOutboundLabel(outboundValue: string | undefined | null, t: TFunction): string {
+    if (outboundValue == null || outboundValue === '') return t('outbound.notSet');
+    const key = OUTBOUND_KEY_BY_VALUE[outboundValue] ?? OUTBOUND_KEY_BY_VALUE[outboundValue.toLowerCase()];
+    if (key) return t(key);
+    const known = OUTBOUND_OPTION_DEFS.find(o => o.value === outboundValue || o.value === outboundValue.toLowerCase());
+    if (known) return t(known.labelKey);
+    return outboundValue;
 }
 
 export function getOutboundTone(outboundValue: string): 'neutral' | 'accent' | 'success' | 'warning' | 'danger' {
@@ -111,13 +106,14 @@ export function getPolicyMatchCount(policy: Policy): number {
 
 export function getPolicyPreviewBadges(
     policy: Policy,
-    ruleProviders?: RuleProvider[]
+    ruleProviders: RuleProvider[] | undefined,
+    t: TFunction
 ): Array<{ label: string; className: string }> {
     const badges: Array<{ label: string; className: string }> = [];
 
     getPolicyRuleSets(policy).slice(0, 2).forEach((value) => {
         badges.push({
-            label: formatRuleSetDisplay(value, ruleProviders),
+            label: formatRuleSetDisplay(value, ruleProviders, t),
             className: getRuleSetBadgeClass(value)
         });
     });
@@ -125,7 +121,7 @@ export function getPolicyPreviewBadges(
     const lr = (policy as any).logical_rule;
     if (lr && typeof lr === 'object' && 'rules' in lr && Array.isArray((lr as { rules: unknown[] }).rules)) {
         const n = countRulesInLogical(lr as { rules: unknown[] });
-        if (n > 0) badges.push({ label: `规则 ×${n}`, className: 'bg-sky-50 text-sky-700 border-sky-100' });
+        if (n > 0) badges.push({ label: t('policies.ruleLogicBadge', { count: n }), className: 'bg-sky-50 text-sky-700 border-sky-100' });
     }
 
     return badges.slice(0, 5);

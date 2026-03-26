@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 import { useApi } from '../contexts/ApiContext';
 import { getWsUrl, checkApiAvailable } from '../services/api';
 import { Switch } from '../components/ui/Switch';
@@ -79,23 +80,23 @@ function useTrafficData(isRunning: boolean, apiUrl: string, apiSecret: string, p
                         reconnectAttempts = 0; // 重置重连计数器
                     }
                 } catch (e) {
-                    console.warn('[Traffic] WebSocket消息解析失败:', e);
+                    console.warn('[Traffic] WebSocket message parse failed:', e);
                 }
             };
 
             ws.onerror = () => {
-                console.warn('[Traffic] WebSocket连接错误');
+                console.warn('[Traffic] WebSocket connection error');
                 ws.close();
             };
             
             ws.onclose = () => {
-                console.log('[Traffic] WebSocket连接关闭');
+                console.log('[Traffic] WebSocket connection closed');
                 if (cancelled) return;
                 if (isRunning && !pauseConnections) {
                     // 指数退避重连策略
                     const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), MAX_RECONNECT_DELAY);
                     reconnectAttempts++;
-                    console.log(`[Traffic] ${delay}ms后进行第${reconnectAttempts}次重连`);
+                    console.log(`[Traffic] Reconnecting in ${delay}ms, attempt ${reconnectAttempts}`);
                     reconnectTimeout = setTimeout(connectWs, delay);
                 }
             };
@@ -176,6 +177,7 @@ const TrafficChart = React.memo<TrafficChartProps>(function TrafficChart({
 });
 
 export function Dashboard({ isActive }: DashboardProps) {
+    const { t } = useTranslation();
     const { apiUrl, apiSecret, setApiUrl, setApiSecret } = useApi();
     const [isRunning, setIsRunning] = useState(false);
     const [systemProxy, setSystemProxy] = useState(false);
@@ -281,7 +283,7 @@ export function Dashboard({ isActive }: DashboardProps) {
                 setStartTime(null);
             }
         } catch (err) {
-            console.error('[状态检测] 错误:', err);
+            console.error('[StatusCheck] Error:', err);
         }
     }, [apiUrl, apiSecret]);
 
@@ -317,7 +319,7 @@ export function Dashboard({ isActive }: DashboardProps) {
                 }
                 setSettingsLoaded(true);
             } catch (e) {
-                console.error('[Dashboard] 加载设置失败:', e);
+                console.error('[Dashboard] Failed to load settings:', e);
                 setSettingsLoaded(true); // 即使失败也标记为已加载
             }
         };
@@ -345,7 +347,7 @@ export function Dashboard({ isActive }: DashboardProps) {
                 window.ipcRenderer.core.setSystemProxy(enabled);
             }
         } catch (e) {
-            console.error('[Dashboard] 加载看板设置失败:', e);
+            console.error('[Dashboard] Failed to load dashboard settings:', e);
         }
     }, []);
 
@@ -368,10 +370,10 @@ export function Dashboard({ isActive }: DashboardProps) {
             // 显示值只和数据库有关
             setTunMode(dbTunMode);
             tunModeDisplayRef.current = dbTunMode;
-            console.log('[Dashboard] tunMode 加载完成 - 数据库值:', dbTunMode, '服务已安装:', installed);
+            console.log('[Dashboard] tunMode loaded - db value:', dbTunMode, 'service installed:', installed);
 
         } catch (e) {
-            console.error('[Dashboard] 加载 tunMode 失败:', e);
+            console.error('[Dashboard] Failed to load tunMode:', e);
             setTunMode(false);
             tunModeDisplayRef.current = false;
         } finally {
@@ -446,7 +448,7 @@ export function Dashboard({ isActive }: DashboardProps) {
             checkStatus(true).catch(() => {}); // 后台同步，不阻塞
         } catch (err: any) {
             console.error('Failed to stop core', err);
-            addNotification(`停止内核失败: ${getDisplayErrorMessage(err)}`, 'error');
+            addNotification(`${t('dashboard.stopCoreFailed')}: ${getDisplayErrorMessage(err)}`, 'error');
         } finally {
             setCoreLoading(false);
             setCoreAction(null);
@@ -470,16 +472,16 @@ export function Dashboard({ isActive }: DashboardProps) {
                 // 后台验证 API 就绪（快速轮询 150ms，超时 5s），失败则提示
                 checkApiAfterDelay(5000, 150).then((ready) => {
                     if (!ready) {
-                        addNotification('API 可能尚未就绪，部分功能可能暂时不可用', 'warning');
+                        addNotification(t('dashboard.apiNotReady'), 'warning');
                     }
                     checkStatus().catch(() => {});
                 }).catch(() => {});
             } else {
-                throw new Error('请先添加并启用订阅');
+                throw new Error(t('dashboard.pleaseAddSubscription'));
             }
         } catch (err: any) {
             console.error('Failed to start core', err);
-            addNotification(`启动内核失败: ${getDisplayErrorMessage(err)}`, 'error');
+            addNotification(`${t('dashboard.startCoreFailed')}: ${getDisplayErrorMessage(err)}`, 'error');
         } finally {
             setCoreLoading(false);
             setCoreAction(null);
@@ -498,17 +500,17 @@ export function Dashboard({ isActive }: DashboardProps) {
             const newStartTime = await window.ipcRenderer.core.getStartTime();
             setIsRunning(true);
             setStartTime(newStartTime || Date.now());
-            addNotification('内核已重启', 'success');
+            addNotification(t('dashboard.coreRestarted'), 'success');
             // 后台验证 API 就绪
             checkApiAfterDelay(5000, 150).then((ready) => {
                 if (!ready) {
-                    addNotification('API 可能尚未就绪，部分功能可能暂时不可用', 'warning');
+                    addNotification(t('dashboard.apiNotReady'), 'warning');
                 }
                 checkStatus().catch(() => {});
             }).catch(() => {});
         } catch (err: any) {
             console.error('Failed to restart core', err);
-            addNotification(`重启内核失败: ${getDisplayErrorMessage(err)}`, 'error');
+            addNotification(`${t('dashboard.restartCoreFailed')}: ${getDisplayErrorMessage(err)}`, 'error');
         } finally {
             setCoreLoading(false);
             setCoreAction(null);
@@ -535,14 +537,14 @@ export function Dashboard({ isActive }: DashboardProps) {
         try {
             // 1. 先保存到本地数据库
             await window.ipcRenderer.db.setSetting('dashboard-system-proxy', enable ? 'true' : 'false');
-            console.log('[Dashboard] 系统代理状态已保存到数据库:', enable);
+            console.log('[Dashboard] System proxy status saved to database:', enable);
 
             // 2. 更新本地状态
             setSystemProxy(enable);
 
             // 3. 系统代理是操作系统级别的设置，直接调用即可（不需要判断内核是否运行）
             await window.ipcRenderer.core.setSystemProxy(enable);
-            console.log('[Dashboard] 系统代理已', enable ? '开启' : '关闭');
+            console.log('[Dashboard] System proxy', enable ? 'enabled' : 'disabled');
         } catch (err) {
             console.error('Failed to toggle system proxy', err);
         }
@@ -565,23 +567,23 @@ export function Dashboard({ isActive }: DashboardProps) {
         try {
             // 开启 TUN 模式时需要检查 RoverService 服务是否已安装
             if (enable && !isServiceInstalled) {
-                console.log('[Dashboard] RoverService 服务未安装，开始自动安装...');
-                addNotification('正在安装 RoverService 服务，请稍候...', 'info');
+                console.log('[Dashboard] RoverService not installed, starting auto install...');
+                addNotification(t('dashboard.installingService'), 'info');
 
                 // 自动安装服务
                 const installResult = await window.ipcRenderer.roverservice.install();
                 if (!installResult.success) {
                     // 用户拒绝安装服务（取消 UAC 提示），不显示错误提示
                     if (!installResult.isUserCanceled) {
-                        console.error('[Dashboard] RoverService 服务安装失败:', installResult.error);
-                        addNotification(`服务安装失败: ${installResult.error || '未知错误'}`, 'error');
+                        console.error('[Dashboard] RoverService installation failed:', installResult.error);
+                        addNotification(t('dashboard.serviceInstallFailed', { error: installResult.error || 'Unknown' }), 'error');
                     }
                     setTunLoading(false);
                     return;
                 }
 
-                console.log('[Dashboard] RoverService 服务安装成功');
-                addNotification('RoverService 服务安装成功', 'success');
+                console.log('[Dashboard] RoverService installed successfully');
+                addNotification(t('dashboard.serviceInstalled'), 'success');
 
                 // 更新服务安装状态
                 setIsServiceInstalled(true);
@@ -592,13 +594,13 @@ export function Dashboard({ isActive }: DashboardProps) {
 
             // 2. 保存到本地数据库并重新生成配置（TUN 配置在 mergeSettingsIntoConfig 中生效）
             await window.ipcRenderer.db.setTunModeWithConfigGeneration('dashboard-tun-mode', enable ? 'true' : 'false');
-            console.log('[Dashboard] 虚拟网卡状态已保存到数据库并重新生成配置:', enable);
+            console.log('[Dashboard] TUN mode saved to database and config regenerated:', enable);
 
             // 4. 如果内核正在运行，需要重新启动以应用新的 TUN 配置
             // 使用 restart 而非 start：restart 会先 stop（清理可能残留的 sing-box 进程）、等待端口释放后再 start，
             // 避免 9090 端口被旧进程占用导致 "address already in use" 错误
             if (isRunning) {
-                console.log('[Dashboard] 重新启动以应用 TUN 配置变更，暂停健康检测');
+                console.log('[Dashboard] Restarting to apply TUN config change, pausing health check');
                 setPausingStatusCheck(true); // 暂停健康检测
                 
                 try {
@@ -607,7 +609,7 @@ export function Dashboard({ isActive }: DashboardProps) {
                     const newStartTime = await window.ipcRenderer.core.getStartTime();
                     setStartTime(newStartTime || Date.now());
                     
-                    console.log('[Dashboard] TUN 配置重启完成，恢复健康检测');
+                    console.log('[Dashboard] TUN config restart complete, resuming health check');
                 } finally {
                     setPausingStatusCheck(false); // 恢复健康检测
                 }
@@ -619,13 +621,13 @@ export function Dashboard({ isActive }: DashboardProps) {
 
             // 6. 提供操作结果反馈
             if (enable) {
-                addNotification('TUN 模式已开启，网络流量将通过虚拟网卡处理', 'success');
+                addNotification(t('dashboard.tunModeEnabled'), 'success');
             } else {
-                addNotification('TUN 模式已关闭', 'success');
+                addNotification(t('dashboard.tunModeDisabled'), 'success');
             }
         } catch (err: any) {
             console.error('Failed to toggle tun mode', err);
-            addNotification(`虚拟网卡切换失败: ${getDisplayErrorMessage(err)}`, 'error');
+            addNotification(`${t('dashboard.tunModeSwitchFailed')}: ${getDisplayErrorMessage(err)}`, 'error');
         } finally {
             setTunLoading(false);
             coreActionLockRef.current = false;
@@ -646,23 +648,23 @@ export function Dashboard({ isActive }: DashboardProps) {
         try {
             // 1. 保存到本地数据库
             await window.ipcRenderer.db.setSetting('dashboard-mode', newMode);
-            console.log('[Dashboard] 出站模式已保存到数据库:', newMode);
+            console.log('[Dashboard] Outbound mode saved to database:', newMode);
 
             // 2. 触发重新生成配置文件（配置生成时会读取 dashboard-mode，写入时若内核运行中会自动重启）
             window.ipcRenderer.core.generateConfig();
-            console.log('[Dashboard] 配置文件已重新生成');
+            console.log('[Dashboard] Config file regenerated');
 
             // 更新本地状态
             setMode(newMode);
-            showToast(`已切换到${newMode === 'rule' ? '规则' : newMode === 'global' ? '全局' : '直连'}模式`, 'success');
+            showToast(newMode === 'rule' ? t('dashboard.switchedToRuleMode') : newMode === 'global' ? t('dashboard.switchedToGlobalMode') : t('dashboard.switchedToDirectMode'), 'success');
 
             // 3. 通知托盘菜单更新
-            console.log('[Dashboard] 通知托盘更新菜单');
+            console.log('[Dashboard] Notifying tray to update menu');
             await window.ipcRenderer.core.updateTrayMenu();
-            console.log('[Dashboard] 托盘菜单更新完成');
+            console.log('[Dashboard] Tray menu update complete');
         } catch (err: any) {
             console.error('[Mode Change] Failed:', err.message);
-            showToast(`切换模式失败: ${getDisplayErrorMessage(err)}`, 'error');
+            showToast(`${t('dashboard.modeSwitchFailed')}: ${getDisplayErrorMessage(err)}`, 'error');
         } finally {
             setModeChanging(null);
         }
@@ -724,8 +726,8 @@ export function Dashboard({ isActive }: DashboardProps) {
 
             <div className="page-header" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
                 <div>
-                    <h1 className="page-title">仪表盘</h1>
-                    <p className="page-subtitle">内核启停、出站模式切换、流量监控与网络检测。</p>
+                    <h1 className="page-title">{t('dashboard.title')}</h1>
+                    <p className="page-subtitle">{t('dashboard.subtitle')}</p>
                 </div>
                 <div className="toolbar" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
                     <div className="flex items-center gap-2">
@@ -733,19 +735,19 @@ export function Dashboard({ isActive }: DashboardProps) {
                             {coreLoading ? (
                                 <span className="flex items-center gap-1.5">
                                     <Loader2 className="w-3 h-3 animate-spin" />
-                                    {coreAction === 'stop' ? '关闭中' : coreAction === 'restart' ? '重启中' : '启动中'}
+                                    {coreAction === 'stop' ? t('dashboard.stopping') : coreAction === 'restart' ? t('dashboard.restarting') : t('dashboard.starting')}
                                 </span>
-                            ) : isRunning ? 'Core Connected' : 'Core Offline'}
+                            ) : isRunning ? t('dashboard.coreConnected') : t('dashboard.coreOffline')}
                         </Badge>
                         {isRunning && !coreLoading && (
                             <button
                                 type="button"
                                 onClick={handleRestartService}
                                 className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] text-[var(--app-text-tertiary)] hover:bg-[var(--app-divider)] hover:text-[var(--app-text-secondary)] transition-colors"
-                                title="修改配置后重启内核以生效"
+                                title={t('tooltips.restartCoreAfterConfig')}
                             >
                                 <RefreshCw className="w-3 h-3" />
-                                重启
+                                {t('dashboard.restartCore')}
                             </button>
                         )}
                     </div>
@@ -760,7 +762,7 @@ export function Dashboard({ isActive }: DashboardProps) {
                                 <span className="panel-title-icon">
                                     <Activity className="w-3.5 h-3.5" />
                                 </span>
-                                <span>实时流量</span>
+                                <span>{t('dashboard.realTimeTraffic')}</span>
                             </div>
                             <div className="flex items-center gap-2 text-[11px] font-mono tracking-tight text-[var(--app-text-quaternary)]">
                                 <Badge tone="neutral">↑ {formatBytes(currentTraffic.up)}/s</Badge>
@@ -769,8 +771,8 @@ export function Dashboard({ isActive }: DashboardProps) {
                         </div>
                         <div className="flex-1 relative bg-[linear-gradient(180deg,rgba(255,255,255,0.42),rgba(248,249,251,0.18))]">
                             <div className="absolute inset-x-4 top-4 flex items-center justify-between text-[11px] text-[var(--app-text-quaternary)]">
-                                <span>最近 60 秒</span>
-                                <span className="font-mono">峰值 {formatBytes(maxTraffic)}/s</span>
+                                <span>{t('dashboard.last60Seconds')}</span>
+                                <span className="font-mono">{t('dashboard.peak')} {formatBytes(maxTraffic)}/s</span>
                             </div>
                             <TrafficChart 
                                 trafficHistory={trafficHistory}
@@ -787,13 +789,13 @@ export function Dashboard({ isActive }: DashboardProps) {
                         <Card className="p-4">
                             <div className="flex items-center justify-between gap-3">
                                 <div>
-                                    <div className="panel-title">
-                                        <span className="panel-title-icon">
-                                            <Shuffle className="w-3.5 h-3.5" />
-                                        </span>
-                                        <span>系统代理</span>
-                                    </div>
-                                    <p className="text-[12px] text-[var(--app-text-quaternary)] mt-2">将系统出口切换到当前内核。</p>
+                            <div className="panel-title">
+                                <span className="panel-title-icon">
+                                    <Shuffle className="w-3.5 h-3.5" />
+                                </span>
+                                <span>{t('dashboard.systemProxy')}</span>
+                            </div>
+                            <p className="text-[12px] text-[var(--app-text-quaternary)] mt-2">{t('dashboard.systemProxyDesc')}</p>
                                 </div>
                                 <Switch checked={systemProxy} onCheckedChange={handleToggleSystemProxy} />
                             </div>
@@ -802,21 +804,21 @@ export function Dashboard({ isActive }: DashboardProps) {
                         <Card className="p-4">
                             <div className="flex items-center justify-between gap-3">
                                 <div>
-                                    <div className="panel-title">
-                                        <span className="panel-title-icon">
-                                            <Network className="w-3.5 h-3.5" />
-                                        </span>
-                                        <span>虚拟网卡</span>
+                            <div className="panel-title">
+                                <span className="panel-title-icon">
+                                    <Network className="w-3.5 h-3.5" />
+                                </span>
+                                <span>{t('dashboard.tunMode')}</span>
                                         {tunMode && !isServiceInstalled && (
-                                            <span className="ml-2 text-[var(--app-text-warning)]" title="服务未安装，请重新开启以安装服务">
+                                            <span className="ml-2 text-[var(--app-text-warning)]" title={t('tooltips.serviceNotInstalled')}>
                                                 <AlertTriangle className="w-3.5 h-3.5" />
                                             </span>
                                         )}
                                     </div>
                                     <p className="text-[12px] text-[var(--app-text-quaternary)] mt-2">
                                         {tunMode && !isServiceInstalled 
-                                            ? 'TUN 服务未安装，请重新开启以安装服务。'
-                                            : 'TUN 模式需要安装系统服务才能正常工作。'
+                                            ? t('dashboard.tunModeNotInstalled')
+                                            : t('dashboard.tunModeDesc')
                                         }
                                     </p>
                                 </div>
@@ -841,13 +843,13 @@ export function Dashboard({ isActive }: DashboardProps) {
                             <span className="panel-title-icon">
                                 <GitBranch className="w-3.5 h-3.5" />
                             </span>
-                            <span>出站模式</span>
+                            <span>{t('dashboard.outboundMode')}</span>
                         </div>
                         <div className="space-y-2">
                             {[
-                                { id: 'rule', label: '规则', desc: '按规则智能分流' },
-                                { id: 'global', label: '全局', desc: '所有流量走代理' },
-                                { id: 'direct', label: '直连', desc: '所有流量直连' }
+                                { id: 'rule', label: t('dashboard.ruleMode'), desc: t('dashboard.ruleModeDesc') },
+                                { id: 'global', label: t('dashboard.globalMode'), desc: t('dashboard.globalModeDesc') },
+                                { id: 'direct', label: t('dashboard.directMode'), desc: t('dashboard.directModeDesc') }
                             ].map(m => (
                                 <button
                                     key={m.id}
@@ -881,13 +883,13 @@ export function Dashboard({ isActive }: DashboardProps) {
                     </Card>
 
                     <Card className="p-4 min-h-[180px]">
-                        <div className="flex items-center gap-2 mb-3">
-                            <Wifi className="w-4 h-4 text-[var(--app-text-secondary)]" />
-                            <span className="text-[13px] font-medium text-[var(--app-text-secondary)]">网络检测</span>
-                            <button
+                            <div className="flex items-center gap-2 mb-3">
+                                <Wifi className="w-4 h-4 text-[var(--app-text-secondary)]" />
+                                <span className="text-[13px] font-medium text-[var(--app-text-secondary)]">{t('dashboard.networkDetection')}</span>
+                                <button
                                 onClick={() => setShowNetworkTip(true)}
                                 className="p-0.5 hover:bg-[var(--app-hover)] rounded-full transition-colors"
-                                title="提示"
+                                title={t('tooltips.tip')}
                             >
                                 <svg className="w-4 h-4 text-[var(--app-text-quaternary)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                     <circle cx="12" cy="12" r="10" />
@@ -916,13 +918,13 @@ export function Dashboard({ isActive }: DashboardProps) {
                                     <Globe className="w-5 h-5 text-[var(--app-text-quaternary)]" />
                                 </div>
                                 <div className="flex flex-col gap-1">
-                                    <span className="text-[13px] text-[var(--app-text-quaternary)]">检测失败</span>
+                                    <span className="text-[13px] text-[var(--app-text-quaternary)]">{t('dashboard.networkCheckFailed')}</span>
                                     <button
                                         type="button"
                                         onClick={() => checkNetwork()}
                                         className="text-[11px] text-[var(--app-accent)] hover:underline"
                                     >
-                                        重试
+                                        {t('common.retry')}
                                     </button>
                                 </div>
                             </div>
@@ -931,7 +933,7 @@ export function Dashboard({ isActive }: DashboardProps) {
                                 <div className="w-10 h-10 rounded-full bg-[var(--app-surface)] flex items-center justify-center">
                                     <Loader2 className="w-5 h-5 text-[var(--app-text-quaternary)] animate-spin" />
                                 </div>
-                                <span className="text-[13px] text-[var(--app-text-quaternary)]">检测中...</span>
+                                <span className="text-[13px] text-[var(--app-text-quaternary)]">{t('dashboard.detecting')}</span>
                             </div>
                         )}
                     </Card>
@@ -941,7 +943,7 @@ export function Dashboard({ isActive }: DashboardProps) {
                             <span className="panel-title-icon">
                                 <PieChart className="w-3.5 h-3.5" />
                             </span>
-                            <span>流量统计</span>
+                            <span>{t('dashboard.trafficStats')}</span>
                         </div>
 
                         <div className="flex items-center justify-between gap-4">
@@ -977,11 +979,11 @@ export function Dashboard({ isActive }: DashboardProps) {
                             <div className="flex flex-col gap-3 text-[11px] font-mono">
                                 <div className="flex items-center gap-2 whitespace-nowrap text-[var(--app-text-quaternary)]">
                                     <span className="w-3 h-[3px] flex-shrink-0 rounded-full bg-[#55606f]" />
-                                    <span>上传</span>
+                                    <span>{t('dashboard.upload')}</span>
                                 </div>
                                 <div className="flex items-center gap-2 whitespace-nowrap text-[var(--app-text-quaternary)]">
                                     <span className="w-3 h-[3px] flex-shrink-0 rounded-full bg-[#6f8a7a]" />
-                                    <span>下载</span>
+                                    <span>{t('dashboard.download')}</span>
                                 </div>
                             </div>
                         </div>
@@ -1047,12 +1049,12 @@ export function Dashboard({ isActive }: DashboardProps) {
                                 onClick={e => e.stopPropagation()}
                             >
                                 <div className="flex shrink-0 items-center justify-between px-6 py-4 border-b border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/50">
-                                    <h2 className="text-[15px] font-semibold text-[var(--app-text)]">说明</h2>
+                                    <h2 className="text-[15px] font-semibold text-[var(--app-text)]">{t('dashboard.networkTipTitle')}</h2>
                                     <button
                                         type="button"
                                         onClick={() => setShowNetworkTip(false)}
                                         className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[var(--app-text-tertiary)] hover:bg-[var(--app-hover)] hover:text-[var(--app-text)] transition-colors -mr-2"
-                                        aria-label="关闭"
+                                        aria-label={t('common.close')}
                                     >
                                         <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                             <path d="M18 6L6 18" />
@@ -1062,7 +1064,7 @@ export function Dashboard({ isActive }: DashboardProps) {
                                 </div>
                                 <div className="flex-1 overflow-y-auto p-6">
                                     <p className="text-[14px] text-[var(--app-text-secondary)] leading-relaxed">
-                                        依赖第三方 API 检测，仅供参考
+                                        {t('dashboard.networkTipDesc')}
                                     </p>
                                 </div>
                                 <div className="flex shrink-0 items-center justify-end gap-2 px-6 py-4 border-t border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/30">
@@ -1070,7 +1072,7 @@ export function Dashboard({ isActive }: DashboardProps) {
                                         onClick={() => setShowNetworkTip(false)}
                                         className="px-4 py-2 text-[13px] font-medium text-white bg-[var(--app-accent)] hover:opacity-90 rounded-[10px] transition-colors"
                                     >
-                                        确定
+                                        {t('tooltips.confirm')}
                                     </button>
                                 </div>
                             </motion.div>

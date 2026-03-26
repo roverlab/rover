@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Field';
 import { X, Check, Search } from 'lucide-react';
@@ -26,17 +27,20 @@ function getGroupKey(id: string): string {
     if (colonIndex > 0) {
         return id.substring(0, colonIndex);
     }
-    return '其他';
+    return 'other';
 }
 
-// 分组显示名称映射
-const GROUP_DISPLAY_NAMES: Record<string, string> = {
-    'clash': 'Clash 规则',
-    'acl': 'ACL4SSR 组',
-    'geoip': 'GeoIP 规则',
-    'geosite': 'GeoSite 规则',
-    'singbox': 'SingBox 规则',
-};
+function getBuiltinGroupNameKey(groupKey: string): string {
+    const map: Record<string, string> = {
+        clash: 'policies.builtinGroupClash',
+        acl: 'policies.builtinGroupAcl',
+        geoip: 'policies.builtinGroupGeoip',
+        geosite: 'policies.builtinGroupGeosite',
+        singbox: 'policies.builtinGroupSingbox',
+        other: 'policies.builtinGroupOther',
+    };
+    return map[groupKey] ?? 'policies.builtinGroupOther';
+}
 
 /**
  * 分组显示的内置规则集选择弹窗
@@ -49,6 +53,7 @@ export function PolicyBuiltinRuleSetModal({
     onToggle,
     onClose,
 }: PolicyBuiltinRuleSetModalProps) {
+    const { t } = useTranslation();
     const [searchKeyword, setSearchKeyword] = useState('');
     const [activeTab, setActiveTab] = useState<string | null>(null);
 
@@ -123,12 +128,12 @@ export function PolicyBuiltinRuleSetModal({
                     onClick={e => e.stopPropagation()}
                 >
                     <div className="flex shrink-0 items-center justify-between px-6 py-4 border-b border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/50">
-                        <h2 className="text-[15px] font-semibold text-[var(--app-text)]">选择内置规则集</h2>
+                        <h2 className="text-[15px] font-semibold text-[var(--app-text)]">{t('policies.builtinRuleSetTitle')}</h2>
                         <button
                             type="button"
                             onClick={onClose}
                             className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[var(--app-text-tertiary)] hover:bg-[var(--app-hover)] hover:text-[var(--app-text)] transition-colors -mr-2"
-                            aria-label="关闭"
+                            aria-label={t('common.close')}
                         >
                             <X className="w-4 h-4" />
                         </button>
@@ -141,7 +146,7 @@ export function PolicyBuiltinRuleSetModal({
                             <Input
                                 value={searchKeyword}
                                 onChange={e => setSearchKeyword(e.target.value)}
-                                placeholder="搜索规则集名称或 ID..."
+                                placeholder={t('policies.builtinRuleSetSearch')}
                                 className="w-full pl-9 pr-3 py-2 text-[13px]"
                             />
                         </div>
@@ -162,7 +167,7 @@ export function PolicyBuiltinRuleSetModal({
                                             : "text-[var(--app-text-secondary)] hover:bg-[var(--app-hover)]"
                                     )}
                                 >
-                                    {GROUP_DISPLAY_NAMES[groupKey] || groupKey.toUpperCase()}
+                                    {t(getBuiltinGroupNameKey(groupKey))}
                                     <span className="ml-1.5 text-[11px] font-normal text-[var(--app-text-quaternary)]">
                                         ({providers.length})
                                     </span>
@@ -174,7 +179,7 @@ export function PolicyBuiltinRuleSetModal({
                     <div className="flex-1 p-6 max-h-[50vh] overflow-y-auto">
                         {filteredGroupedRulesets.length === 0 ? (
                             <p className="text-[13px] text-[var(--app-text-quaternary)] text-center py-8">
-                                {searchKeyword.trim() ? '未找到匹配的规则集' : '暂无内置规则集'}
+                                {searchKeyword.trim() ? t('policies.builtinNoMatch') : t('policies.builtinNoBuiltins')}
                             </p>
                         ) : (
                             <div className="flex flex-wrap gap-2">
@@ -199,12 +204,12 @@ export function PolicyBuiltinRuleSetModal({
                                             )}
                                         </div>
                                         <span className="text-[13px] text-[var(--app-text)]">
-                                        <span className="text-[var(--app-text-tertiary)]">{GROUP_DISPLAY_NAMES[getGroupKey(provider.id)] || getGroupKey(provider.id).toUpperCase()}</span>
+                                        <span className="text-[var(--app-text-tertiary)]">{t(getBuiltinGroupNameKey(getGroupKey(provider.id)))}</span>
                                         <span className="text-[var(--app-text-quaternary)] mx-1">/</span>
                                         {provider.name}
                                     </span>
                                         {!provider.enabled && (
-                                            <span className="text-[10px] text-[var(--app-text-quaternary)]">(已禁用)</span>
+                                            <span className="text-[10px] text-[var(--app-text-quaternary)]">{t('policies.ruleSetDisabledBadge')}</span>
                                         )}
                                         <input
                                             type="checkbox"
@@ -220,11 +225,11 @@ export function PolicyBuiltinRuleSetModal({
 
                     <div className="flex items-center justify-between px-6 py-4 border-t border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/30">
                         <span className="text-[12px] text-[var(--app-text-quaternary)]">
-                            已选择 {selectedIds.size} 个规则集
+                            {t('policies.builtinSelectedCount', { count: selectedIds.size })}
                         </span>
                         <div className="flex items-center gap-2">
-                            <Button variant="ghost" onClick={onClose}>取消</Button>
-                            <Button variant="primary" onClick={onClose}>确定</Button>
+                            <Button variant="ghost" onClick={onClose}>{t('common.cancel')}</Button>
+                            <Button variant="primary" onClick={onClose}>{t('common.confirm')}</Button>
                         </div>
                     </div>
                 </motion.div>

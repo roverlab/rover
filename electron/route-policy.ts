@@ -19,6 +19,7 @@ import {
 import * as scheduler from './scheduler';
 import { RuleProvider } from '../src/types/rule-providers';
 import { getCachedIsServiceInstalled } from './roverservice-cache';
+import { t } from './i18n-main';
 
 /** 检测 RoverService 服务是否已安装（使用启动时缓存的值） */
 export function checkIsServiceInstalled(): boolean {
@@ -159,16 +160,6 @@ export function loadBuiltinRulesets(): import('../src/types/rule-providers').Rul
     return allRulesets;
 }
 
-/** 分组键显示名称映射 */
-const RULE_SET_GROUP_DISPLAY_NAMES: Record<string, string> = {
-    custom: '自定义规则集',
-    acl: 'ACL 规则',
-    geoip: 'GeoIP 规则',
-    geosite: 'GeoSite 规则',
-    clash: 'Clash 规则',
-    singbox: 'SingBox 规则',
-};
-
 /** 从规则集 ID 提取分组键，如 "acl:360" -> "acl" */
 function getRuleSetGroupKey(id: string, isFromDb: boolean): string {
     if (isFromDb) return 'custom';
@@ -176,11 +167,24 @@ function getRuleSetGroupKey(id: string, isFromDb: boolean): string {
     if (colonIndex > 0) {
         return id.substring(0, colonIndex).toLowerCase();
     }
-    return '其他';
+    return 'other';
 }
 
 /** 内置规则集分组顺序 */
-const BUILTIN_GROUP_ORDER = ['acl', 'geosite', 'geoip', 'clash', 'singbox', '其他'];
+const BUILTIN_GROUP_ORDER = ['acl', 'geosite', 'geoip', 'clash', 'singbox', 'other'];
+
+function getRuleSetGroupDisplayName(groupKey: string): string {
+    const labels: Record<string, string> = {
+        custom: t('main.routePolicy.groups.custom'),
+        acl: t('main.routePolicy.groups.acl'),
+        geoip: t('main.routePolicy.groups.geoip'),
+        geosite: t('main.routePolicy.groups.geosite'),
+        clash: t('main.routePolicy.groups.clash'),
+        singbox: t('main.routePolicy.groups.singbox'),
+        other: t('main.routePolicy.groups.other')
+    };
+    return labels[groupKey] || groupKey;
+}
 
 export interface RuleSetGroupItem {
     groupKey: string;
@@ -218,7 +222,7 @@ export function getAllRuleSetsGrouped(): RuleSetGroupItem[] {
     if (groups.has('custom')) {
         result.push({
             groupKey: 'custom',
-            displayName: RULE_SET_GROUP_DISPLAY_NAMES.custom,
+            displayName: getRuleSetGroupDisplayName('custom'),
             items: groups.get('custom')!,
         });
         seenKeys.add('custom');
@@ -229,7 +233,7 @@ export function getAllRuleSetsGrouped(): RuleSetGroupItem[] {
         if (groups.has(key) && !seenKeys.has(key)) {
             result.push({
                 groupKey: key,
-                displayName: RULE_SET_GROUP_DISPLAY_NAMES[key] || key,
+                displayName: getRuleSetGroupDisplayName(key),
                 items: groups.get(key)!,
             });
             seenKeys.add(key);
@@ -241,7 +245,7 @@ export function getAllRuleSetsGrouped(): RuleSetGroupItem[] {
         if (!seenKeys.has(key)) {
             result.push({
                 groupKey: key,
-                displayName: RULE_SET_GROUP_DISPLAY_NAMES[key] || key,
+                displayName: getRuleSetGroupDisplayName(key),
                 items,
             });
         }
@@ -310,7 +314,7 @@ function templateDnsRuleToDnsPolicy(rule: Record<string, unknown>, order: number
         const server = String(rawData.server ?? rule.server ?? 'local');
         return {
             type: 'raw',
-            name: getRuleName(rule, `DNS 规则 ${order + 1}`),
+            name: getRuleName(rule, t('main.routePolicy.fallbackDnsRuleOrder', { order: order + 1 })),
             server,
             enabled: true,
             order,
@@ -324,7 +328,10 @@ function templateDnsRuleToDnsPolicy(rule: Record<string, unknown>, order: number
         const ruleSetArr = Array.isArray(ruleSet) ? ruleSet : typeof ruleSet === 'string' ? [ruleSet] : [];
         const builtIn = ruleSetArr.filter((v: unknown) => typeof v === 'string' && (v.startsWith('geosite:') || v.startsWith('geoip:')));
         const acl = ruleSetArr.filter((v: unknown) => typeof v === 'string' && v.startsWith('acl:'));
-        const defaultName = ruleSetArr.length > 0 ? `规则集 ${ruleSetArr.join(', ')}` : `DNS 规则 ${order + 1}`;
+        const defaultName =
+            ruleSetArr.length > 0
+                ? t('main.routePolicy.fallbackDnsRuleFromRuleSets', { ruleSets: ruleSetArr.join(', ') })
+                : t('main.routePolicy.fallbackDnsRuleOrder', { order: order + 1 });
         return {
             type: 'default',
             name: getRuleName(rule, defaultName),
@@ -352,7 +359,7 @@ export function registerRuleProviderIpcHandlers(
 
             console.log('fullPath', fullPath);
             if (!fs.existsSync(fullPath)) {
-                throw new Error('模板文件不存在');
+                throw new Error(t('main.errors.routePolicy.templateNotFound'));
             }
 
             const content = fs.readFileSync(fullPath, 'utf8');
@@ -371,7 +378,7 @@ export function registerRuleProviderIpcHandlers(
             
             const hasDns = servers.length > 0 || dnsRules.length > 0;
             if (policiesToImport.length === 0 && !hasDns) {
-                return { success: false, message: '该模板没有可导入的策略或 DNS 配置', addedCount: 0 };
+                return { success: false, message: t('main.errors.routePolicy.templateNoImportable'), addedCount: 0 };
             }
 
             // 导入前清理所有相关数据
@@ -483,6 +490,12 @@ tunNeedsAdmin = !checkIsServiceInstalled();
 
             // 配置生成由前端在导入成功后触发
 
+            let importMsg = t('main.errors.routePolicy.templateImportSuccess', { count: addedCount });
+            if (dnsSet) importMsg += t('main.errors.routePolicy.suffixDns');
+            if (finalOutboundSet) importMsg += t('main.errors.routePolicy.suffixFinalOutbound');
+            if (tunSet) importMsg += t('main.errors.routePolicy.suffixTun');
+            if (defaultDnsServerSet) importMsg += t('main.errors.routePolicy.suffixDefaultDns');
+
             return {
                 success: true,
                 addedCount,
@@ -493,19 +506,23 @@ tunNeedsAdmin = !checkIsServiceInstalled();
                 tunNeedsAdmin,
                 tunValue,
                 defaultDnsServerSet,
-                message: `成功导入 ${addedCount} 条策略${dnsSet ? '，已应用DNS配置' : ''}${finalOutboundSet ? '，已设置兜底出站' : ''}${tunSet ? '，已设置TUN模式' : ''}${defaultDnsServerSet ? '，已设置默认DNS服务器' : ''}`
+                message: importMsg
             };
         } catch (e) {
             console.error('Failed to import template completely:', templatePath, e);
-            return { success: false, message: `导入失败: ${(e as Error).message}`, addedCount: 0 };
+            return {
+                success: false,
+                message: t('main.errors.routePolicy.templateImportFailed', { message: (e as Error).message }),
+                addedCount: 0
+            };
         }
     });
 
     // Download a single rule provider
     ipcMain.handle('core:downloadRuleProvider', async (_, providerId: string) => {
         const provider = dbUtils.getRuleProviderById(providerId);
-        if (!provider) throw new Error('Rule provider not found');
-        if (!provider.url) throw new Error('Rule provider has no URL');
+        if (!provider) throw new Error(t('main.errors.ruleProviderNotFound'));
+        if (!provider.url) throw new Error(t('main.errors.ruleProviderNoUrl'));
 
         const providerType = (provider.type || 'clash') as 'clash' | 'singbox';
         
@@ -563,7 +580,7 @@ tunNeedsAdmin = !checkIsServiceInstalled();
     ipcMain.handle('core:saveRuleProvider', async (_, provider: { id?: string; name: string; url?: string; type: 'local' | 'clash' | 'singbox'; enabled?: boolean; logical_rule?: any }) => {
         const { id, name, url, type, enabled = true, logical_rule } = provider;
         
-        if (!name?.trim()) throw new Error('规则集名称不能为空');
+        if (!name?.trim()) throw new Error(t('main.errors.routePolicy.ruleNameRequired'));
         
         // 本地类型处理
         if (type === 'local') {
@@ -571,7 +588,7 @@ tunNeedsAdmin = !checkIsServiceInstalled();
             
             // 本地规则必须有规则内容（新建时）
             if (!id && !hasLogicRule) {
-                throw new Error('本地规则集必须包含至少一条规则');
+                throw new Error(t('main.errors.routePolicy.localRuleRequiresRule'));
             }
             
             if (id) {
@@ -602,7 +619,7 @@ tunNeedsAdmin = !checkIsServiceInstalled();
             }
         } else {
             // 远程类型处理（clash/singbox）
-            if (!url?.trim()) throw new Error('远程规则集 URL 不能为空');
+            if (!url?.trim()) throw new Error(t('main.errors.routePolicy.remoteUrlRequired'));
             
             if (id) {
                 // 编辑已有远程规则集

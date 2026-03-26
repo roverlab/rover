@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { useTranslation } from 'react-i18next';
 import { useDropdownPosition } from '../hooks/useDropdownPosition';
 import { Download, RefreshCw, Plus, MoreVertical, Trash2, Loader2, Edit2, FileText, X, Copy, Layers } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -12,12 +13,12 @@ import { formatRelativeTime } from '../shared/date-utils';
 import { GroupEditor } from './Profiles/components/GroupEditor';
 
 /** 格式化更新间隔显示 */
-function formatInterval(seconds: number | undefined): string {
-  if (seconds === 0 || !seconds) return '不自动更新';
-  if (seconds < 60) return `${seconds} 秒`;
-  if (seconds < 3600) return `${Math.round(seconds / 60)} 分钟`;
-  if (seconds < 86400) return `${(seconds / 3600).toFixed(1)} 小时`;
-  return `${Math.round(seconds / 86400)} 天`;
+function formatInterval(seconds: number | undefined, t: (key: string, options?: Record<string, unknown>) => string): string {
+  if (seconds === 0 || !seconds) return t('profiles.noAutoUpdate');
+  if (seconds < 60) return t('profiles.intervalSeconds', { count: seconds });
+  if (seconds < 3600) return t('profiles.intervalMinutes', { count: Math.round(seconds / 60) });
+  if (seconds < 86400) return t('profiles.intervalHours', { count: (seconds / 3600).toFixed(1) });
+  return t('profiles.intervalDays', { count: Math.round(seconds / 86400) });
 }
 
 /** 订阅用户信息（从 Subscription-Userinfo 响应头解析） */
@@ -54,8 +55,8 @@ function formatBytes(bytes: number): string {
 }
 
 /** 格式化过期时间戳（Unix 秒），0 表示长期有效 */
-function formatExpire(expire: number): string {
-  if (!expire) return '长期有效';
+function formatExpire(expire: number, t: (key: string) => string): string {
+  if (!expire) return t('profiles.expireLongTerm');
   const date = new Date(expire * 1000);
   if (isNaN(date.getTime())) return '—';
   const y = date.getFullYear();
@@ -70,7 +71,8 @@ interface ProfilesProps {
 }
 
 export function Profiles({ isActive = true }: ProfilesProps) {
-  const [profiles, setProfiles] = useState<Profile[]>([]);
+const { t } = useTranslation();
+const [profiles, setProfiles] = useState<Profile[]>([]);
   const [urlInput, setUrlInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
@@ -175,10 +177,10 @@ export function Profiles({ isActive = true }: ProfilesProps) {
         window.ipcRenderer.core.generateConfig();
       }
       
-      addNotification('Profile updated successfully');
+      addNotification(t('profiles.profileUpdated'));
     } catch (err: any) {
       console.error('Failed to update profile', err);
-      addNotification(`Update failed: ${err.message}`, 'error');
+      addNotification(`${t('profiles.updateFailed')}: ${err.message}`, 'error');
     } finally {
       setUpdatingId(null);
     }
@@ -199,10 +201,10 @@ export function Profiles({ isActive = true }: ProfilesProps) {
         window.ipcRenderer.core.generateConfig();
         setRefreshSeed(prev => prev + 1); // 触发代理、策略等页面刷新
       }
-      addNotification('订阅已添加');
+      addNotification(t('profiles.profileAdded'));
     } catch (err) {
       console.error('Failed to add subscription', err);
-      addNotification('添加失败: ' + (err?.message || '未知错误'), 'error');
+      addNotification(`${t('profiles.addFailed')}: ${err?.message || 'Unknown'}`, 'error');
     } finally {
       setLoading(false);
       setUpdatingId(null);
@@ -227,11 +229,11 @@ export function Profiles({ isActive = true }: ProfilesProps) {
           await loadProfiles();
           window.ipcRenderer.core.generateConfig();
         }
-        addNotification('Local profile imported successfully');
+        addNotification(t('profiles.profileImported'));
       }
     } catch (err: any) {
       console.error('Failed to import local profile', err);
-      addNotification(err.message || 'Failed to import local profile', 'error');
+      addNotification(err.message || t('profiles.addFailed'), 'error');
     }
   };
 
@@ -240,10 +242,10 @@ export function Profiles({ isActive = true }: ProfilesProps) {
     setOpenDropdownId(null);
     const deletedWasSelected = profiles.find(p => p.id === id)?.selected === 1;
     const confirmed = await confirm({
-      title: '删除配置',
-      message: '确定要删除这个配置吗？',
-      confirmText: '删除',
-      cancelText: '取消',
+      title: t('profiles.deleteConfirm'),
+      message: t('profiles.deleteConfirmMessage'),
+      confirmText: t('profiles.delete'),
+      cancelText: t('common.cancel'),
       variant: 'danger'
     });
     if (!confirmed) return;
@@ -258,10 +260,10 @@ export function Profiles({ isActive = true }: ProfilesProps) {
       }
       if (deletedWasSelected) setRefreshSeed(prev => prev + 1); // 删除的是当前选中配置时，触发代理、策略等页面刷新
       await loadProfiles();
-      addNotification('Profile deleted');
+      addNotification(t('profiles.profileDeleted'));
     } catch (err) {
       console.error('Failed to delete profile', err);
-      addNotification('Failed to delete profile', 'error');
+      addNotification(t('profiles.updateFailed'), 'error');
     }
   };
 
@@ -278,11 +280,11 @@ export function Profiles({ isActive = true }: ProfilesProps) {
     try {
       await window.ipcRenderer.db.updateProfileDetails(editingProfile.id, editName, editUrl, editInterval);
       await loadProfiles();
-      addNotification('Profile updated');
+      addNotification(t('profiles.profileUpdated'));
       setEditingProfile(null);
     } catch (err: any) {
       console.error('Failed to update profile details', err);
-      addNotification(err.message || 'Failed to update details', 'error');
+      addNotification(err.message || t('profiles.updateFailed'), 'error');
     }
   };
 
@@ -306,7 +308,7 @@ export function Profiles({ isActive = true }: ProfilesProps) {
       setEditContent(displayContent);
     } catch (err) {
       console.error('Failed to load profile content', err);
-      addNotification('加载配置内容失败', 'error');
+      addNotification(t('profiles.loadContentFailed'), 'error');
       setEditingContentProfile(null);
     } finally {
       setContentLoading(false);
@@ -322,9 +324,9 @@ export function Profiles({ isActive = true }: ProfilesProps) {
     if (!editContent) return;
     try {
       await navigator.clipboard.writeText(editContent);
-      addNotification('已复制到剪贴板');
+      addNotification(t('profiles.copiedToClipboard'));
     } catch (err) {
-      addNotification('复制失败', 'error');
+      addNotification(t('profiles.copyFailed'), 'error');
     }
   };
 
@@ -335,8 +337,8 @@ export function Profiles({ isActive = true }: ProfilesProps) {
 
       <div className="page-header" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
         <div>
-          <h1 className="page-title">配置</h1>
-          <p className="page-subtitle">添加订阅、导入本地配置、切换与更新配置文件。</p>
+          <h1 className="page-title">{t('profiles.title')}</h1>
+          <p className="page-subtitle">{t('profiles.subtitle')}</p>
         </div>
       </div>
 
@@ -345,7 +347,7 @@ export function Profiles({ isActive = true }: ProfilesProps) {
           <div className="flex flex-wrap gap-2.5">
             <Input
               type="text"
-              placeholder="订阅地址 (Clash YAML / Sing-box JSON)"
+              placeholder={t('profiles.subscriptionUrl')}
               className="flex-1 min-w-[280px]"
               value={urlInput}
               onChange={(e) => setUrlInput(e.target.value)}
@@ -357,11 +359,11 @@ export function Profiles({ isActive = true }: ProfilesProps) {
               variant="primary"
             >
               {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
-              <span>{loading ? '添加中...' : '添加远程'}</span>
+              <span>{loading ? t('profiles.adding') : t('profiles.addRemote')}</span>
             </Button>
             <Button variant="secondary" onClick={handleImportLocal}>
               <Plus className="w-3.5 h-3.5" />
-              <span>本地导入</span>
+              <span>{t('profiles.importLocal')}</span>
             </Button>
           </div>
         </div>
@@ -382,7 +384,7 @@ export function Profiles({ isActive = true }: ProfilesProps) {
                 <div className="relative flex justify-between items-start mb-1.5 z-10">
                   <div className="flex items-center gap-2 min-w-0 pr-3">
                     <h3 className="font-medium text-[14px] text-[var(--app-text)] truncate max-w-[160px]">{profile.name}</h3>
-                    <span className="shrink-0 text-[11px] text-[var(--app-text-tertiary)]">{profile.nodes?.length ?? 0} 节点</span>
+                    <span className="shrink-0 text-[11px] text-[var(--app-text-tertiary)]">{profile.nodes?.length ?? 0} {t('profiles.nodes')}</span>
                   </div>
                   <div className={cn("flex space-x-0.5 transition-opacity", openDropdownId === profile.id ? "opacity-100 relative z-50" : "opacity-100")}>
                     <Button
@@ -415,7 +417,7 @@ export function Profiles({ isActive = true }: ProfilesProps) {
                         }}
                       >
                         <Edit2 className="w-3.5 h-3.5 mr-2" />
-                        编辑
+                        {t('profiles.edit')}
                       </button>
                       <button
                         className="flex items-center px-3 py-1.5 text-[12px] text-[var(--app-text-secondary)] hover:bg-[var(--app-bg-secondary)] hover:text-[var(--app-text)] transition-colors text-left w-full"
@@ -425,7 +427,7 @@ export function Profiles({ isActive = true }: ProfilesProps) {
                         }}
                       >
                         <FileText className="w-3.5 h-3.5 mr-2" />
-                        查看
+                        {t('profiles.view')}
                       </button>
                       <button
                         className="flex items-center px-3 py-1.5 text-[12px] text-[var(--app-text-secondary)] hover:bg-[var(--app-bg-secondary)] hover:text-[var(--app-text)] transition-colors text-left w-full"
@@ -435,7 +437,7 @@ export function Profiles({ isActive = true }: ProfilesProps) {
                         }}
                       >
                         <Layers className="w-3.5 h-3.5 mr-2" />
-                        自定义分组
+                        {t('profiles.customGroups')}
                       </button>
                       <div className="mx-2 my-1 border-t border-[rgba(39,44,54,0.06)]" />
                       <button
@@ -446,7 +448,7 @@ export function Profiles({ isActive = true }: ProfilesProps) {
                         }}
                       >
                         <Trash2 className="w-3.5 h-3.5 mr-2" />
-                        删除
+                        {t('profiles.delete')}
                       </button>
                     </motion.div>,
                     document.body
@@ -463,8 +465,8 @@ export function Profiles({ isActive = true }: ProfilesProps) {
                           style={{ width: `${Math.min(100, profile.subscriptionUserinfo.total > 0 ? ((profile.subscriptionUserinfo.upload + profile.subscriptionUserinfo.download) / profile.subscriptionUserinfo.total) * 100 : 0)}%` }}
                         />
                       </div>
-                      <div className="text-[10px] text-[var(--app-text-tertiary)] truncate w-full" title={`已用 ${formatBytes(profile.subscriptionUserinfo.upload + profile.subscriptionUserinfo.download)} / 总 ${formatBytes(profile.subscriptionUserinfo.total)} · 到期 ${formatExpire(profile.subscriptionUserinfo.expire)}`}>
-                        已用 {formatBytes(profile.subscriptionUserinfo.upload + profile.subscriptionUserinfo.download)} / 总 {formatBytes(profile.subscriptionUserinfo.total)} · {formatExpire(profile.subscriptionUserinfo.expire)}
+                      <div className="text-[10px] text-[var(--app-text-tertiary)] truncate w-full" title={`${t('profiles.used')} ${formatBytes(profile.subscriptionUserinfo.upload + profile.subscriptionUserinfo.download)} / ${t('profiles.total')} ${formatBytes(profile.subscriptionUserinfo.total)} · ${formatExpire(profile.subscriptionUserinfo.expire, t)}`}>
+                        {t('profiles.used')} {formatBytes(profile.subscriptionUserinfo.upload + profile.subscriptionUserinfo.download)} / {t('profiles.total')} {formatBytes(profile.subscriptionUserinfo.total)} · {formatExpire(profile.subscriptionUserinfo.expire, t)}
                       </div>
                     </>
                   ) : null}
@@ -472,7 +474,7 @@ export function Profiles({ isActive = true }: ProfilesProps) {
 
                 <div className="flex items-center justify-between mt-3">
                   <div className="text-[11px] text-[var(--app-text-quaternary)]">
-                    <span>更新: {profile.last_update ? formatRelativeTime(profile.last_update) : 'Never'}</span>
+                    <span>{t('profiles.lastUpdate')}: {profile.last_update ? formatRelativeTime(profile.last_update) : t('profiles.never')}</span>
                   </div>
                   {profile.url && (
                     <Button
@@ -480,7 +482,7 @@ export function Profiles({ isActive = true }: ProfilesProps) {
                       size="icon"
                       onClick={(e) => handleUpdate(e, profile.id)}
                       disabled={updatingId !== null}
-                      title="更新配置"
+                      title={t('profiles.update')}
                     >
                       {updatingId === profile.id ? (
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -522,12 +524,12 @@ export function Profiles({ isActive = true }: ProfilesProps) {
               onClick={e => e.stopPropagation()}
             >
               <div className="flex shrink-0 items-center justify-between px-6 py-4 border-b border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/50">
-                <h2 className="text-[15px] font-semibold text-[var(--app-text)]">Edit Profile</h2>
+                <h2 className="text-[15px] font-semibold text-[var(--app-text)]">{t('profiles.editProfile')}</h2>
                 <button
                   type="button"
                   onClick={() => setEditingProfile(null)}
                   className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[var(--app-text-tertiary)] hover:bg-[var(--app-hover)] hover:text-[var(--app-text)] transition-colors -mr-2"
-                  aria-label="关闭"
+                  aria-label={t('common.close')}
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -535,18 +537,18 @@ export function Profiles({ isActive = true }: ProfilesProps) {
 
               <div className="p-6 space-y-4">
                 <div className="space-y-1.5">
-                  <label className="text-[12px] font-medium text-[var(--app-text-secondary)] pl-1">Name</label>
+                  <label className="text-[12px] font-medium text-[var(--app-text-secondary)] pl-1">{t('profiles.profileName')}</label>
                   <Input
                     value={editName}
                     onChange={e => setEditName(e.target.value)}
-                    placeholder="Profile Name"
+                    placeholder={t('profiles.profileName')}
                   />
                 </div>
 
                 {editingProfile.type === 'remote' && (
                   <>
                     <div className="space-y-1.5">
-                      <label className="text-[12px] font-medium text-[var(--app-text-secondary)] pl-1">Subscription URL</label>
+                      <label className="text-[12px] font-medium text-[var(--app-text-secondary)] pl-1">{t('profiles.subscriptionUrlLabel')}</label>
                       <Input
                         value={editUrl}
                         onChange={e => setEditUrl(e.target.value)}
@@ -555,18 +557,18 @@ export function Profiles({ isActive = true }: ProfilesProps) {
                     </div>
                     <div className="space-y-1.5">
                       <label className="text-[12px] font-medium text-[var(--app-text-secondary)] pl-1">
-                        更新间隔 (秒)
-                        <span className="text-[var(--app-text-tertiary)] font-normal ml-1">（0 表示不自动更新）</span>
+                        {t('profiles.updateInterval')}
+                        <span className="text-[var(--app-text-tertiary)] font-normal ml-1">{t('profiles.updateIntervalHint')}</span>
                       </label>
                       <Input
                         type="number"
                         value={editInterval}
                         onChange={e => setEditInterval(Number(e.target.value))}
-                        placeholder="86400 (24小时)"
+                        placeholder="86400"
                         min={0}
                       />
                       <div className="text-[11px] text-[var(--app-text-quaternary)]">
-                        常用: 3600 (1小时), 21600 (6小时), 43200 (12小时), 86400 (24小时)
+                        {t('profiles.commonIntervals')}
                       </div>
                     </div>
                   </>
@@ -575,10 +577,10 @@ export function Profiles({ isActive = true }: ProfilesProps) {
 
               <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/30">
                 <Button variant="ghost" onClick={() => setEditingProfile(null)}>
-                  Cancel
+                  {t('common.cancel')}
                 </Button>
                 <Button variant="primary" onClick={handleSaveDetails} disabled={!editName.trim() || (editingProfile.type === 'remote' && !editUrl.trim())}>
-                  Save Changes
+                  {t('common.save')}
                 </Button>
               </div>
             </motion.div>
@@ -610,7 +612,7 @@ export function Profiles({ isActive = true }: ProfilesProps) {
             >
               <div className="flex shrink-0 items-center justify-between px-6 py-4 border-b border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/50">
                 <div className="flex flex-col">
-                  <h2 className="text-[15px] font-semibold text-[var(--app-text)]">查看配置</h2>
+                  <h2 className="text-[15px] font-semibold text-[var(--app-text)]">{t('profiles.viewConfig')}</h2>
                   <span className="text-[12px] text-[var(--app-text-tertiary)]">{editingContentProfile.name}</span>
                 </div>
                 <div className="flex items-center gap-1">
@@ -619,7 +621,7 @@ export function Profiles({ isActive = true }: ProfilesProps) {
                     onClick={handleCopyContent}
                     disabled={contentLoading || !editContent}
                     className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[var(--app-text-tertiary)] hover:bg-[var(--app-hover)] hover:text-[var(--app-text)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="复制"
+                    title={t('common.copy')}
                   >
                     <Copy className="w-4 h-4" />
                   </button>
@@ -627,7 +629,7 @@ export function Profiles({ isActive = true }: ProfilesProps) {
                     type="button"
                     onClick={closeContentModal}
                     className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[var(--app-text-tertiary)] hover:bg-[var(--app-hover)] hover:text-[var(--app-text)] transition-colors -mr-2"
-                    aria-label="关闭"
+                    aria-label={t('common.close')}
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -638,7 +640,7 @@ export function Profiles({ isActive = true }: ProfilesProps) {
                 {contentLoading ? (
                   <div className="flex items-center justify-center h-full text-[var(--app-text-tertiary)]">
                     <Loader2 className="w-6 h-6 animate-spin mr-2" />
-                    加载中...
+                    {t('common.loading')}
                   </div>
                 ) : (
                   <textarea

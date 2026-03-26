@@ -139,11 +139,17 @@ export interface RuleProviderForConfig {
     enabled?: boolean;
 }
 
-/**
- * 默认出站选项
- */
-export const OUTBOUND_OPTIONS = [
-    { value: 'direct_out', label: '直连' as const },
-    { value: 'block_out', label: '拦截' as const },
-    { value: 'selector_out', label: '代理' as const },
-];
+/** i18n keys for outbound labels (use with t('outbound.*')) */
+export const OUTBOUND_OPTION_DEFS = [
+    { value: 'direct_out', labelKey: 'outbound.directOut' },
+    { value: 'block_out', labelKey: 'outbound.blockOut' },
+    { value: 'selector_out', labelKey: 'outbound.proxy' },
+] as const;
+
+/** Final outbound selector (dashboard / policy header): selector shows "current selection" */
+export const POLICY_FINAL_OPTION_DEFS = [
+    { value: 'direct_out', labelKey: 'outbound.directOut' },
+    { value: 'block_out', labelKey: 'outbound.blockOut' },
+    { value: 'selector_out', labelKey: 'outbound.finalSelector' },
+] as const;
+

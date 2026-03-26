@@ -2,6 +2,7 @@ import * as React from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '../Sidebar';
 
 export interface ModalProps {
@@ -40,6 +41,7 @@ export function Modal({
   footer,
   zIndex = 200,
 }: ModalProps) {
+  const { t } = useTranslation();
   return createPortal(
     <AnimatePresence>
       {open && (
@@ -72,7 +74,7 @@ export function Modal({
                   type="button"
                   onClick={onClose}
                   className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[var(--app-text-tertiary)] hover:bg-[var(--app-hover)] hover:text-[var(--app-text)] transition-colors -mr-2"
-                  aria-label="关闭"
+                  aria-label={t('common.close')}
                 >
                   <X className="w-4 h-4" />
                 </button>

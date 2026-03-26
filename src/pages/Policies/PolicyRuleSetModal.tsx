@@ -1,6 +1,7 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 import { Button } from '../../components/ui/Button';
 import { X, Check } from 'lucide-react';
 import { cn } from '../../components/Sidebar';
@@ -21,6 +22,7 @@ export function PolicyRuleSetModal({
     onToggle,
     onClose,
 }: PolicyRuleSetModalProps) {
+    const { t } = useTranslation();
     if (!open) return null;
 
     return createPortal(
@@ -42,12 +44,12 @@ export function PolicyRuleSetModal({
                     onClick={e => e.stopPropagation()}
                 >
                     <div className="flex shrink-0 items-center justify-between px-6 py-4 border-b border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/50">
-                        <h2 className="text-[15px] font-semibold text-[var(--app-text)]">选择规则集</h2>
+                        <h2 className="text-[15px] font-semibold text-[var(--app-text)]">{t('policies.ruleSetPickerTitle')}</h2>
                         <button
                             type="button"
                             onClick={onClose}
                             className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[var(--app-text-tertiary)] hover:bg-[var(--app-hover)] hover:text-[var(--app-text)] transition-colors -mr-2"
-                            aria-label="关闭"
+                            aria-label={t('common.close')}
                         >
                             <X className="w-4 h-4" />
                         </button>
@@ -77,7 +79,7 @@ export function PolicyRuleSetModal({
                                     </div>
                                     <span className="text-[13px] text-[var(--app-text)]">{provider.name}</span>
                                     {!provider.enabled && (
-                                        <span className="text-[10px] text-[var(--app-text-quaternary)]">(已禁用)</span>
+                                        <span className="text-[10px] text-[var(--app-text-quaternary)]">{t('policies.ruleSetDisabledBadge')}</span>
                                     )}
                                     <input
                                         type="checkbox"
@@ -91,7 +93,7 @@ export function PolicyRuleSetModal({
                     </div>
 
                     <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/30">
-                        <Button variant="primary" onClick={onClose}>确定</Button>
+                        <Button variant="primary" onClick={onClose}>{t('common.confirm')}</Button>
                     </div>
                 </motion.div>
             </div>

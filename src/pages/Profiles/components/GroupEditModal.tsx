@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 import { X, MousePointer2, Zap } from 'lucide-react';
 import { cn } from '../../../components/Sidebar';
 import { Button } from '../../../components/ui/Button';
@@ -42,6 +43,7 @@ export function GroupEditModal({
     initialData,
     existingNames,
 }: GroupEditModalProps) {
+    const { t } = useTranslation();
     const [name, setName] = useState('');
     const [type, setType] = useState<'selector' | 'urltest'>('selector');
     const [outbounds, setOutbounds] = useState<string[]>([]);
@@ -73,11 +75,11 @@ export function GroupEditModal({
         const trimmedName = name.trim();
 
         if (!trimmedName) {
-            setError('分组名称不能为空');
+            setError(t('profiles.groupEditor.errNameRequired'));
             return;
         }
         if (outbounds.length === 0) {
-            setError('请至少选择一个节点');
+            setError(t('profiles.groupEditor.errPickNode'));
             return;
         }
 
@@ -87,7 +89,7 @@ export function GroupEditModal({
             mode === 'edit' ? existingNames.filter(n => n !== originalName) : existingNames;
 
         if (duplicateCheckNames.includes(trimmedName)) {
-            setError('分组名称已存在');
+            setError(t('profiles.groupEditor.errDuplicateName'));
             return;
         }
 
@@ -149,7 +151,7 @@ export function GroupEditModal({
                                     )}
                                 >
                                     <MousePointer2 className="w-3.5 h-3.5" />
-                                    手动选择
+                                    {t('profiles.groupEditor.modeSelector')}
                                 </button>
                                 <button
                                     type="button"
@@ -162,14 +164,14 @@ export function GroupEditModal({
                                     )}
                                 >
                                     <Zap className="w-3.5 h-3.5" />
-                                    自动测速
+                                    {t('profiles.groupEditor.modeUrltest')}
                                 </button>
                             </div>
 
                             {/* 名称 */}
                             <div className="space-y-1.5">
                                 <label className="text-[12px] font-medium text-[var(--app-text-secondary)] pl-1">
-                                    分组名称
+                                    {t('profiles.groupEditor.fieldName')}
                                 </label>
                                 <Input
                                     value={name}
@@ -177,7 +179,7 @@ export function GroupEditModal({
                                         setName(e.target.value);
                                         setError(null);
                                     }}
-                                    placeholder="如: 我的分组"
+                                    placeholder={t('profiles.groupEditor.namePlaceholder')}
                                 />
                             </div>
 
@@ -185,7 +187,7 @@ export function GroupEditModal({
                             <div className="space-y-1.5">
                                 <div className="flex items-center justify-between">
                                     <span className="text-[12px] font-medium text-[var(--app-text-secondary)] pl-1">
-                                        选择节点
+                                        {t('profiles.groupEditor.pickNodes')}
                                     </span>
                                     {availableNodes.length > 0 && outbounds.length > 0 && (
                                         <button
@@ -196,7 +198,7 @@ export function GroupEditModal({
                                             }}
                                             className="text-[11px] text-[var(--app-accent-strong)] hover:underline"
                                         >
-                                            清空
+                                            {t('profiles.groupEditor.clearNodes')}
                                         </button>
                                     )}
                                 </div>
@@ -204,12 +206,12 @@ export function GroupEditModal({
                                     multiple
                                     value={outbounds}
                                     onChange={setOutbounds}
-                                    placeholder="点击选择节点..."
-                                    hint="与订阅出站选择器一致，支持搜索、延迟与隐藏超时"
+                                    placeholder={t('profiles.groupEditor.nodePickerPlaceholder')}
+                                    hint={t('profiles.groupEditor.nodePickerHint')}
                                     filterDirectBlock
                                     disabled={availableNodes.length === 0}
                                     availableOutboundsOverride={outboundOverride}
-                                    modalTitle="选择节点"
+                                    modalTitle={t('profiles.groupEditor.nodePickerTitle')}
                                 />
                             </div>
 
@@ -223,7 +225,7 @@ export function GroupEditModal({
                             {/* 无节点提示 */}
                             {availableNodes.length === 0 && (
                                 <div className="text-center py-4 text-[var(--app-text-tertiary)] text-[13px]">
-                                    当前订阅没有可用节点，请先更新订阅或检查配置
+                                    {t('profiles.groupEditor.noNodesHint')}
                                 </div>
                             )}
                         </div>
@@ -231,10 +233,10 @@ export function GroupEditModal({
                         {/* Footer */}
                         <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/30">
                             <Button variant="ghost" onClick={onClose}>
-                                取消
+                                {t('common.cancel')}
                             </Button>
                             <Button variant="primary" onClick={handleSave} disabled={availableNodes.length === 0}>
-                                {mode === 'add' ? '添加' : '保存'}
+                                {mode === 'add' ? t('common.add') : t('common.save')}
                             </Button>
                         </div>
                     </motion.div>

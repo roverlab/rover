@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 import { Button } from '../../components/ui/Button';
 import { Input, Select } from '../../components/ui/Field';
 import { X, ChevronDown, Settings2, Code2, ChevronUp } from 'lucide-react';
@@ -80,10 +81,12 @@ export function PolicyEditModalBase<T extends PolicyEditFormStateBase>({
     addNotification,
     fieldConfig,
     ruleFieldConfig,
-    ruleFieldsEditorTitle = '规则集编辑器',
+    ruleFieldsEditorTitle,
     extraFields,
     ruleSetMaxVisible = 3,
 }: PolicyEditModalBaseProps<T>) {
+    const { t } = useTranslation();
+    const resolvedRuleEditorTitle = ruleFieldsEditorTitle ?? t('common.ruleEditor');
     const [showAllRuleSets, setShowAllRuleSets] = useState(false);
     const ruleSetBarRef = useRef<HTMLDivElement>(null);
     
@@ -146,16 +149,16 @@ export function PolicyEditModalBase<T extends PolicyEditFormStateBase>({
                         >
                             <div className="flex shrink-0 items-center justify-between px-6 py-4 border-b border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/50">
                                 <h2 className="text-[15px] font-semibold text-[var(--app-text)]">
-                                    {editingPolicy ? `编辑${title}` : `添加${title}`}
+                                    {editingPolicy ? t('policies.editModalEdit', { name: title }) : t('policies.editModalAdd', { name: title })}
                                 </h2>
-                                <button type="button" onClick={onClose} className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[var(--app-text-tertiary)] hover:bg-[var(--app-hover)] hover:text-[var(--app-text)] transition-colors -mr-2" aria-label="关闭">
+                                <button type="button" onClick={onClose} className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[var(--app-text-tertiary)] hover:bg-[var(--app-hover)] hover:text-[var(--app-text)] transition-colors -mr-2" aria-label={t('common.close')}>
                                     <X className="w-4 h-4" />
                                 </button>
                             </div>
 
                             <div className="flex-1 p-6 space-y-4 max-h-[60vh] overflow-y-auto">
                                 <div className="space-y-1.5">
-                                    <label className="text-[12px] font-medium text-[var(--app-text-secondary)] pl-1">策略类型</label>
+                                    <label className="text-[12px] font-medium text-[var(--app-text-secondary)] pl-1">{t('policies.policyType')}</label>
                                     <div className="flex gap-2">
                                         <button
                                             type="button"
@@ -175,9 +178,9 @@ export function PolicyEditModalBase<T extends PolicyEditFormStateBase>({
                                                 "text-[12px] font-medium",
                                                 form.policyType === 'default' ? "text-[var(--app-text)]" : "text-[var(--app-text-secondary)]"
                                             )}>
-                                                标准
+                                                {t('policies.typeStandardVisual')}
                                             </span>
-                                            <span className="text-[11px] text-[var(--app-text-quaternary)]">可视化配置</span>
+                                            <span className="text-[11px] text-[var(--app-text-quaternary)]">{t('policies.typeStandardHint')}</span>
                                         </button>
                                         <button
                                             type="button"
@@ -197,16 +200,16 @@ export function PolicyEditModalBase<T extends PolicyEditFormStateBase>({
                                                 "text-[12px] font-medium",
                                                 form.policyType === 'raw' ? "text-[var(--app-text)]" : "text-[var(--app-text-secondary)]"
                                             )}>
-                                                原始
+                                                {t('policies.typeRawJson')}
                                             </span>
-                                            <span className="text-[11px] text-[var(--app-text-quaternary)]">JSON格式</span>
+                                            <span className="text-[11px] text-[var(--app-text-quaternary)]">{t('policies.typeRawHint')}</span>
                                         </button>
                                     </div>
                                 </div>
 
                                 <div className="space-y-1.5">
-                                    <label className="text-[12px] font-medium text-[var(--app-text-secondary)] pl-1">策略名称</label>
-                                    <Input value={form.name} onChange={e => onFormChange({ name: e.target.value } as Partial<T>)} placeholder="例如：🌍 国外穿墙" />
+                                    <label className="text-[12px] font-medium text-[var(--app-text-secondary)] pl-1">{t('policies.policyNameLabel')}</label>
+                                    <Input value={form.name} onChange={e => onFormChange({ name: e.target.value } as Partial<T>)} placeholder={t('policies.policyNamePlaceholder')} />
                                 </div>
 
                                 {/* 中间字段选择器（出站 / DNS服务器）- 唯一的差异点 */}
@@ -231,19 +234,19 @@ export function PolicyEditModalBase<T extends PolicyEditFormStateBase>({
                                     <JsonEditor
                                         value={form.rawDataContent}
                                         onChange={value => onFormChange({ rawDataContent: value } as Partial<T>)}
-                                        placeholder={`{\n  "domain": ["example.com"],\n  "domain_suffix": [".google.com"],\n  "ip_cidr": ["192.168.1.0/24"]\n}`}
+                                        placeholder={t('policies.rawJsonPlaceholder')}
                                         rows={12}
-                                        hint="输入 sing-box 路由规则 JSON 格式"
+                                        hint={t('policies.rawJsonHint')}
                                         showFormatButton
-                                        onFormatSuccess={() => addNotification?.('已格式化', 'success')}
+                                        onFormatSuccess={() => addNotification?.(t('policies.formatted'), 'success')}
                                         onFormatError={err => addNotification?.(err, 'error')}
                                     />
                                 ) : (
                                     <>
                                         <div className="space-y-1.5">
-                                            <label className="text-[12px] font-medium text-[var(--app-text-secondary)] pl-1">规则集</label>
+                                            <label className="text-[12px] font-medium text-[var(--app-text-secondary)] pl-1">{t('policies.ruleSetsLabel')}</label>
                                             {ruleSetGroups.length === 0 ? (
-                                                <p className="px-3 py-4 text-[12px] text-[var(--app-text-quaternary)] border border-[rgba(39,44,54,0.12)] rounded-[10px] bg-white">暂无规则集，请先在「规则集」页面添加或等待内置规则集加载</p>
+                                                <p className="px-3 py-4 text-[12px] text-[var(--app-text-quaternary)] border border-[rgba(39,44,54,0.12)] rounded-[10px] bg-white">{t('policies.ruleSetsEmptyHint')}</p>
                                             ) : (
                                                 <div
                                                     ref={ruleSetBarRef}
@@ -255,7 +258,7 @@ export function PolicyEditModalBase<T extends PolicyEditFormStateBase>({
                                                     onClick={() => setShowRuleSetModal(true)}
                                                 >
                                                     {form.selectedRuleSetIds.size === 0 ? (
-                                                        <span className="text-[13px] text-[var(--app-text-quaternary)]">请选择规则集</span>
+                                                        <span className="text-[13px] text-[var(--app-text-quaternary)]">{t('policies.selectRuleSets')}</span>
                                                     ) : (
                                                         <>
                                                             <div className="flex flex-wrap items-center gap-1.5 flex-1">
@@ -279,7 +282,7 @@ export function PolicyEditModalBase<T extends PolicyEditFormStateBase>({
                                                                                 next.delete(id);
                                                                                 onFormChange({ selectedRuleSetIds: next } as Partial<T>);
                                                                             }}
-                                                                            aria-label="删除"
+                                                                            aria-label={t('common.delete')}
                                                                         >
                                                                             <X className="w-3 h-3" />
                                                                         </button>
@@ -296,7 +299,7 @@ export function PolicyEditModalBase<T extends PolicyEditFormStateBase>({
                                                                         }}
                                                                     >
                                                                         <span>+{hiddenCount}</span>
-                                                                        <span className="text-[10px]">更多</span>
+                                                                        <span className="text-[10px]">{t('logs.more')}</span>
                                                                     </button>
                                                                 )}
                                                                 {showAllRuleSets && selectedRuleSetList.length > ruleSetMaxVisible && (
@@ -308,7 +311,7 @@ export function PolicyEditModalBase<T extends PolicyEditFormStateBase>({
                                                                             setShowAllRuleSets(false);
                                                                         }}
                                                                     >
-                                                                        <span>收起</span>
+                                                                        <span>{t('common.collapse')}</span>
                                                                         <ChevronUp className="w-3 h-3" />
                                                                     </button>
                                                                 )}
@@ -318,7 +321,7 @@ export function PolicyEditModalBase<T extends PolicyEditFormStateBase>({
                                                     <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--app-text-quaternary)] pointer-events-none" />
                                                 </div>
                                             )}
-                                            <p className="text-[11px] text-[var(--app-text-quaternary)] pl-1">点击选择规则集，内置与自定义已合并展示</p>
+                                            <p className="text-[11px] text-[var(--app-text-quaternary)] pl-1">{t('policies.ruleSetPickerFootnote')}</p>
                                         </div>
 
                                         {/* 高级规则编辑器 */}
@@ -327,9 +330,9 @@ export function PolicyEditModalBase<T extends PolicyEditFormStateBase>({
                                             onChange={(logicRule) => {
                                                 onFormChange({ ruleGroupsTree: logicRule } as Partial<T>);
                                             }}
-                                            label="高级规则"
-                                            hint="点击打开高级规则编辑器，支持复杂规则逻辑"
-                                            modalTitle={ruleFieldsEditorTitle}
+                                            label={t('policies.advancedRules')}
+                                            hint={t('policies.advancedRulesHint')}
+                                            modalTitle={resolvedRuleEditorTitle}
                                             fieldConfig={ruleFieldConfig}
                                         />
                                     </>
@@ -337,8 +340,8 @@ export function PolicyEditModalBase<T extends PolicyEditFormStateBase>({
                             </div>
 
                             <div className="flex shrink-0 items-center justify-end gap-2 px-6 py-4 border-t border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/30">
-                                <Button variant="ghost" onClick={onClose}>取消</Button>
-                                <Button variant="primary" onClick={onSave} disabled={!form.name.trim()}>保存</Button>
+                                <Button variant="ghost" onClick={onClose}>{t('common.cancel')}</Button>
+                                <Button variant="primary" onClick={onSave} disabled={!form.name.trim()}>{t('common.save')}</Button>
                             </div>
                         </motion.div>
                     </div>

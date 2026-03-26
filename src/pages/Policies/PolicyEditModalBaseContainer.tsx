@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import type { TFunction } from 'i18next';
+import { useTranslation } from 'react-i18next';
 import type { RuleSetGroupItem } from './PolicyAllRuleSetModal';
 import type { PolicyEditFormStateBase } from './PolicyEditModalBase';
 import type { RouteLogicRule } from '../../types/singbox';
@@ -46,6 +48,8 @@ export interface PolicyEditModalBaseContainerProps<T extends PolicyEditFormState
         policiesCount: number;
         customGroupIds: Set<string>;
         builtinIds: Set<string>;
+        addNotification: (message: string, type?: 'success' | 'error' | 'info') => void;
+        t: TFunction;
     }) => Record<string, unknown> | null;
     /** 保存策略 */
     savePolicy: (params: {
@@ -140,6 +144,7 @@ export function createBuildPolicyData<T extends PolicyEditFormStateBase>(
         customGroupIds,
         builtinIds,
         addNotification,
+        t,
     }: {
         form: T;
         editingPolicy: BasePolicy | null;
@@ -147,6 +152,7 @@ export function createBuildPolicyData<T extends PolicyEditFormStateBase>(
         customGroupIds: Set<string>;
         builtinIds: Set<string>;
         addNotification: (message: string, type?: 'success' | 'error' | 'info') => void;
+        t: TFunction;
     }): Record<string, unknown> | null => {
         if (form.policyType === 'raw') {
             let parsedRawData: unknown = null;
@@ -154,11 +160,11 @@ export function createBuildPolicyData<T extends PolicyEditFormStateBase>(
                 try {
                     parsedRawData = JSON.parse(form.rawDataContent);
                 } catch {
-                    addNotification('JSON 格式错误，请检查输入', 'error');
+                    addNotification(t('policies.jsonFormatInvalid'), 'error');
                     return null;
                 }
                 if (typeof parsedRawData !== 'object' || parsedRawData === null || Array.isArray(parsedRawData)) {
-                    addNotification('JSON 内容必须是有效的对象格式', 'error');
+                    addNotification(t('policies.jsonMustBeObject'), 'error');
                     return null;
                 }
             }
@@ -183,11 +189,11 @@ export function createBuildPolicyData<T extends PolicyEditFormStateBase>(
             const hasRuleSet = ruleSetValue.length > 0;
             const hasAdvancedRules = form.ruleGroupsTree !== null;
             if (hasRuleSet && hasAdvancedRules) {
-                addNotification('规则集和高级规则只能二选一，请清空其中一项后再保存', 'error');
+                addNotification(t('policies.ruleSetVsAdvancedExclusive'), 'error');
                 return null;
             }
             if (!hasRuleSet && !hasAdvancedRules) {
-                addNotification('规则集和高级规则不能同时为空，请选择其中一项', 'error');
+                addNotification(t('policies.ruleSetOrAdvancedRequired'), 'error');
                 return null;
             }
             const logical_rule = form.ruleGroupsTree ?? undefined;
@@ -219,6 +225,7 @@ export function PolicyEditModalBaseContainer<T extends PolicyEditFormStateBase, 
     applyExtraData,
     renderModal,
 }: PolicyEditModalBaseContainerProps<T, P>) {
+    const { t } = useTranslation();
     const [form, setForm] = useState<T>(() => getInitialFormState(null, new Set()));
     const [ruleSetGroups, setRuleSetGroups] = useState<RuleSetGroupItem[]>([]);
     const [showRuleSetModal, setShowRuleSetModal] = useState(false);
@@ -325,6 +332,8 @@ export function PolicyEditModalBaseContainer<T extends PolicyEditFormStateBase, 
                 policiesCount,
                 customGroupIds,
                 builtinIds,
+                addNotification,
+                t,
             });
 
             if (!policyData) {
@@ -337,10 +346,10 @@ export function PolicyEditModalBaseContainer<T extends PolicyEditFormStateBase, 
 
             onClose();
             onSaved();
-            addNotification(editingPolicy ? '策略已更新' : '策略已添加');
+            addNotification(editingPolicy ? t('policies.policyUpdated') : t('policies.policyAdded'));
         } catch (err: unknown) {
             console.error('Failed to save policy:', err);
-            addNotification(`保存失败: ${(err as Error).message}`, 'error');
+            addNotification(t('policies.savePolicyFailed', { error: (err as Error).message }), 'error');
         }
     };
 

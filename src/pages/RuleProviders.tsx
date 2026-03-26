@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useDropdownPosition } from '../hooks/useDropdownPosition';
 import { Card, Badge } from '../components/ui/Surface';
 import { Button } from '../components/ui/Button';
@@ -22,12 +23,14 @@ interface RuleProvidersProps {
 }
 
 export function RuleProviders({ isActive = true }: RuleProvidersProps) {
+    const { t } = useTranslation();
     const [providers, setProviders] = useState<RuleProvider[]>([]);
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
     const [editingProvider, setEditingProvider] = useState<RuleProvider | null>(null);
     const [downloadingId, setDownloadingId] = useState<string | null>(null);
     const [downloadingAll, setDownloadingAll] = useState(false);
+    const [saving, setSaving] = useState(false);
     const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
     const { position: dropdownPosition, calculatePosition } = useDropdownPosition({ menuWidth: 120, menuHeight: 130 });
     const dropdownButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
@@ -76,14 +79,14 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
     const handleUpdateInterval = async (val: number) => {
         setRuleProviderUpdateInterval(val);
         await window.ipcRenderer.db.setSetting('rule-provider-update-interval', String(val));
-        addNotification('更新间隔已保存');
+        addNotification(t('ruleProviders.intervalSaved'));
     };
 
     // 设置弹窗打开时自动聚焦输入框
     useEffect(() => {
         if (showSettingsModal) {
-            const t = setTimeout(() => settingsIntervalInputRef.current?.focus(), 50);
-            return () => clearTimeout(t);
+            const timerId = setTimeout(() => settingsIntervalInputRef.current?.focus(), 50);
+            return () => clearTimeout(timerId);
         }
     }, [showSettingsModal]);
 
@@ -142,7 +145,7 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
         if (type === 'local') {
             // 对于新建的本地规则集，必须有规则内容
             if (!editingProvider && !logicRule) {
-                addNotification('本地规则集必须包含至少一条规则', 'error');
+                addNotification(t('ruleProviders.localRuleRequired'), 'error');
                 return;
             }
 
@@ -150,13 +153,14 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
             if (editingProvider) {
                 const hasRules = logicRule?.rules?.length || editingProvider.logical_rule?.rules?.length;
                 if (!hasRules) {
-                    addNotification('本地规则集必须包含至少一条规则', 'error');
+                    addNotification(t('ruleProviders.localRuleRequired'), 'error');
                     return;
                 }
             }
         }
 
         try {
+            setSaving(true);
             // 统一调用后端接口，由后端根据 type 判断处理方式
             const providerData = {
                 id: editingProvider?.id,
@@ -171,21 +175,23 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
             
             setShowModal(false);
             loadProviders();
-            addNotification(editingProvider ? '规则集已保存' : '规则集已添加');
+            addNotification(editingProvider ? t('ruleProviders.ruleSetSaved') : t('ruleProviders.ruleSetAdded'));
             
             // 触发配置生成
             window.ipcRenderer.core.generateConfig();
         } catch (err: any) {
-            addNotification(`操作失败: ${err?.message || '未知错误'}`, 'error');
+            addNotification(t('ruleProviders.saveFailed', { error: err?.message || t('ruleProviders.unknownError') }), 'error');
+        } finally {
+            setSaving(false);
         }
     };
 
     const handleDelete = async (id: string) => {
         const confirmed = await confirm({
-            title: '删除规则集',
-            message: '确定要删除这个规则集吗？',
-            confirmText: '删除',
-            cancelText: '取消',
+            title: t('ruleProviders.deleteConfirm'),
+            message: t('ruleProviders.deleteConfirmMessage'),
+            confirmText: t('common.delete'),
+            cancelText: t('common.cancel'),
             variant: 'danger'
         });
         if (!confirmed) return;
@@ -195,7 +201,7 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
             await handleBatchDeleteForSingle(tempSelectedIds);
         } catch (err: any) {
             console.error('Failed to delete rule provider:', err);
-            addNotification('删除失败: ' + getDisplayErrorMessage(err), 'error');
+            addNotification(t('ruleProviders.deleteFailed', { error: getDisplayErrorMessage(err) }), 'error');
         }
     };
 
@@ -211,7 +217,7 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
                 await handleBatchDisable(tempSelectedIds);
             }
         } catch (err: any) {
-            addNotification('操作失败: ' + (err?.message || '未知错误'), 'error');
+            addNotification(t('ruleProviders.operationFailed', { error: err?.message || t('ruleProviders.unknownError') }), 'error');
         }
     };
 
@@ -224,7 +230,7 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
             await handleRefreshSelected(tempSelectedIds);
         } catch (err: any) {
             console.error('Failed to refresh rule provider:', err);
-            addNotification(`刷新失败: ${err.message}`, 'error');
+            addNotification(t('ruleProviders.refreshFailed', { error: err.message }), 'error');
         } finally {
             setDownloadingId(null);
         }
@@ -250,11 +256,11 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
                 }
             }
             if (failCount > 0) {
-                addNotification(`更新完成: 成功 ${successCount} 条，失败 ${failCount} 条`, failCount === ids.length ? 'error' : undefined);
+                addNotification(t('ruleProviders.refreshPartialSuccess', { success: successCount, fail: failCount }), failCount === ids.length ? 'error' : undefined);
             } else {
                 const notificationMessage = ids.length === 1 
-                    ? `${providers.find(p => p.id === ids[0])?.name || '规则集'} 刷新成功` 
-                    : `已更新 ${successCount} 条规则集`;
+                    ? t('ruleProviders.refreshSuccess', { name: providers.find(p => p.id === ids[0])?.name || t('ruleProviders.genericProviderName') })
+                    : t('ruleProviders.updatedCountRuleSets', { count: successCount });
                 addNotification(notificationMessage);
             }
             if (!customSelectedIds) {
@@ -265,7 +271,7 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
             window.ipcRenderer.core.generateConfig();
         } catch (err: any) {
             console.error('Failed to refresh selected rule providers:', err);
-            addNotification(`更新失败: ${err.message}`, 'error');
+            addNotification(t('ruleProviders.refreshFailed', { error: err.message }), 'error');
         } finally {
             if (!customSelectedIds) {
                 setDownloadingAll(false);
@@ -290,7 +296,7 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
                 setViewError(null);
             }
         } catch (err: any) {
-            setViewError(err.message || '加载失败');
+            setViewError(err.message || t('ruleProviders.viewLoadFailed'));
             setViewContent(null);
         } finally {
             setViewLoading(false);
@@ -301,9 +307,9 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
         if (!viewContent) return;
         try {
             await navigator.clipboard.writeText(viewContent);
-            addNotification('内容已复制到剪贴板');
+            addNotification(t('ruleProviders.contentCopied'));
         } catch (err: any) {
-            addNotification(`复制失败: ${err?.message || '未知错误'}`, 'error');
+            addNotification(t('ruleProviders.copyFailed', { error: err?.message || t('ruleProviders.unknownError') }), 'error');
         }
     };
 
@@ -332,7 +338,7 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
             for (const id of targetIds) {
                 await window.ipcRenderer.db.updateRuleProvider(id, { enabled: true });
             }
-            addNotification(`已启用 ${targetIds.size} 条`);
+            addNotification(t('ruleProviders.enabledCount', { count: targetIds.size }));
 
             if (!customSelectedIds) {
                 setSelectedProviderIds(new Set());
@@ -341,7 +347,7 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
             // 触发配置生成
             window.ipcRenderer.core.generateConfig();
         } catch (err: any) {
-            addNotification(`操作失败: ${err?.message || '未知错误'}`, 'error');
+            addNotification(t('ruleProviders.saveFailed', { error: err?.message || t('ruleProviders.unknownError') }), 'error');
         }
     };
 
@@ -352,7 +358,7 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
             for (const id of targetIds) {
                 await window.ipcRenderer.db.updateRuleProvider(id, { enabled: false });
             }
-            addNotification(`已禁用 ${targetIds.size} 条`);
+            addNotification(t('ruleProviders.disabledCount', { count: targetIds.size }));
 
             if (!customSelectedIds) {
                 setSelectedProviderIds(new Set());
@@ -361,17 +367,17 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
             // 触发配置生成
             window.ipcRenderer.core.generateConfig();
         } catch (err: any) {
-            addNotification(`操作失败: ${err?.message || '未知错误'}`, 'error');
+            addNotification(t('ruleProviders.saveFailed', { error: err?.message || t('ruleProviders.unknownError') }), 'error');
         }
     };
 
     const handleBatchDelete = async () => {
         if (selectedProviderIds.size === 0) return;
         const confirmed = await confirm({
-            title: '批量删除',
-            message: `确定要删除选中的 ${selectedProviderIds.size} 条规则集吗？`,
-            confirmText: '删除',
-            cancelText: '取消',
+            title: t('ruleProviders.batchDeleteConfirm'),
+            message: t('ruleProviders.batchDeleteConfirmMessage', { count: selectedProviderIds.size }),
+            confirmText: t('common.delete'),
+            cancelText: t('common.cancel'),
             variant: 'danger'
         });
         if (!confirmed) return;
@@ -379,14 +385,14 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
             for (const id of selectedProviderIds) {
                 await window.ipcRenderer.db.deleteRuleProvider(id);
             }
-            addNotification(`已删除 ${selectedProviderIds.size} 条`);
+            addNotification(t('ruleProviders.deleted', { count: selectedProviderIds.size }));
 
             setSelectedProviderIds(new Set());
             loadProviders();
             // 触发配置生成
             window.ipcRenderer.core.generateConfig();
         } catch (err: any) {
-            addNotification(`删除失败: ${getDisplayErrorMessage(err)}`, 'error');
+            addNotification(t('ruleProviders.deleteFailed', { error: getDisplayErrorMessage(err) }), 'error');
         }
     };
 
@@ -397,12 +403,12 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
             for (const id of customSelectedIds) {
                 await window.ipcRenderer.db.deleteRuleProvider(id);
             }
-            addNotification('规则集已删除');
+            addNotification(t('ruleProviders.ruleSetDeleted'));
             loadProviders();
             // 触发配置生成
             window.ipcRenderer.core.generateConfig();
         } catch (err: any) {
-            addNotification(`删除失败: ${getDisplayErrorMessage(err)}`, 'error');
+            addNotification(t('ruleProviders.deleteFailed', { error: getDisplayErrorMessage(err) }), 'error');
             console.error('Failed to delete rule provider:', err);
         }
     };
@@ -440,8 +446,8 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
 
             <div className="page-header relative" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
                 <div className="min-w-0">
-                    <h1 className="page-title">规则集</h1>
-                    <p className="page-subtitle">管理外部规则集订阅，支持批量更新、启用与禁用。</p>
+                    <h1 className="page-title">{t('ruleProviders.title')}</h1>
+                    <p className="page-subtitle">{t('ruleProviders.subtitle')}</p>
                 </div>
                 <div className="toolbar relative" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
                     <Button
@@ -456,7 +462,7 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
                         }}
                     >
                         <Settings className="w-3.5 h-3.5 mr-1" />
-                        设置
+                        {t('ruleProviders.settings')}
                     </Button>
                 </div>
             </div>
@@ -471,16 +477,16 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
                                 <input
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
-                                    placeholder="搜索名称、URL..."
+                                    placeholder={t('ruleProviders.searchPlaceholder')}
                                     className="input-field h-8 pl-8 pr-2.5 text-[12px]"
                                 />
                             </div>
-                            {[
-                                { key: 'all', label: '全部' },
-                                { key: 'enabled', label: '启用' },
-                                { key: 'disabled', label: '停用' },
-                                { key: 'selected', label: '已选' }
-                            ].map((option) => (
+                            {([
+                                { key: 'all' as const, labelKey: 'ruleProviders.filterAll' },
+                                { key: 'enabled' as const, labelKey: 'ruleProviders.filterEnabled' },
+                                { key: 'disabled' as const, labelKey: 'ruleProviders.filterDisabled' },
+                                { key: 'selected' as const, labelKey: 'ruleProviders.filterSelected' }
+                            ]).map((option) => (
                                 <button
                                     key={option.key}
                                     type="button"
@@ -492,11 +498,11 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
                                             : "border-[var(--app-stroke)] bg-white/75 text-[var(--app-text-tertiary)] hover:text-[var(--app-text-secondary)]"
                                     )}
                                 >
-                                    {option.label}
+                                    {t(option.labelKey)}
                                 </button>
                             ))}
                             <span className="text-[11px] text-[var(--app-text-quaternary)]">
-                                {providerStats.total} 条 · 展示 {filteredProviders.length}
+                                {t('ruleProviders.statsLine', { total: providerStats.total, filtered: filteredProviders.length })}
                             </span>
                         </div>
                         <div className="flex flex-wrap items-center gap-1.5">
@@ -511,15 +517,15 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
                                         : "text-[var(--app-accent-strong)] hover:text-[var(--app-accent)] cursor-pointer"
                                 )}
                             >
-                                {downloadingAll ? <><RefreshCw className="w-3 h-3 mr-0.5 inline align-middle animate-spin" />更新中...</> : '更新'}
+                                {downloadingAll ? <><RefreshCw className="w-3 h-3 mr-0.5 inline align-middle animate-spin" />{t('ruleProviders.updating')}</> : t('ruleProviders.update')}
                             </button>
                             <div className="mx-1 w-px h-5 bg-[var(--app-divider)]" />
-                            <Button variant="ghost" size="sm" className="h-7 px-2 text-[11px] text-emerald-600 hover:text-emerald-700" onClick={() => handleBatchEnable()} disabled={selectedProviderIds.size === 0}>启用</Button>
-                            <Button variant="ghost" size="sm" className="h-7 px-2 text-[11px] text-amber-600 hover:text-amber-700" onClick={() => handleBatchDisable()} disabled={selectedProviderIds.size === 0}>禁用</Button>
-                            <Button variant="ghost" size="sm" className="h-7 px-2 text-[11px] text-red-500 hover:text-red-600" onClick={handleBatchDelete} disabled={selectedProviderIds.size === 0}>删除</Button>
+                            <Button variant="ghost" size="sm" className="h-7 px-2 text-[11px] text-emerald-600 hover:text-emerald-700" onClick={() => handleBatchEnable()} disabled={selectedProviderIds.size === 0}>{t('ruleProviders.enable')}</Button>
+                            <Button variant="ghost" size="sm" className="h-7 px-2 text-[11px] text-amber-600 hover:text-amber-700" onClick={() => handleBatchDisable()} disabled={selectedProviderIds.size === 0}>{t('ruleProviders.disable')}</Button>
+                            <Button variant="ghost" size="sm" className="h-7 px-2 text-[11px] text-red-500 hover:text-red-600" onClick={handleBatchDelete} disabled={selectedProviderIds.size === 0}>{t('ruleProviders.delete')}</Button>
                             <Button variant="primary" size="sm" className="h-7 px-2 text-[11px]" onClick={handleAdd}>
                                 <Plus className="w-3 h-3 mr-1" />
-                                添加
+                                {t('ruleProviders.add')}
                             </Button>
                         </div>
                     </div>
@@ -551,16 +557,16 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
                                                             }
                                                         }}
                                                         className="h-3.5 w-3.5 rounded border-[rgba(39,44,54,0.2)] text-[var(--app-accent)] focus:ring-[var(--app-accent)]"
-                                                        aria-label="全选"
+                                                        aria-label={t('ruleProviders.selectAll')}
                                                     />
                                                 )}
                                             </th>
                                             <th className="text-left py-1.5 px-3 text-[11px] font-medium text-[var(--app-text-quaternary)] w-[44px]">#</th>
-                                            <th className="text-left py-1.5 px-3 text-[11px] font-medium text-[var(--app-text-quaternary)] w-[1%]">启用</th>
-                                            <th className="text-left py-1.5 px-3 text-[11px] font-medium text-[var(--app-text-quaternary)] min-w-[140px]">名称</th>
-                                            <th className="text-left py-1.5 px-3 text-[11px] font-medium text-[var(--app-text-quaternary)] w-[70px]">类型</th>
-                                            <th className="text-left py-1.5 px-3 text-[11px] font-medium text-[var(--app-text-quaternary)] w-[110px]">最后更新</th>
-                                            <th className="text-right py-1.5 px-3 text-[11px] font-medium text-[var(--app-text-quaternary)] w-[90px]">操作</th>
+                                            <th className="text-left py-1.5 px-3 text-[11px] font-medium text-[var(--app-text-quaternary)] w-[1%]">{t('ruleProviders.columnEnabled')}</th>
+                                            <th className="text-left py-1.5 px-3 text-[11px] font-medium text-[var(--app-text-quaternary)] min-w-[140px]">{t('ruleProviders.ruleSetName')}</th>
+                                            <th className="text-left py-1.5 px-3 text-[11px] font-medium text-[var(--app-text-quaternary)] w-[70px]">{t('ruleProviders.type')}</th>
+                                            <th className="text-left py-1.5 px-3 text-[11px] font-medium text-[var(--app-text-quaternary)] w-[110px]">{t('ruleProviders.lastUpdate')}</th>
+                                            <th className="text-right py-1.5 px-3 text-[11px] font-medium text-[var(--app-text-quaternary)] w-[90px]">{t('ruleProviders.actions')}</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -570,12 +576,12 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
                                                     {providers.length === 0 ? (
                                                         <>
                                                             <Layers className="mx-auto h-8 w-8 opacity-40" />
-                                                            <p className="mt-2">暂无规则集，请添加或导入</p>
+                                                            <p className="mt-2">{t('ruleProviders.noRuleProviders')}</p>
                                                         </>
                                                     ) : (
                                                         <>
                                                             <Search className="mx-auto h-6 w-6 opacity-50" />
-                                                            <p className="mt-2">没有匹配的规则集</p>
+                                                            <p className="mt-2">{t('ruleProviders.noMatchRuleProviders')}</p>
                                                         </>
                                                     )}
                                                 </td>
@@ -599,7 +605,7 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
                                                         checked={selectedProviderIds.has(provider.id)}
                                                         onChange={() => toggleProviderSelection(provider.id)}
                                                         className="h-3.5 w-3.5 rounded border-[rgba(39,44,54,0.2)] text-[var(--app-accent)] focus:ring-[var(--app-accent)]"
-                                                        aria-label={`选择 ${provider.name}`}
+                                                        aria-label={t('ruleProviders.selectRowAria', { name: provider.name })}
                                                     />
                                                 </td>
                                                 <td className="py-1.5 px-3 text-[var(--app-text-quaternary)] text-[11px] tabular-nums">
@@ -637,7 +643,7 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
                                                             className="h-7 w-7"
                                                             onClick={() => handleRefresh(provider)}
                                                             disabled={downloadingId === provider.id}
-                                                            title="刷新"
+                                                            title={t('common.refresh')}
                                                         >
                                                             <RefreshCw className={cn("w-3.5 h-3.5", downloadingId === provider.id && "animate-spin")} />
                                                         </Button>
@@ -679,7 +685,7 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
                                         onClick={() => handleView(provider)}
                                     >
                                         <Eye className="w-3.5 h-3.5 mr-2" />
-                                        查看
+                                        {t('ruleProviders.view')}
                                     </button>
                                     <button
                                         className="flex items-center px-3 py-1.5 text-[12px] text-[var(--app-text-secondary)] hover:bg-[var(--app-bg-secondary)] hover:text-[var(--app-text)] transition-colors text-left w-full"
@@ -689,7 +695,7 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
                                         }}
                                     >
                                         <Edit2 className="w-3.5 h-3.5 mr-2" />
-                                        编辑
+                                        {t('ruleProviders.edit')}
                                     </button>
                                     <div className="mx-2 my-1 border-t border-[rgba(39,44,54,0.06)]" />
                                     <button
@@ -700,7 +706,7 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
                                         }}
                                     >
                                         <Trash2 className="w-3.5 h-3.5 mr-2" />
-                                        删除
+                                        {t('ruleProviders.delete')}
                                     </button>
                                 </motion.div>,
                                 document.body
@@ -715,12 +721,12 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
             <Modal
                 open={showSettingsModal}
                 onClose={() => setShowSettingsModal(false)}
-                title="规则集设置"
+                title={t('ruleProviders.settingsTitle')}
                 maxWidth="max-w-md"
                 contentClassName="p-6 space-y-4"
                 footer={
                     <>
-                        <Button variant="ghost" onClick={() => setShowSettingsModal(false)}>取消</Button>
+                        <Button variant="ghost" onClick={() => setShowSettingsModal(false)}>{t('common.cancel')}</Button>
                         <Button
                             variant="primary"
                             onClick={async () => {
@@ -728,14 +734,14 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
                                 setShowSettingsModal(false);
                             }}
                         >
-                            保存
+                            {t('common.save')}
                         </Button>
                     </>
                 }
             >
                 <div className="space-y-3">
-                    <div className="text-[13px] font-medium text-[var(--app-text)]">更新间隔</div>
-                    <p className="text-[11px] text-[var(--app-text-tertiary)]">所有规则集的自动更新间隔（秒），0 表示不自动更新</p>
+                    <div className="text-[13px] font-medium text-[var(--app-text)]">{t('ruleProviders.updateIntervalLabel')}</div>
+                    <p className="text-[11px] text-[var(--app-text-tertiary)]">{t('ruleProviders.updateIntervalDesc')}</p>
                     <Input
                         ref={settingsIntervalInputRef}
                         type="number"
@@ -770,7 +776,9 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
                         >
                             <div className="flex shrink-0 items-center justify-between px-6 py-4 border-b border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/50">
                                 <h2 className="text-[15px] font-semibold text-[var(--app-text)]">
-                                    查看规则集 {viewProvider ? `· ${viewProvider.name}` : ''}
+                                    {viewProvider
+                                        ? t('ruleProviders.viewRuleSetTitleWithName', { name: viewProvider.name })
+                                        : t('ruleProviders.viewRuleSet')}
                                 </h2>
                                 <div className="flex items-center gap-2">
                                     <Button
@@ -780,13 +788,13 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
                                         disabled={viewLoading || !viewContent}
                                     >
                                         <Copy className="w-3.5 h-3.5 mr-1" />
-                                        复制
+                                        {t('common.copy')}
                                     </Button>
                                     <button
                                         type="button"
                                         onClick={() => setShowViewModal(false)}
                                         className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[var(--app-text-tertiary)] hover:bg-[var(--app-hover)] hover:text-[var(--app-text)] transition-colors -mr-2"
-                                        aria-label="关闭"
+                                        aria-label={t('common.close')}
                                     >
                                         <X className="w-4 h-4" />
                                     </button>
@@ -796,7 +804,7 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
                                 {viewLoading ? (
                                     <div className="flex items-center justify-center h-48 text-[var(--app-text-tertiary)]">
                                         <RefreshCw className="w-6 h-6 animate-spin mr-2" />
-                                        加载中...
+                                        {t('ruleProviders.loadingView')}
                                     </div>
                                 ) : viewError ? (
                                     <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-[13px] text-red-700">
@@ -836,13 +844,13 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
                         >
                             <div className="flex shrink-0 items-center justify-between px-6 py-4 border-b border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/50">
                                 <h2 className="text-[15px] font-semibold text-[var(--app-text)]">
-                                    {editingProvider ? '编辑规则集' : '添加规则集'}
+                                    {editingProvider ? t('ruleProviders.editRuleSet') : t('ruleProviders.addRuleSet')}
                                 </h2>
                                 <button
                                     type="button"
                                     onClick={() => setShowModal(false)}
                                     className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[var(--app-text-tertiary)] hover:bg-[var(--app-hover)] hover:text-[var(--app-text)] transition-colors -mr-2"
-                                    aria-label="关闭"
+                                    aria-label={t('common.close')}
                                 >
                                     <X className="w-4 h-4" />
                                 </button>
@@ -850,7 +858,7 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
 
                             <div className="flex-1 min-h-0 p-6 space-y-4 overflow-y-auto">
                                 <div className="space-y-1.5">
-                                    <label className="text-[12px] font-medium text-[var(--app-text-secondary)] pl-1">类型</label>
+                                    <label className="text-[12px] font-medium text-[var(--app-text-secondary)] pl-1">{t('ruleProviders.ruleSetType')}</label>
                                     <div className="flex flex-wrap gap-2">
                                         <button
                                             type="button"
@@ -912,28 +920,28 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
                                                 "text-[12px] font-medium",
                                                 type === 'local' ? "text-[var(--app-text)]" : "text-[var(--app-text-secondary)]"
                                             )}>
-                                                本地
+                                                {t('ruleProviders.typeLocalButton')}
                                             </span>
                                         </button>
                                     </div>
                                 </div>
 
                                 <div className="space-y-1.5">
-                                    <label className="text-[12px] font-medium text-[var(--app-text-secondary)] pl-1">名称</label>
+                                    <label className="text-[12px] font-medium text-[var(--app-text-secondary)] pl-1">{t('ruleProviders.ruleSetName')}</label>
                                     <Input
                                         value={name}
                                         onChange={e => setName(e.target.value)}
-                                        placeholder="例如：BilibiliHMT"
+                                        placeholder={t('ruleProviders.namePlaceholder')}
                                     />
                                 </div>
 
                                 {type !== 'local' && (
                                 <div className="space-y-1.5">
-                                    <label className="text-[12px] font-medium text-[var(--app-text-secondary)] pl-1">URL (仅支持 HTTP(S))</label>
+                                    <label className="text-[12px] font-medium text-[var(--app-text-secondary)] pl-1">{t('ruleProviders.urlLabelOnlyHttp')}</label>
                                     <Input
                                         value={url}
                                         onChange={e => setUrl(e.target.value)}
-                                        placeholder="https://raw.githubusercontent.com/.../BilibiliHMT.list"
+                                        placeholder={t('ruleProviders.urlPlaceholderExample')}
                                     />
                                 </div>
                                 )}
@@ -941,21 +949,26 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
                                 <RuleEditorField
                                     value={logicRule}
                                     onChange={setLogicRule}
-                                    label="规则内容"
-                                    modalTitle={editingProvider ? `编辑规则集: ${editingProvider.name}` : '添加本地规则集'}
+                                    label={t('ruleProviders.ruleContentLabel')}
+                                    modalTitle={editingProvider ? t('ruleProviders.editLocalRuleSetModal', { name: editingProvider.name }) : t('ruleProviders.addLocalRuleSetModal')}
                                     showClearButton={false}
                                 />
                                 )}
                             </div>
 
                             <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/30">
-                                <Button variant="ghost" onClick={() => setShowModal(false)}>取消</Button>
+                                <Button variant="ghost" onClick={() => setShowModal(false)} disabled={saving}>{t('common.cancel')}</Button>
                                 <Button
                                     variant="primary"
                                     onClick={handleSave}
-                                    disabled={!name.trim() || (type !== 'local' && !url.trim()) || (type === 'local' && !editingProvider && !logicRule)}
+                                    disabled={!name.trim() || (type !== 'local' && !url.trim()) || (type === 'local' && !editingProvider && !logicRule) || saving}
                                 >
-                                    保存
+                                    {saving ? (
+                                        <>
+                                            <RefreshCw className="w-3.5 h-3.5 mr-1 animate-spin" />
+                                            {t('ruleProviders.saving')}
+                                        </>
+                                    ) : t('common.save')}
                                 </Button>
                             </div>
                         </motion.div>

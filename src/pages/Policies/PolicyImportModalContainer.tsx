@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { Policy, SingboxRouteRuleWithOutbound } from '../../types/policy';
 import { cnJsonRuleToPolicy, configRouteRuleToPolicy, getPolicyRuleSet } from '../../services/policy';
 import type { RuleProvider } from '../../types/rule-providers';
@@ -23,6 +24,7 @@ export function PolicyImportModalContainer({
     onImportComplete,
     addNotification,
 }: PolicyImportModalContainerProps) {
+    const { t } = useTranslation();
     const [templates, setTemplates] = useState<Array<{ name: string; description: string; path: string }>>([]);
     const [configRules, setConfigRules] = useState<SingboxRouteRuleWithOutbound[]>([]);
     const [selectedRules, setSelectedRules] = useState<Set<number>>(new Set());
@@ -55,10 +57,10 @@ export function PolicyImportModalContainer({
         // 检查当前策略数量，如果需要清空的策略，显示确认对话框
         if (policiesCount > 0) {
             const confirmed = await confirm({
-                title: '确认导入预设',
-                message: `导入预设会清空当前的 ${policiesCount} 条策略，确定要继续吗？`,
-                confirmText: '确定导入',
-                cancelText: '取消',
+                title: t('policies.importPresetConfirmTitle'),
+                message: t('policies.importPresetConfirmMessage', { count: policiesCount }),
+                confirmText: t('policies.confirmImportAction'),
+                cancelText: t('common.cancel'),
                 variant: 'warning'
             });
 
@@ -86,7 +88,7 @@ export function PolicyImportModalContainer({
 
             // 处理 TUN 模式需要管理员权限的情况（只有开启 TUN 时才提示）
             if (result.tunNeedsAdmin && result.tunValue === true) {
-                addNotification('TUN模式没有启用成功，请在设置中安装系统服务后生效', 'error');
+                addNotification(t('policies.tunNeedsAdmin'), 'error');
             }
 
             // 异步生成配置，不阻塞UI
@@ -98,7 +100,7 @@ export function PolicyImportModalContainer({
             onClose();
         } catch (err: unknown) {
             console.log(err);
-            addNotification(`导入失败: ${(err as Error).message}`, 'error');
+            addNotification(t('policies.importFailedWithError', { error: (err as Error).message }), 'error');
         } finally {
             setImporting(false);
             setImportingTemplatePath(null);
@@ -128,10 +130,10 @@ export function PolicyImportModalContainer({
         // 检查当前策略数量，如果需要清空的策略，显示确认对话框
         if (policiesCount > 0) {
             const confirmed = await confirm({
-                title: '确认导入配置',
-                message: `导入配置会清空当前的 ${policiesCount} 条策略，确定要继续吗？`,
-                confirmText: '确定导入',
-                cancelText: '取消',
+                title: t('policies.importConfigConfirmTitle'),
+                message: t('policies.importConfigConfirmMessage', { count: policiesCount }),
+                confirmText: t('policies.confirmImportAction'),
+                cancelText: t('common.cancel'),
                 variant: 'warning'
             });
             
@@ -162,7 +164,7 @@ export function PolicyImportModalContainer({
                 policiesToImport.push(policyToAdd);
             });
             if (policiesToImport.length === 0) {
-                addNotification('未找到有效的策略配置', 'error');
+                addNotification(t('policies.noValidPolicyConfig'), 'error');
                 return;
             }
             const aclRefsInPolicies = new Set<string>();
@@ -178,9 +180,9 @@ export function PolicyImportModalContainer({
                 const total = (result?.added ?? 0) + (result?.updated ?? 0);
                 if (total > 0) {
                     const parts: string[] = [];
-                    if ((result?.added ?? 0) > 0) parts.push(`添加 ${result.added} 个`);
-                    if ((result?.updated ?? 0) > 0) parts.push(`重写 ${result.updated} 个`);
-                    addNotification(`预设规则集：${parts.join('，')}`, 'info');
+                    if ((result?.added ?? 0) > 0) parts.push(t('policies.presetAdded', { count: result.added }));
+                    if ((result?.updated ?? 0) > 0) parts.push(t('policies.presetUpdated', { count: result.updated }));
+                    addNotification(t('policies.presetRulesetChanges', { parts: parts.join('，') }), 'info');
                     presetRulesetChanged = true;
                 }
             }
@@ -191,12 +193,12 @@ export function PolicyImportModalContainer({
                 window.ipcRenderer.core.generateConfig().catch(console.error);
             }
             
-            addNotification(`成功导入 ${addedCount} 条策略`);
+            addNotification(t('policies.importSuccessBatch', { count: addedCount }));
             onImportComplete();
             onClose();
         } catch (err: unknown) {
             console.error(err);
-            addNotification(`导入失败: ${(err as Error).message}`, 'error');
+            addNotification(t('policies.importFailedWithError', { error: (err as Error).message }), 'error');
         } finally {
             setImporting(false);
         }

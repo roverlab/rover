@@ -53,10 +53,10 @@ export function archiveAndTruncateSingboxLog(): void {
 
         fs.copyFileSync(src, dest);
         fs.truncateSync(src, 0);
-        log.info(`sing-box 日志已归档: ${dest}，原文件已清空`);
+        log.info(`sing-box log archived: ${dest}, original file cleared`);
     } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
-        log.warn(`sing-box 日志归档失败: ${msg}`);
+        log.warn(`sing-box log archive failed: ${msg}`);
     }
 }
 
@@ -82,10 +82,10 @@ export function pruneOldSingboxArchives(): void {
         const full = path.join(logsDir, ent.name);
         try {
             fs.unlinkSync(full);
-            log.info(`已删除过期归档: ${ent.name}`);
+            log.info(`Deleted expired archive: ${ent.name}`);
         } catch (err: unknown) {
             const msg = err instanceof Error ? err.message : String(err);
-            log.warn(`删除过期日志失败 ${ent.name}: ${msg}`);
+            log.warn(`Failed to delete expired log ${ent.name}: ${msg}`);
         }
     }
 }
@@ -106,7 +106,7 @@ export function startSingboxLogMaintenance(): void {
     pruneOldSingboxArchives();
     scheduleMidnightTick();
     log.info(
-        `sing-box 日志按日归档已启用（每日 0 点），logs 下 singbox-/app- 按日日志保留最近 ${RETENTION_DAYS} 天`
+        `sing-box log daily archive enabled (daily at midnight), singbox-/app- daily logs in logs folder retained for ${RETENTION_DAYS} days`
     );
 }
 

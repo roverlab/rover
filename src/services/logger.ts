@@ -1,7 +1,7 @@
 /**
- * 前端日志模块
- * 通过 IPC 将日志发送到主进程的 logger
- * 使用缓冲机制优化性能
+ * Frontend logging module
+ * Send logs to main process logger via IPC
+ * Use buffering mechanism to optimize performance
  */
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
@@ -412,7 +412,7 @@ export function setupGlobalErrorHandler(): void {
         };
         
         error('GlobalErrorHandler', 
-            `未捕获的错误\n  消息: ${message}\n  文件: ${filename}:${lineno}:${colno}\n  堆栈: ${errorDetails.stack}\n  URL: ${errorDetails.url}`
+            `Uncaught Error\n  Message: ${message}\n  File: ${filename}:${lineno}:${colno}\n  Stack: ${errorDetails.stack}\n  URL: ${errorDetails.url}`
         );
         
         // 显示简洁的错误提示
@@ -445,7 +445,7 @@ export function setupGlobalErrorHandler(): void {
         };
         
         error('GlobalErrorHandler', 
-            `未处理的 Promise 拒绝\n  原因: ${errorInfo}\n  Context: ${JSON.stringify(context)}`
+            `Unhandled Promise Rejection\n  Reason: ${errorInfo}\n  Context: ${JSON.stringify(context)}`
         );
         
         // 显示简洁的错误提示
@@ -466,7 +466,7 @@ export function setupGlobalErrorHandler(): void {
             
             if (tagName && src) {
                 warn('ResourceLoader', 
-                    `资源加载失败\n  标签: ${tagName}\n  源: ${src}\n  URL: ${window.location?.href}`
+                    `Resource Load Failed\n  Tag: ${tagName}\n  Source: ${src}\n  URL: ${window.location?.href}`
                 );
             }
         }
@@ -482,9 +482,9 @@ export function logReactError(error: Error, errorInfo: { componentStack: string 
         timestamp: new Date().toISOString(),
     };
     
-    // 使用本地 error 函数记录 React 错误
+    // Log React error using local error function
     writeLog('error', 'ReactError', 
-        `React 组件错误\n  错误: ${error.name}: ${error.message}\n  组件堆栈: ${errorInfo.componentStack}\n  错误堆栈: ${error.stack || 'No stack'}\n  Context: ${JSON.stringify(context)}`
+        `React Component Error\n  Error: ${error.name}: ${error.message}\n  Component Stack: ${errorInfo.componentStack}\n  Error Stack: ${error.stack || 'No stack'}\n  Context: ${JSON.stringify(context)}`
     );
     flushBuffer();
 }

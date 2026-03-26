@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react';
 import { createPortal } from 'react-dom';
+import { useTranslation } from 'react-i18next';
 import { cn } from '../components/Sidebar';
 import { Zap, Search, MoreVertical, RefreshCw, Activity, X, LayoutGrid, List, ArrowUpDown, AlignLeft, Monitor, ArrowLeft, Settings } from 'lucide-react';
 import { Button } from '../components/ui/Button';
@@ -57,6 +58,8 @@ interface NodeCardProps {
   getDelayClass: (delay?: number) => string;
   /** URLTest 类型组的当前选择节点名称 */
   currentNode?: string;
+  /** 超时文本 */
+  timeoutLabel: string;
 }
 
 const NodeCard = memo(function NodeCard({
@@ -69,7 +72,8 @@ const NodeCard = memo(function NodeCard({
   sizeClasses,
   onSelect,
   getDelayClass,
-  currentNode
+  currentNode,
+  timeoutLabel
 }: NodeCardProps) {
   // Selector 和 URLTest 类型显示当前选择的节点
   const showCurrentNode = type === 'selector' || type === 'Selector' || type === 'urltest' || type === 'URLTest';
@@ -107,7 +111,7 @@ const NodeCard = memo(function NodeCard({
           ) : delay && delay > 0 ? (
             `${delay} ms`
           ) : (
-            'Timeout'
+            timeoutLabel
           )}
         </div>
       ) : null}
@@ -132,7 +136,8 @@ interface ProxiesProps {
 }
 
 export function Proxies({ isActive = true }: ProxiesProps) {
-  const { apiUrl, apiSecret } = useApi();
+const { t } = useTranslation();
+const { apiUrl, apiSecret } = useApi();
   const { notifications, addNotification, removeNotification } = useNotificationState();
   const [groups, setGroups] = useState<ProxyGroup[]>([]);
   const [activeTab, setActiveTab] = useState<string>('');
@@ -202,7 +207,7 @@ export function Proxies({ isActive = true }: ProxiesProps) {
       setNodeDelays(prev => ({ ...prev, ...newHistoryDelays }));
     } catch (err) {
       // API 不可用时静默失败，但记录错误便于调试
-      console.log('[Proxies] API 数据获取失败:', err);
+            console.log('[Proxies] API data fetch failed:', err);
     }
   }, [apiUrl, apiSecret]);
 
@@ -325,7 +330,7 @@ export function Proxies({ isActive = true }: ProxiesProps) {
           }));
         }
       } catch (e) {
-        console.error('[Proxies] 加载设置失败:', e);
+            console.error('[Proxies] Failed to load settings:', e);
       }
     };
     loadSettings();
@@ -339,7 +344,7 @@ export function Proxies({ isActive = true }: ProxiesProps) {
       return;
     }
     window.ipcRenderer.db.setSetting('proxies-page-settings', JSON.stringify(settings)).catch(e => {
-      console.error('[Proxies] 保存设置失败:', e);
+            console.error('[Proxies] Failed to save settings:', e);
     });
   }, [settings]);
 
@@ -471,7 +476,7 @@ export function Proxies({ isActive = true }: ProxiesProps) {
     // 检查内核是否启动
     const running = await window.ipcRenderer.core.isRunning();
     if (!running) {
-      addNotification('内核未启动，无法测试', 'warning');
+      addNotification(t('proxies.coreNotRunning'), 'warning');
       return;
     }
 
@@ -649,11 +654,11 @@ export function Proxies({ isActive = true }: ProxiesProps) {
 
       {isSearchMode ? (
         /* 搜索模式头部 - 左侧显示标题，与普通模式同结构 */
-        <div className="page-header shrink-0 z-20" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
-          <div className="shrink-0">
-            <h1 className="page-title">代理</h1>
-            <p className="page-subtitle">切换代理组节点、一键测速、搜索筛选。</p>
-          </div>
+          <div className="page-header shrink-0 z-20" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
+            <div className="shrink-0">
+              <h1 className="page-title">{t('proxies.title')}</h1>
+              <p className="page-subtitle">{t('proxies.subtitle')}</p>
+            </div>
           <div className="toolbar flex-1 min-w-0 flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
             {/* 返回按钮 - 与搜索栏同高 (38px) */}
             <button
@@ -678,7 +683,7 @@ export function Proxies({ isActive = true }: ProxiesProps) {
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onFocus={() => setSearchInputFocused(true)}
                 onBlur={() => setSearchInputFocused(false)}
-                placeholder="搜索节点..."
+                placeholder={t('proxies.searchNodes')}
                 className="flex-1 bg-transparent text-[14px] text-[var(--app-text)] placeholder:text-[var(--app-text-quaternary)] outline-none border-none appearance-none focus:ring-0 focus:shadow-none focus-visible:ring-0 focus-visible:shadow-none"
               />
               {searchQuery && (
@@ -696,8 +701,8 @@ export function Proxies({ isActive = true }: ProxiesProps) {
         /* 普通模式头部 */
         <div className="page-header shrink-0 z-20" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
           <div>
-            <h1 className="page-title">代理</h1>
-            <p className="page-subtitle">切换代理组节点、一键测速、搜索筛选。</p>
+            <h1 className="page-title">{t('proxies.title')}</h1>
+            <p className="page-subtitle">{t('proxies.subtitle')}</p>
           </div>
           <div className="toolbar" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
             {/* 搜索按钮 */}
@@ -724,7 +729,7 @@ export function Proxies({ isActive = true }: ProxiesProps) {
 
       <div className="page-content">
         {groups.length === 0 && !initialLoading ? (
-          <div className="empty-state text-[13px]">No proxies available.</div>
+          <div className="empty-state text-[13px]">{t('proxies.noProxies')}</div>
         ) : (
           <>
             {/* 组标签栏 */}
@@ -756,7 +761,7 @@ export function Proxies({ isActive = true }: ProxiesProps) {
                 <button
                   onClick={() => setShowTabsPopup(true)}
                   className="w-7 h-7 flex items-center justify-center rounded-[6px] bg-white shadow-sm border border-[var(--app-divider)] hover:bg-[var(--app-hover)] transition-colors shrink-0 z-10"
-                  title="查看所有分组"
+                  title={t('proxies.viewAllGroups')}
                 >
                   <MoreVertical className="w-4 h-4 text-[var(--app-text-secondary)]" />
                 </button>
@@ -768,7 +773,7 @@ export function Proxies({ isActive = true }: ProxiesProps) {
               {isSearchMode && searchQuery.trim() && displayedNodes.length === 0 ? (
                 /* 无搜索结果 */
                 <div className="col-span-full flex items-center justify-center py-20 text-[var(--app-text-tertiary)] text-[13px]">
-                  未找到匹配的节点
+                  {t('proxies.noMatchingNodes')}
                 </div>
               ) : (
                 displayedNodes.map(({ node, group, key, isSelected, isSelectable }) => (
@@ -784,6 +789,7 @@ export function Proxies({ isActive = true }: ProxiesProps) {
                     onSelect={() => handleCardSelect(group.name, node.name, isSelectable)}
                     getDelayClass={getDelayClass}
                     currentNode={(node.type === 'urltest' || node.type === 'URLTest') ? selectedNodes[node.name] : undefined}
+                    timeoutLabel={t('proxies.timeout')}
                   />
                 ))
               )}
@@ -837,7 +843,7 @@ export function Proxies({ isActive = true }: ProxiesProps) {
         <button
           onClick={testLatency}
           className="floating-action w-[52px] h-[52px]"
-          title={isSearchMode && searchQuery.trim() ? '测速当前页节点' : '一键测速本组节点'}
+          title={isSearchMode && searchQuery.trim() ? t('proxies.testLatencyCurrentPage') : t('proxies.testLatencyGroup')}
         >
           <Activity className="w-5 h-5 fill-current animate-pulse opacity-70" />
         </button>
@@ -859,7 +865,7 @@ export function Proxies({ isActive = true }: ProxiesProps) {
           >
             {/* Header */}
             <div className="flex shrink-0 items-center justify-between px-4 py-4 border-b border-[var(--app-divider)]">
-              <span className="text-[15px] font-semibold text-[var(--app-text)]">设置</span>
+              <span className="text-[15px] font-semibold text-[var(--app-text)]">{t('proxies.settings')}</span>
               <button
                 type="button"
                 onClick={() => setSettingsOpen(false)}
@@ -874,7 +880,7 @@ export function Proxies({ isActive = true }: ProxiesProps) {
             <div className="flex-1 overflow-y-auto p-4 space-y-6">
               {/* 风格 */}
               <div>
-                <div className="text-[12px] font-medium text-[var(--app-text-tertiary)] mb-3">风格</div>
+                <div className="text-[12px] font-medium text-[var(--app-text-tertiary)] mb-3">{t('proxies.style')}</div>
                 <div className="flex gap-2">
                   <button
                     onClick={() => setSettings(s => ({ ...s, viewStyle: 'tabs' }))}
@@ -886,7 +892,7 @@ export function Proxies({ isActive = true }: ProxiesProps) {
                     )}
                   >
                     <LayoutGrid className="w-4 h-4" />
-                    标签页
+                    {t('proxies.viewTabs')}
                   </button>
                   <button
                     onClick={() => setSettings(s => ({ ...s, viewStyle: 'list' }))}
@@ -898,14 +904,14 @@ export function Proxies({ isActive = true }: ProxiesProps) {
                     )}
                   >
                     <List className="w-4 h-4" />
-                    列表
+                    {t('proxies.viewList')}
                   </button>
                 </div>
               </div>
 
               {/* 排序 */}
               <div>
-                <div className="text-[12px] font-medium text-[var(--app-text-tertiary)] mb-3">排序</div>
+                <div className="text-[12px] font-medium text-[var(--app-text-tertiary)] mb-3">{t('proxies.sort')}</div>
                 <div className="flex gap-2">
                   <button
                     onClick={() => setSettings(s => ({ ...s, sortBy: 'default' }))}
@@ -917,7 +923,7 @@ export function Proxies({ isActive = true }: ProxiesProps) {
                     )}
                   >
                     <AlignLeft className="w-3.5 h-3.5" />
-                    默认
+                    {t('proxies.sortDefault')}
                   </button>
                   <button
                     onClick={() => setSettings(s => ({ ...s, sortBy: 'delay' }))}
@@ -929,7 +935,7 @@ export function Proxies({ isActive = true }: ProxiesProps) {
                     )}
                   >
                     <Zap className="w-3.5 h-3.5" />
-                    延迟
+                    {t('proxies.sortDelay')}
                   </button>
                   <button
                     onClick={() => setSettings(s => ({ ...s, sortBy: 'name' }))}
@@ -941,14 +947,14 @@ export function Proxies({ isActive = true }: ProxiesProps) {
                     )}
                   >
                     <ArrowUpDown className="w-3.5 h-3.5" />
-                    名称
+                    {t('proxies.sortName')}
                   </button>
                 </div>
               </div>
 
               {/* 布局 */}
               <div>
-                <div className="text-[12px] font-medium text-[var(--app-text-tertiary)] mb-3">布局</div>
+                <div className="text-[12px] font-medium text-[var(--app-text-tertiary)] mb-3">{t('proxies.layout')}</div>
                 <div className="flex gap-2">
                   <button
                     onClick={() => setSettings(s => ({ ...s, layoutDensity: 'loose' }))}
@@ -959,7 +965,7 @@ export function Proxies({ isActive = true }: ProxiesProps) {
                         : "bg-[var(--app-panel-soft)] border-transparent text-[var(--app-text-tertiary)] hover:text-[var(--app-text-secondary)]"
                     )}
                   >
-                    宽松
+                    {t('proxies.densityLoose')}
                   </button>
                   <button
                     onClick={() => setSettings(s => ({ ...s, layoutDensity: 'normal' }))}
@@ -970,7 +976,7 @@ export function Proxies({ isActive = true }: ProxiesProps) {
                         : "bg-[var(--app-panel-soft)] border-transparent text-[var(--app-text-tertiary)] hover:text-[var(--app-text-secondary)]"
                     )}
                   >
-                    标准
+                    {t('proxies.densityNormal')}
                   </button>
                   <button
                     onClick={() => setSettings(s => ({ ...s, layoutDensity: 'compact' }))}
@@ -981,14 +987,14 @@ export function Proxies({ isActive = true }: ProxiesProps) {
                         : "bg-[var(--app-panel-soft)] border-transparent text-[var(--app-text-tertiary)] hover:text-[var(--app-text-secondary)]"
                     )}
                   >
-                    紧凑
+                    {t('proxies.densityCompact')}
                   </button>
                 </div>
               </div>
 
               {/* 尺寸 */}
               <div>
-                <div className="text-[12px] font-medium text-[var(--app-text-tertiary)] mb-3">尺寸</div>
+                <div className="text-[12px] font-medium text-[var(--app-text-tertiary)] mb-3">{t('proxies.size')}</div>
                 <div className="flex gap-2">
                   <button
                     onClick={() => setSettings(s => ({ ...s, sizeOption: 'normal' }))}
@@ -999,7 +1005,7 @@ export function Proxies({ isActive = true }: ProxiesProps) {
                         : "bg-[var(--app-panel-soft)] border-transparent text-[var(--app-text-tertiary)] hover:text-[var(--app-text-secondary)]"
                     )}
                   >
-                    标准
+                    {t('proxies.sizeNormal')}
                   </button>
                   <button
                     onClick={() => setSettings(s => ({ ...s, sizeOption: 'compact' }))}
@@ -1010,7 +1016,7 @@ export function Proxies({ isActive = true }: ProxiesProps) {
                         : "bg-[var(--app-panel-soft)] border-transparent text-[var(--app-text-tertiary)] hover:text-[var(--app-text-secondary)]"
                     )}
                   >
-                    紧凑
+                    {t('proxies.sizeCompact')}
                   </button>
                   <button
                     onClick={() => setSettings(s => ({ ...s, sizeOption: 'minimal' }))}
@@ -1021,7 +1027,7 @@ export function Proxies({ isActive = true }: ProxiesProps) {
                         : "bg-[var(--app-panel-soft)] border-transparent text-[var(--app-text-tertiary)] hover:text-[var(--app-text-secondary)]"
                     )}
                   >
-                    最小
+                    {t('proxies.sizeMinimal')}
                   </button>
                 </div>
               </div>

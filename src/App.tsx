@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { Dashboard } from './pages/Dashboard';
 import { Proxies } from './pages/Proxies';
@@ -13,8 +13,51 @@ import { Routes } from './pages/Routes';
 import { ApiProvider } from './contexts/ApiContext';
 import { OverrideRulesProvider } from './contexts/OverrideRulesContext';
 import { OverrideRulesGate } from './components/OverrideRulesGate';
+import { LanguageSelectModal } from './components/LanguageSelectModal';
+import { hasLanguageSelected } from './i18n';
 
 export type Page = 'Dashboard' | 'Proxies' | 'Profiles' | 'Policies' | 'DnsPolicies' | 'RuleProviders' | 'Routes' | 'Logs' | 'Connections' | 'Settings';
+
+function LanguageSelectWrapper({ children, onLanguageSelected }: { children: React.ReactNode; onLanguageSelected: () => void }) {
+  const [showModal, setShowModal] = useState(false);
+  const [checking, setChecking] = useState(true);
+
+  useEffect(() => {
+    // 检查数据库中是否有语言设置
+    const checkLanguage = async () => {
+      try {
+        const hasSelected = await hasLanguageSelected();
+        console.log('[App] hasLanguageSelected result:', hasSelected);
+        if (!hasSelected) {
+          console.log('[App] No language setting found, showing modal');
+          setShowModal(true);
+        } else {
+          console.log('[App] Language setting found, skipping modal');
+        }
+      } catch (e) {
+        // 出错时不显示弹窗，使用默认语言
+        console.warn('[App] Failed to check language setting:', e);
+      } finally {
+        setChecking(false);
+      }
+    };
+    checkLanguage();
+  }, []);
+
+  const handleClose = () => {
+    setShowModal(false);
+    onLanguageSelected();
+  };
+
+  // 检查中或显示弹窗时，不显示主页面
+  if (checking || showModal) {
+    return (
+      <LanguageSelectModal open={showModal} onClose={handleClose} />
+    );
+  }
+
+  return <>{children}</>;
+}
 
 function ConfigLoaderOverlay() {
   const [loading, setLoading] = useState(false);
@@ -76,53 +119,60 @@ export default function App() {
   // 判断页面是否活跃
   const isPageActive = (pageName: Page) => currentPage === pageName;
 
+  // 主应用内容
+  const appContent = (
+    <div className="app-shell relative">
+      <div className="window-frame text-[var(--app-text)] font-sans relative">
+        <Sidebar currentPage={currentPage} onPageChange={setCurrentPage} />
+
+        <ConfigLoaderOverlay />
+
+        <main className="app-main">
+          <div className="flex-1 relative z-10 overflow-hidden flex flex-col min-h-0">
+            {/* 仪表盘页面：使用 hidden 保留状态，离开后不用销毁 */}
+            <div className={isPageActive('Dashboard') ? 'contents' : 'hidden'}>
+              <MemoizedDashboard isActive={isPageActive('Dashboard')} />
+            </div>
+            {/* 代理页面：使用 hidden 保留状态，离开后不用销毁 */}
+            <div className={isPageActive('Proxies') ? 'contents' : 'hidden'}>
+              <MemoizedProxies isActive={isPageActive('Proxies')} />
+            </div>
+            {/* 其他页面条件渲染，切换时卸载以节省内存 */}
+            {isPageActive('Profiles') && <MemoizedProfiles isActive={true} />}
+            {isPageActive('Policies') && (
+              <OverrideRulesGate pageName="Policies" onGoToAdvancedSettings={goToAdvancedSettings}>
+                <MemoizedPolicies isActive={true} />
+              </OverrideRulesGate>
+            )}
+            {isPageActive('DnsPolicies') && (
+              <OverrideRulesGate pageName="DnsPolicies" onGoToAdvancedSettings={goToAdvancedSettings}>
+                <MemoizedDnsPolicies isActive={true} />
+              </OverrideRulesGate>
+            )}
+            {isPageActive('RuleProviders') && (
+              <OverrideRulesGate pageName="RuleProviders" onGoToAdvancedSettings={goToAdvancedSettings}>
+                <MemoizedRuleProviders isActive={true} />
+              </OverrideRulesGate>
+            )}
+            {isPageActive('Routes') && <MemoizedRoutes isActive={true} />}
+            {isPageActive('Logs') && <MemoizedLogs isActive={true} />}
+            {isPageActive('Connections') && <MemoizedConnections isActive={true} />}
+            {isPageActive('Settings') && (
+              <MemoizedSettings isActive={true} initialTab={settingsInitialTab} onTabConsumed={consumeSettingsTab} />
+            )}
+          </div>
+        </main>
+      </div>
+    </div>
+  );
+
   return (
     <ApiProvider>
       <OverrideRulesProvider>
-        <div className="app-shell relative">
-            <div className="window-frame text-[var(--app-text)] font-sans relative">
-              <Sidebar currentPage={currentPage} onPageChange={setCurrentPage} />
-
-              <ConfigLoaderOverlay />
-
-              <main className="app-main">
-                <div className="flex-1 relative z-10 overflow-hidden flex flex-col min-h-0">
-                  {/* 仪表盘页面：使用 hidden 保留状态，离开后不用销毁 */}
-                  <div className={isPageActive('Dashboard') ? 'contents' : 'hidden'}>
-                    <MemoizedDashboard isActive={isPageActive('Dashboard')} />
-                  </div>
-                  {/* 代理页面：使用 hidden 保留状态，离开后不用销毁 */}
-                  <div className={isPageActive('Proxies') ? 'contents' : 'hidden'}>
-                    <MemoizedProxies isActive={isPageActive('Proxies')} />
-                  </div>
-                  {/* 其他页面条件渲染，切换时卸载以节省内存 */}
-                  {isPageActive('Profiles') && <MemoizedProfiles isActive={true} />}
-                  {isPageActive('Policies') && (
-                    <OverrideRulesGate pageName="Policies" onGoToAdvancedSettings={goToAdvancedSettings}>
-                      <MemoizedPolicies isActive={true} />
-                    </OverrideRulesGate>
-                  )}
-                  {isPageActive('DnsPolicies') && (
-                    <OverrideRulesGate pageName="DnsPolicies" onGoToAdvancedSettings={goToAdvancedSettings}>
-                      <MemoizedDnsPolicies isActive={true} />
-                    </OverrideRulesGate>
-                  )}
-                  {isPageActive('RuleProviders') && (
-                    <OverrideRulesGate pageName="RuleProviders" onGoToAdvancedSettings={goToAdvancedSettings}>
-                      <MemoizedRuleProviders isActive={true} />
-                    </OverrideRulesGate>
-                  )}
-                  {isPageActive('Routes') && <MemoizedRoutes isActive={true} />}
-                  {isPageActive('Logs') && <MemoizedLogs isActive={true} />}
-                  {isPageActive('Connections') && <MemoizedConnections isActive={true} />}
-                  {isPageActive('Settings') && (
-                    <MemoizedSettings isActive={true} initialTab={settingsInitialTab} onTabConsumed={consumeSettingsTab} />
-                  )}
-                </div>
-              </main>
-            </div>
-          </div>
-        </OverrideRulesProvider>
+        <LanguageSelectWrapper onLanguageSelected={() => {}}>
+          {appContent}
+        </LanguageSelectWrapper>
+      </OverrideRulesProvider>
     </ApiProvider>
   );
 }

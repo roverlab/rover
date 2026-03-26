@@ -6,6 +6,7 @@ import type { Policy } from '../src/types/policy';
 import type { DnsPolicy } from '../src/types/dns-policy';
 import { getPolicyRuleSet } from '../src/services/policy';
 import { getRuleProviderFileBaseName } from '../src/shared/ruleset';
+import { t } from './i18n-main';
 
 /** 订阅用户信息（从 Subscription-Userinfo 响应头解析） */
 export interface SubscriptionUserinfo {
@@ -258,7 +259,7 @@ export function deleteProfile(id: string) {
         const profileFilePath = path.join(profilesDir, `profile_${id}`);
         if (fs.existsSync(profileFilePath)) {
             fs.unlinkSync(profileFilePath);
-            console.log(`[DB] 已删除配置文件: ${profileFilePath}`);
+            console.log(`[DB] Profile file deleted: ${profileFilePath}`);
         }
         
         // 如果 profile 有自定义 path，也尝试删除
@@ -268,11 +269,11 @@ export function deleteProfile(id: string) {
                 : path.join(getDataDir(), profile.path);
             if (fs.existsSync(customPath) && customPath !== profileFilePath) {
                 fs.unlinkSync(customPath);
-                console.log(`[DB] 已删除自定义配置文件: ${customPath}`);
+                console.log(`[DB] Custom profile file deleted: ${customPath}`);
             }
         }
     } catch (err: any) {
-        console.error(`[DB] 删除配置文件失败: ${err.message}`);
+        console.error(`[DB] Failed to delete profile file: ${err.message}`);
     }
 }
 
@@ -315,7 +316,7 @@ export function addDnsServer(server: Omit<DnsServer, 'order' | 'id'> & { id?: st
         if (!id) {
             id = generateShortId(existingIds);
         } else if (existingIds.has(id)) {
-            throw new Error(`DNS 服务器 ID "${id}" 已存在`);
+            throw new Error(t('main.errors.db.dnsServerIdExists', { id }));
         }
         
         const newServer = {
@@ -344,7 +345,7 @@ export function updateDnsServer(id: string, updates: Partial<DnsServer>): void {
         if (newId && newId !== oldId) {
             const conflict = arr.some((s, i) => i !== idx && s.id === newId);
             if (conflict) {
-                throw new Error(`DNS 服务器 ID "${newId}" 已存在`);
+                throw new Error(t('main.errors.db.dnsServerIdExists', { id: newId }));
             }
         }
 
@@ -633,15 +634,15 @@ export function deleteRuleProvider(id: string) {
     if (hasPolicyRefs || hasDnsPolicyRefs || hasProfileRefs) {
         const parts: string[] = [];
         if (hasPolicyRefs) {
-            parts.push(`路由策略: ${references.policies.map(p => p.name).join(', ')}`);
+            parts.push(t('main.errors.db.refRoutePolicies', { names: references.policies.map(p => p.name).join(', ') }));
         }
         if (hasDnsPolicyRefs) {
-            parts.push(`DNS策略: ${references.dnsPolicies.map(p => p.name).join(', ')}`);
+            parts.push(t('main.errors.db.refDnsPolicies', { names: references.dnsPolicies.map(p => p.name).join(', ') }));
         }
         if (hasProfileRefs) {
-            parts.push(`配置: ${references.profiles.map(p => p.name).join(', ')}`);
+            parts.push(t('main.errors.db.refProfiles', { names: references.profiles.map(p => p.name).join(', ') }));
         }
-        throw new Error(`无法删除规则集：被以下项目引用 - ${parts.join('; ')}`);
+        throw new Error(t('main.errors.db.ruleProviderInUse', { detail: parts.join('; ') }));
     }
     
     // 获取规则集信息以确定需要删除的文件
@@ -660,14 +661,14 @@ export function deleteRuleProvider(id: string) {
         const srsPath = path.join(rulesetsDir, `${fileBase}.srs`);
         if (fs.existsSync(srsPath)) {
             fs.unlinkSync(srsPath);
-            console.log(`[DB] 已删除规则集文件: ${srsPath}`);
+            console.log(`[DB] Ruleset file deleted: ${srsPath}`);
         }
         
         // 删除 .json 文件（如果存在）
         const jsonPath = path.join(rulesetsDir, `${fileBase}.json`);
         if (fs.existsSync(jsonPath)) {
             fs.unlinkSync(jsonPath);
-            console.log(`[DB] 已删除规则集 JSON 文件: ${jsonPath}`);
+            console.log(`[DB] Ruleset JSON file deleted: ${jsonPath}`);
         }
         
         // 如果 provider 有自定义 path，也尝试删除
@@ -677,11 +678,11 @@ export function deleteRuleProvider(id: string) {
                 : path.join(getDataDir(), provider.path);
             if (fs.existsSync(customPath) && customPath !== srsPath && customPath !== jsonPath) {
                 fs.unlinkSync(customPath);
-                console.log(`[DB] 已删除自定义规则集文件: ${customPath}`);
+                console.log(`[DB] Custom ruleset file deleted: ${customPath}`);
             }
         }
     } catch (err: any) {
-        console.error(`[DB] 删除规则集文件失败: ${err.message}`);
+        console.error(`[DB] Failed to delete ruleset file: ${err.message}`);
     }
 }
 
@@ -1276,23 +1277,31 @@ export interface DnsServerRef {
 
 /** 返回引用指定 DNS 服务器 id 的规则列表（用于删除前校验，含具体规则#行号#名称） */
 export function getDnsServerRefs(id: string): DnsServerRef[] {
-    const t = (id || '').trim();
-    if (!t) return [];
+    const idTrim = (id || '').trim();
+    if (!idTrim) return [];
     const refs: DnsServerRef[] = [];
     // 检查 DNS 策略的 server 字段和 raw_data.server 字段
     const dnsPolicies = getDnsPolicies();
     for (const p of dnsPolicies) {
         // 检查 server 字段
         const s = (p.server || '').trim();
-        if (s === t) {
-            refs.push({ source: 'dns', index: (p.order ?? 0) + 1, name: p.name || `DNS 规则 ${(p.order ?? 0) + 1}` });
+        if (s === idTrim) {
+            refs.push({
+                source: 'dns',
+                index: (p.order ?? 0) + 1,
+                name: p.name || t('main.errors.db.dnsRuleFallback', { index: (p.order ?? 0) + 1 })
+            });
             continue;
         }
         // 检查 raw_data.server 字段（raw 类型策略）
         const raw = (p as { raw_data?: { server?: string } }).raw_data;
         const rs = raw?.server && typeof raw.server === 'string' ? raw.server.trim() : '';
-        if (rs === t) {
-            refs.push({ source: 'dns', index: (p.order ?? 0) + 1, name: p.name || `DNS 规则 ${(p.order ?? 0) + 1}` });
+        if (rs === idTrim) {
+            refs.push({
+                source: 'dns',
+                index: (p.order ?? 0) + 1,
+                name: p.name || t('main.errors.db.dnsRuleFallback', { index: (p.order ?? 0) + 1 })
+            });
         }
     }
     // 检查路由策略的 raw_data.server 字段
@@ -1300,16 +1309,21 @@ export function getDnsServerRefs(id: string): DnsServerRef[] {
     for (const p of policies) {
         const raw = (p as { raw_data?: { server?: string } }).raw_data;
         const s = raw?.server && typeof raw.server === 'string' ? raw.server.trim() : '';
-        if (s === t) refs.push({ source: 'route', index: (p.order ?? 0) + 1, name: p.name || `规则 ${(p.order ?? 0) + 1}` });
+        if (s === idTrim)
+            refs.push({
+                source: 'route',
+                index: (p.order ?? 0) + 1,
+                name: p.name || t('main.errors.db.routeRuleFallback', { index: (p.order ?? 0) + 1 })
+            });
     }
     // 检查 DNS 服务器的 domain_resolver 字段
     const dnsServers = getDnsServers();
     for (let i = 0; i < dnsServers.length; i++) {
         const server = dnsServers[i];
-        if (server.id === t) continue; // 跳过自身
+        if (server.id === idTrim) continue; // 跳过自身
         const dr = typeof server.domain_resolver === 'string' ? server.domain_resolver.trim() : '';
-        if (dr === t) {
-            const displayName = server.name || server.id || `DNS 服务器 ${i + 1}`;
+        if (dr === idTrim) {
+            const displayName = server.name || server.id || t('main.errors.db.dnsServerFallback', { index: i + 1 });
             refs.push({ source: 'dns_server', index: i + 1, name: displayName });
         }
     }
@@ -1435,7 +1449,7 @@ export function addProfileCustomGroup(profileId: string, group: Omit<CustomProxy
         };
         // 检查名称是否重复
         if (groups.some(g => g.name === group.name)) {
-            throw new Error(`分组名称 "${group.name}" 已存在`);
+            throw new Error(t('main.errors.db.customGroupNameExists', { name: group.name }));
         }
         groups.push(newGroup);
         profile.customGroups = groups;
@@ -1453,7 +1467,7 @@ export function updateProfileCustomGroup(profileId: string, groupName: string, u
         const groups = profile.customGroups ?? [];
         const idx = groups.findIndex(g => g.name === groupName);
         if (idx < 0) {
-            throw new Error(`分组 "${groupName}" 不存在`);
+            throw new Error(t('main.errors.db.customGroupNotFound', { name: groupName }));
         }
         groups[idx] = {
             ...groups[idx],

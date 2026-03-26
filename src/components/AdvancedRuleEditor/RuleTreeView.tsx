@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import type { RuleTreeNode, LogicGroup, LeafRule } from './types';
 import { isLogicGroup } from './types';
 import type { RuleFieldConfig } from './types';
@@ -35,19 +36,20 @@ interface RuleTreeViewProps {
     formConfig?: RuleFieldConfig[];
 }
 
-function getFieldLabel(formKey: string, formConfig?: RuleFieldConfig[]): string {
+function getFieldLabel(formKey: string, formConfig: RuleFieldConfig[] | undefined, t: (key: string) => string): string {
     if (!formConfig) return formKey;
     const config = formConfig.find(c => c.formKey === formKey);
-    return config?.label ?? formKey;
+    return config ? t(config.label) : formKey;
 }
 
 function RuleTreeNodeView({
     node,
     formConfig,
+    t,
 }: {
     node: RuleTreeNode;
     formConfig?: RuleFieldConfig[];
-    key?: React.Key;
+    t: (key: string) => string;
 }) {
     const isGroup = isLogicGroup(node);
     const theme = isGroup
@@ -74,6 +76,7 @@ function RuleTreeNodeView({
                             key={(child as LogicGroup).id ?? (child as LeafRule).id ?? idx}
                             node={child}
                             formConfig={formConfig}
+                            t={t}
                         />
                     ))}
                 </div>
@@ -82,7 +85,7 @@ function RuleTreeNodeView({
     }
 
     const leafNode = node as LeafRule;
-    const typeLabel = getFieldLabel(leafNode.type, formConfig);
+    const typeLabel = getFieldLabel(leafNode.type, formConfig, t);
 
     return (
         <div
@@ -106,16 +109,17 @@ function RuleTreeNodeView({
  * 基于嵌套逻辑流模板，展示 all/any/not 与叶子规则的层级关系
  */
 export function RuleTreeView({ node, formConfig }: RuleTreeViewProps) {
+    const { t } = useTranslation();
     if (!node) {
         return (
             <div className="flex items-center justify-center py-6 px-4 rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/50 text-[var(--app-text-tertiary)]">
-                <span className="text-[13px]">暂无规则</span>
+                <span className="text-[13px]">{t('common.noRules')}</span>
             </div>
         );
     }
     return (
         <div className="space-y-4">
-            <RuleTreeNodeView node={node} formConfig={formConfig} />
+            <RuleTreeNodeView node={node} formConfig={formConfig} t={t} />
         </div>
     );
 }

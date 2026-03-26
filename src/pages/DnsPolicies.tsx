@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { DnsPolicy } from '../types/dns-policy';
 import { useNotificationState, NotificationList } from '../components/ui/Notification';
 import { DnsPolicyHeader } from './DnsPolicies/DnsPolicyHeader';
@@ -15,7 +16,8 @@ interface DnsPoliciesProps {
 }
 
 export function DnsPolicies({ isActive = true }: DnsPoliciesProps) {
-    const [policies, setPolicies] = useState<DnsPolicy[]>([]);
+const { t } = useTranslation();
+const [policies, setPolicies] = useState<DnsPolicy[]>([]);
     const [dnsServers, setDnsServers] = useState<Array<{ id: string; name?: string }>>([]);
     const [availableOutbounds, setAvailableOutbounds] = useState<Array<{ tag: string; type: string }>>([]);
     const [profileDnsPolicies, setProfileDnsPolicies] = useState<Record<string, string>>({});
@@ -85,9 +87,9 @@ export function DnsPolicies({ isActive = true }: DnsPoliciesProps) {
         if (!detailPolicy || detailPolicy.type !== 'raw') return;
         try {
             await navigator.clipboard.writeText(JSON.stringify(detailPolicy.raw_data || {}, null, 2));
-            addNotification('原始规则已复制到剪贴板');
+            addNotification(t('policies.rawRuleCopied'));
         } catch (err: unknown) {
-            addNotification(`复制失败: ${(err as Error)?.message || '未知错误'}`, 'error');
+            addNotification(t('policies.copyFailed', { error: (err as Error)?.message || 'Unknown' }), 'error');
         }
     };
 
@@ -104,7 +106,7 @@ export function DnsPolicies({ isActive = true }: DnsPoliciesProps) {
             await confirmBatchDeleteForSingle(tempDeleteIds);
         } catch (err: unknown) {
             console.error('Failed to delete DNS policy:', err);
-            addNotification(`删除失败: ${(err as Error)?.message || '未知错误'}`, 'error');
+            addNotification(t('policies.deleteFailed', { error: (err as Error)?.message || 'Unknown' }), 'error');
         } finally {
             setShowDeleteConfirm(false);
             setDeleteTargetId(null);
@@ -136,7 +138,7 @@ export function DnsPolicies({ isActive = true }: DnsPoliciesProps) {
             window.ipcRenderer.core.generateConfig().catch(console.error);
         } catch (err: unknown) {
             console.error('Failed to update order:', err);
-            addNotification('批量排序失败，已恢复原顺序', 'error');
+            addNotification(t('policies.reorderFailed'), 'error');
             loadPolicies();
         }
     };
@@ -148,10 +150,10 @@ export function DnsPolicies({ isActive = true }: DnsPoliciesProps) {
             await Promise.all(ids.map(id => window.ipcRenderer.db.updateDnsPolicy(id, { enabled: true })));
             // 异步生成配置，不阻塞UI
             window.ipcRenderer.core.generateConfig().catch(console.error);
-            addNotification(`已启用 ${ids.length} 条策略`);
+            addNotification(t('dnsPolicies.batchEnableSuccess', { count: ids.length }));
             loadPolicies();
         } catch (err: unknown) {
-            addNotification(`批量启用失败: ${(err as Error)?.message || '未知错误'}`, 'error');
+            addNotification(t('dnsPolicies.batchEnableFailed', { error: (err as Error)?.message || 'Unknown' }), 'error');
         }
     };
 
@@ -162,10 +164,10 @@ export function DnsPolicies({ isActive = true }: DnsPoliciesProps) {
             await Promise.all(ids.map(id => window.ipcRenderer.db.updateDnsPolicy(id, { enabled: false })));
             // 异步生成配置，不阻塞UI
             window.ipcRenderer.core.generateConfig().catch(console.error);
-            addNotification(`已禁用 ${ids.length} 条策略`);
+            addNotification(t('dnsPolicies.batchDisableSuccess', { count: ids.length }));
             loadPolicies();
         } catch (err: unknown) {
-            addNotification(`批量禁用失败: ${(err as Error)?.message || '未知错误'}`, 'error');
+            addNotification(t('dnsPolicies.batchDisableFailed', { error: (err as Error)?.message || 'Unknown' }), 'error');
         }
     };
 
@@ -185,10 +187,10 @@ export function DnsPolicies({ isActive = true }: DnsPoliciesProps) {
             await Promise.all(ids.map(id => window.ipcRenderer.db.deleteDnsPolicy(id as string)));
             // 异步生成配置，不阻塞UI
             window.ipcRenderer.core.generateConfig().catch(console.error);
-            addNotification(`已删除 ${count} 条策略`);
+            addNotification(t('dnsPolicies.policyDeleted'));
             loadPolicies();
         } catch (err: unknown) {
-            addNotification(`批量删除失败: ${(err as Error)?.message || '未知错误'}`, 'error');
+            addNotification(t('dnsPolicies.batchDeleteFailed', { error: (err as Error)?.message || 'Unknown' }), 'error');
         }
     };
 
@@ -199,10 +201,10 @@ export function DnsPolicies({ isActive = true }: DnsPoliciesProps) {
             await Promise.all(ids.map(id => window.ipcRenderer.db.deleteDnsPolicy(id as string)));
             // 异步生成配置，不阻塞UI
             window.ipcRenderer.core.generateConfig().catch(console.error);
-            addNotification('策略已删除');
+            addNotification(t('dnsPolicies.policyDeleted'));
             loadPolicies();
         } catch (err: unknown) {
-            addNotification(`删除失败: ${(err as Error)?.message || '未知错误'}`, 'error');
+            addNotification(t('policies.deleteFailed', { error: (err as Error)?.message || 'Unknown' }), 'error');
         }
     };
 

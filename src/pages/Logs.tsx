@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
+import { useTranslation } from 'react-i18next';
 import { Trash2, Pause, Play, Activity, Search, MoreVertical, FileX2, X, ArrowUp, Loader2, Copy, Check } from 'lucide-react';
 import { cn } from '../components/Sidebar';
 import { Button } from '../components/ui/Button';
@@ -113,6 +114,7 @@ function parseLogLine(line: string): { level: LogEntry['level']; message: string
 }
 
 export function Logs({ isActive = true }: LogsProps) {
+  const { t } = useTranslation();
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [isPaused, setIsPaused] = useState(false);
   const [levelFilter, setLevelFilter] = useState<string>('all');
@@ -236,10 +238,10 @@ export function Logs({ isActive = true }: LogsProps) {
   const handleClearKernelLog = async () => {
     setMoreOpen(false);
     const ok = await confirm({
-      title: '清理内核日志',
-      message: '确定要清空 sing-box 内核日志文件吗？',
-      confirmText: '确定',
-      cancelText: '取消'
+      title: t('logs.clearKernelLog'),
+      message: t('logs.clearKernelLogConfirm'),
+      confirmText: t('tooltips.confirm'),
+      cancelText: t('tooltips.cancel')
     });
     if (!ok) return;
     try {
@@ -273,9 +275,9 @@ export function Logs({ isActive = true }: LogsProps) {
 
   // 状态徽章
   const getStatusBadge = () => {
-    if (isInSearchMode) return '搜索中';
-    if (isPaused) return '已暂停';
-    return '实时';
+    if (isInSearchMode) return t('logs.searching');
+    if (isPaused) return t('logs.paused');
+    return t('logs.realtime');
   };
 
   const getStatusBadgeTone = (): 'warning' | 'success' | 'neutral' => {
@@ -337,7 +339,7 @@ export function Logs({ isActive = true }: LogsProps) {
     <div className="page-shell">
       <div className="page-header" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
         <div style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-          <h1 className="page-title">日志</h1>
+          <h1 className="page-title">{t('logs.title')}</h1>
         </div>
 
         <div className="flex items-center gap-2.5" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
@@ -345,7 +347,7 @@ export function Logs({ isActive = true }: LogsProps) {
             <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--app-text-quaternary)]" />
             <Input
               type="text"
-              placeholder="搜索消息..."
+              placeholder={t('logs.searchPlaceholder')}
               className="pl-9 text-[12px] pr-8"
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
@@ -371,7 +373,7 @@ export function Logs({ isActive = true }: LogsProps) {
             onChange={(e) => setLevelFilter(e.target.value)}
             className="w-28 text-[12px]"
           >
-            <option value="all">全部级别</option>
+            <option value="all">{t('logs.allLevels')}</option>
             <option value="info">INFO</option>
             <option value="warning">WARN</option>
             <option value="error">ERROR</option>
@@ -381,7 +383,7 @@ export function Logs({ isActive = true }: LogsProps) {
             onClick={() => setIsPaused(!isPaused)}
             variant="ghost"
             size="icon"
-            title={isPaused ? "继续" : "暂停"}
+            title={isPaused ? t('logs.continue') : t('logs.pause')}
             disabled={isInSearchMode}
           >
             {isPaused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}
@@ -390,7 +392,7 @@ export function Logs({ isActive = true }: LogsProps) {
             onClick={clearLogs}
             variant="ghost"
             size="icon"
-            title="清除"
+            title={t('logs.clear')}
           >
             <Trash2 className="w-4 h-4" />
           </Button>
@@ -400,7 +402,7 @@ export function Logs({ isActive = true }: LogsProps) {
               onClick={handleOpenMore}
               variant="ghost"
               size="icon"
-              title="更多"
+              title={t('logs.more')}
             >
               <MoreVertical className="w-4 h-4" />
             </Button>
@@ -416,7 +418,7 @@ export function Logs({ isActive = true }: LogsProps) {
                     onClick={handleClearKernelLog}
                   >
                     <FileX2 className="w-3.5 h-3.5 mr-2" />
-                    清理内核日志
+                    {t('logs.clearKernelLog')}
                   </button>
                 </div>,
                 document.body
@@ -429,7 +431,7 @@ export function Logs({ isActive = true }: LogsProps) {
       <Card className="flex-1 overflow-hidden min-w-0 flex flex-col min-h-0">
         <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--app-divider)]">
           <div className="text-[13px] font-medium text-[var(--app-text-secondary)]">
-            {isInSearchMode ? `搜索结果 (${logs.length} 条)` : `内核日志 (${logs.length} 条)`}
+            {isInSearchMode ? `${t('logs.searchResult')} (${logs.length} ${t('logs.entries')})` : `${t('logs.kernelLog')} (${logs.length} ${t('logs.entries')})`}
           </div>
           <Badge tone={getStatusBadgeTone()}>{getStatusBadge()}</Badge>
         </div>
@@ -437,9 +439,9 @@ export function Logs({ isActive = true }: LogsProps) {
           <table className="data-table text-[12px] min-w-full">
           <thead className="sticky top-0 z-10 text-[12px] font-semibold text-[var(--app-text-secondary)] !bg-[rgba(255,255,255,0.9)]">
             <tr>
-              <th className="px-5 py-2.5 w-32">时间</th>
-              <th className="px-5 py-2.5 w-28">级别</th>
-              <th className="px-5 py-2.5">消息</th>
+              <th className="px-5 py-2.5 w-32">{t('logs.time')}</th>
+              <th className="px-5 py-2.5 w-28">{t('logs.level')}</th>
+              <th className="px-5 py-2.5">{t('logs.message')}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--app-divider)]">
@@ -473,7 +475,7 @@ export function Logs({ isActive = true }: LogsProps) {
               <tr>
                 <td colSpan={3} className="px-5 py-10 text-center text-[var(--app-text-quaternary)]">
                   <Activity className="w-6 h-6 mx-auto mb-2 text-[var(--app-text-quaternary)]" />
-                  <p className="text-[13px]">{isInSearchMode ? '未找到匹配的日志' : '暂无日志'}</p>
+                  <p className="text-[13px]">{isInSearchMode ? t('logs.noMatchLogs') : t('logs.noLogs')}</p>
                 </td>
               </tr>
             )}
@@ -489,7 +491,7 @@ export function Logs({ isActive = true }: LogsProps) {
           }
         }}
         className="floating-action w-[52px] h-[52px]"
-        title="返回顶部"
+        title={t('logs.backToTop')}
       >
         <ArrowUp className="w-5 h-5" />
       </button>
@@ -511,12 +513,12 @@ export function Logs({ isActive = true }: LogsProps) {
             {copied ? (
               <>
                 <Check className="w-3.5 h-3.5 mr-2 text-[var(--app-success)]" />
-                已复制
+                {t('common.copied')}
               </>
             ) : (
               <>
                 <Copy className="w-3.5 h-3.5 mr-2" />
-                复制日志
+                {t('logs.copyLog')}
               </>
             )}
           </button>

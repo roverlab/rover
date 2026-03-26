@@ -1,6 +1,7 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Surface';
 import { X, Check } from 'lucide-react';
@@ -42,6 +43,7 @@ export function PolicyImportModal({
     onImport,
     onClose,
 }: PolicyImportModalProps) {
+    const { t } = useTranslation();
     if (!open) return null;
 
     return createPortal(
@@ -64,13 +66,13 @@ export function PolicyImportModal({
                 >
                     <div className="flex shrink-0 items-center justify-between px-6 py-4 border-b border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/50">
                         <h2 className="text-[15px] font-semibold text-[var(--app-text)]">
-                            {importSource === 'template' ? '从预设导入策略' : '从配置导入策略'}
+                            {importSource === 'template' ? t('policies.importModalTitleTemplate') : t('policies.importModalTitleConfig')}
                         </h2>
                         <button
                             type="button"
                             onClick={onClose}
                             className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[var(--app-text-tertiary)] hover:bg-[var(--app-hover)] hover:text-[var(--app-text)] transition-colors -mr-2"
-                            aria-label="关闭"
+                            aria-label={t('common.close')}
                         >
                             <X className="w-4 h-4" />
                         </button>
@@ -79,9 +81,9 @@ export function PolicyImportModal({
                     <div className="flex-1 p-6 space-y-4 max-h-[60vh] overflow-y-auto">
                         {importSource === 'template' && !importResult && (
                             <div className="space-y-3">
-                                <p className="text-[13px] text-[var(--app-text-tertiary)] mb-4">选择一个预设模板，将导入全部策略：</p>
+                                <p className="text-[13px] text-[var(--app-text-tertiary)] mb-4">{t('policies.importTemplateIntro')}</p>
                                 {templates.length === 0 ? (
-                                    <div className="text-center py-8 text-[var(--app-text-tertiary)]">暂无可用的预设模板</div>
+                                    <div className="text-center py-8 text-[var(--app-text-tertiary)]">{t('policies.noTemplatesAvailable')}</div>
                                 ) : (
                                     templates.map((template, index) => {
                                         const isImportingThis = importingTemplatePath === template.path;
@@ -99,7 +101,7 @@ export function PolicyImportModal({
                                                     <div className="absolute inset-0 flex items-center justify-center bg-white/60 rounded-[12px]">
                                                         <div className="flex items-center gap-3">
                                                             <div className="animate-spin rounded-full h-5 w-5 border-2 border-[var(--app-accent)] border-t-transparent"></div>
-                                                            <span className="text-[13px] text-[var(--app-text-secondary)]">正在导入...</span>
+                                                            <span className="text-[13px] text-[var(--app-text-secondary)]">{t('policies.importingEllipsis')}</span>
                                                         </div>
                                                     </div>
                                                 )}
@@ -116,11 +118,10 @@ export function PolicyImportModal({
                             <>
                                 <div className="flex items-center justify-between text-[12px]">
                                     <Button variant="ghost" size="sm" onClick={onToggleSelectAll}>
-                                        {selectedRules.size === configRules.length ? '取消全选' : '全选'}
+                                        {t('policies.toggleSelectAll')}
                                     </Button>
                                     <span className="text-[var(--app-text-tertiary)]">
-                                        已选择 <strong className="text-[var(--app-text)]">{selectedRules.size}</strong> 条
-                                        {` / 共 ${configRules.length} 条`}
+                                        {t('policies.selectedOfTotal', { selected: selectedRules.size, total: configRules.length })}
                                     </span>
                                 </div>
 
@@ -148,9 +149,9 @@ export function PolicyImportModal({
                                             </div>
                                             <div className="flex-1 min-w-0">
                                                 <div className="flex items-center gap-2 mb-1">
-                                                    <span className="text-[13px] font-medium text-[var(--app-text)]">规则 {index + 1}</span>
+                                                    <span className="text-[13px] font-medium text-[var(--app-text)]">{t('policies.ruleIndex', { index: index + 1 })}</span>
                                                     <Badge tone={getOutboundTone(rule.outbound)} className="text-[10px]">
-                                                        {getOutboundLabel(rule.outbound)}
+                                                        {getOutboundLabel(rule.outbound, t)}
                                                     </Badge>
                                                 </div>
                                                 <div className="flex flex-wrap gap-1">
@@ -159,31 +160,31 @@ export function PolicyImportModal({
                                                             "text-[11px] pl-2 pr-1.5 py-0.5 rounded border-l-2 border",
                                                             getRuleSetBadgeClass(r)
                                                         )}>
-                                                            {formatRuleSetDisplay(r, ruleProviders)}
+                                                            {formatRuleSetDisplay(r, ruleProviders, t)}
                                                         </span>
                                                     ))}
                                                     {rule.domain && rule.domain.length > 0 && (
                                                         <span className="text-[11px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600">
-                                                            域名({rule.domain.length})
+                                                            {t('policies.badgeDomain', { count: rule.domain.length })}
                                                         </span>
                                                     )}
                                                     {rule.domain_keyword && rule.domain_keyword.length > 0 && (
                                                         <span className="text-[11px] px-1.5 py-0.5 rounded bg-purple-50 text-purple-600">
-                                                            关键词({rule.domain_keyword.length})
+                                                            {t('policies.badgeKeyword', { count: rule.domain_keyword.length })}
                                                         </span>
                                                     )}
                                                     {rule.ip_cidr && rule.ip_cidr.length > 0 && (
                                                         <span className="text-[11px] px-1.5 py-0.5 rounded bg-orange-50 text-orange-600">
-                                                            IP({rule.ip_cidr.length})
+                                                            {t('policies.badgeIp', { count: rule.ip_cidr.length })}
                                                         </span>
                                                     )}
                                                     {rule.process_name && rule.process_name.length > 0 && (
                                                         <span className="text-[11px] px-1.5 py-0.5 rounded bg-green-50 text-green-600">
-                                                            进程({rule.process_name.length})
+                                                            {t('policies.badgeProcess', { count: rule.process_name.length })}
                                                         </span>
                                                     )}
                                                     {(rule.rule_set?.length || 0) + (rule.domain?.length || 0) + (rule.domain_keyword?.length || 0) + (rule.ip_cidr?.length || 0) > 4 && (
-                                                        <span className="text-[11px] text-[var(--app-text-quaternary)]">更多...</span>
+                                                        <span className="text-[11px] text-[var(--app-text-quaternary)]">{t('policies.moreEllipsis')}</span>
                                                     )}
                                                 </div>
                                             </div>
@@ -197,8 +198,12 @@ export function PolicyImportModal({
                             <div className="flex items-center gap-4 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-lg text-[13px] text-emerald-700">
                                 <Check className="w-4 h-4" />
                                 <span>
-                                    成功导入 <strong>{importResult.success}</strong> 条策略
-                                    {importResult.skipped > 0 && <span className="text-[var(--app-text-tertiary)]">，跳过 <strong>{importResult.skipped}</strong> 条重复项</span>}
+                                    {t('policies.importResultSuccess', { success: importResult.success })}
+                                    {importResult.skipped > 0 && (
+                                        <span className="text-[var(--app-text-tertiary)]">
+                                            {t('policies.importSkipped', { skipped: importResult.skipped })}
+                                        </span>
+                                    )}
                                 </span>
                             </div>
                         )}
@@ -209,18 +214,18 @@ export function PolicyImportModal({
                     <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/30">
                         {importSource === 'config' && !importResult && (
                             <>
-                                <Button variant="ghost" onClick={onClose}>关闭</Button>
+                                <Button variant="ghost" onClick={onClose}>{t('common.close')}</Button>
                                 <Button
                                     variant="primary"
                                     onClick={onImport}
                                     disabled={selectedRules.size === 0 || importing}
                                 >
-                                    {importing ? '导入中...' : `导入选中 (${selectedRules.size})`}
+                                    {importing ? t('policies.importingStatus') : t('policies.importSelected', { count: selectedRules.size })}
                                 </Button>
                             </>
                         )}
                         {(importSource === 'template' || importResult) && (
-                            <Button variant="ghost" onClick={onClose}>关闭</Button>
+                            <Button variant="ghost" onClick={onClose}>{t('common.close')}</Button>
                         )}
                     </div>
                 </motion.div>

@@ -143,15 +143,7 @@ Based on sing-box core, supports:
 # 📸 Screenshots
 
 <p align="center">
-  <img src="./assets/screenshot1.png" width="800">
-</p>
-
-<p align="center">
-  <img src="./assets/screenshot2.png" width="800">
-</p>
-
-<p align="center">
-  <img src="./assets/screenshot3.png" width="800">
+  <img src="./assets/screenshot1.jpg" width="800">
 </p>
 
 ---

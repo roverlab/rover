@@ -3,6 +3,7 @@
  */
 
 import yaml from 'js-yaml';
+import { t } from './i18n-main';
 import type { MihomoConfig } from '../src/types/clash';
 
 /**
@@ -11,10 +12,10 @@ import type { MihomoConfig } from '../src/types/clash';
  */
 export function validateProfileContent(content: string): string {
     const toParse = content.trim();
-    if (!toParse) throw new Error('配置文件内容为空');
+    if (!toParse) throw new Error(t('main.errors.validation.contentEmpty'));
 
     if (toParse.startsWith('<') || toParse.startsWith('<!') || toParse.toLowerCase().startsWith('<?xml')) {
-        throw new Error('文件类型错误：疑似 HTML/XML，非配置文件');
+        throw new Error(t('main.errors.validation.suspectedHtmlXml'));
     }
 
     let parsed: any;
@@ -24,26 +25,30 @@ export function validateProfileContent(content: string): string {
         try {
             parsed = yaml.load(toParse) as MihomoConfig;
         } catch (e: any) {
-            throw new Error(`配置文件解析失败，非有效的 YAML/JSON 格式: ${(e as Error)?.message || '未知错误'}`);
+            throw new Error(
+                t('main.errors.validation.parseFailed', {
+                    reason: (e as Error)?.message || t('main.errors.validation.unknownError')
+                })
+            );
         }
     }
 
     if (!parsed || typeof parsed !== 'object') {
-        throw new Error('配置文件解析结果无效');
+        throw new Error(t('main.errors.validation.parseResultInvalid'));
     }
 
     const hasProxies = parsed.proxies && Array.isArray(parsed.proxies) && parsed.proxies.length > 0;
     const hasOutbounds = parsed.outbounds && Array.isArray(parsed.outbounds) && parsed.outbounds.length > 0;
     if (!hasProxies && !hasOutbounds) {
-        throw new Error('配置文件必须包含 proxies（Clash）或 outbounds（Sing-box）');
+        throw new Error(t('main.errors.validation.missingProxiesOrOutbounds'));
     }
     return toParse;
 }
 
 /** 校验 Clash 规则集文本非 HTML 等无效格式 */
 export function validateClashRuleSetContent(content: string): void {
-    const t = content.trim();
-    if (t.startsWith('<') || t.toLowerCase().startsWith('<!')) {
-        throw new Error('文件类型错误：疑似 HTML，非 Clash 规则集文本');
+    const trimmed = content.trim();
+    if (trimmed.startsWith('<') || trimmed.toLowerCase().startsWith('<!')) {
+        throw new Error(t('main.errors.validation.suspectedHtmlRuleset'));
     }
 }

@@ -5,7 +5,6 @@
 
 import * as path from 'node:path';
 import * as fs from 'node:fs';
-import * as iconv from 'iconv-lite';
 import { getLogsDir } from './paths';
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
@@ -31,12 +30,8 @@ let config: LoggerConfig = { ...defaultConfig };
 let currentLogFile: string = '';
 let currentLogSize: number = 0;
 
-// Windows 控制台编码标志
-const isWindows = process.platform === 'win32';
-
 /**
- * 在 Windows 上将 UTF-8 字符串转换为 GBK 编码后输出
- * 解决 Windows 控制台中文乱码问题
+ * 在 Windows 上将 UTF-8 字符串输出
  */
 function consoleLogWithEncoding(method: 'log' | 'warn' | 'error', message: string): void {
     // 使用保存的原始 console 方法，避免与 redirectConsole 产生递归
@@ -47,27 +42,10 @@ function consoleLogWithEncoding(method: 'log' | 'warn' | 'error', message: strin
             ? extendedConsole._originalWarn
             : extendedConsole._originalLog;
 
-    if (isWindows) {
-        try {
-            // 将 UTF-8 字符串编码为 GBK Buffer
-            // 这样可以正确显示在 Windows 控制台（默认 GBK 编码）
-            const gbkBuffer = iconv.encode(message + '\n', 'gbk');
-            // 直接输出 Buffer，让控制台按其默认编码解释
-            process.stdout.write(gbkBuffer);
-        } catch {
-            // 转换失败时回退到普通输出
-            if (originalMethod) {
-                originalMethod(message);
-            } else {
-                console[method](message);
-            }
-        }
+    if (originalMethod) {
+        originalMethod(message);
     } else {
-        if (originalMethod) {
-            originalMethod(message);
-        } else {
-            console[method](message);
-        }
+        console[method](message);
     }
 }
 
@@ -96,8 +74,8 @@ export function initLogger(customConfig?: Partial<LoggerConfig>): void {
     currentLogFile = getLogFilePath();
     currentLogSize = getFileSize(currentLogFile);
 
-    info('Logger', '日志系统初始化完成');
-    info('Logger', `日志目录: ${config.logDir}`);
+    info('Logger', 'Logger system initialized');
+    info('Logger', `Log directory: ${config.logDir}`);
 }
 
 /**
@@ -154,7 +132,7 @@ function rotateLogFile(): void {
         // 清理旧的备份文件
         cleanOldLogFiles();
     } catch (err) {
-        console.error('日志轮转失败:', err);
+        console.error('Log rotation failed:', err);
     }
 }
 
@@ -175,7 +153,7 @@ function cleanOldLogFiles(): void {
             fs.unlinkSync(filePath);
         }
     } catch (err) {
-        console.error('清理旧日志文件失败:', err);
+        console.error('Failed to clean old log files:', err);
     }
 }
 
@@ -245,7 +223,7 @@ function writeLog(level: LogLevel, module: string, message: string): void {
         fs.appendFileSync(currentLogFile, formattedMessage);
         currentLogSize += Buffer.byteLength(formattedMessage);
     } catch (err) {
-        console.error('写入日志文件失败:', err);
+        console.error('Failed to write log file:', err);
     }
 }
 
@@ -333,7 +311,7 @@ export function logBatch(entries: LogEntry[]): void {
         fs.appendFileSync(currentLogFile, allMessages);
         currentLogSize += Buffer.byteLength(allMessages);
     } catch (err) {
-        console.error('批量写入日志文件失败:', err);
+        console.error('Failed to batch write log file:', err);
     }
 }
 
@@ -392,9 +370,9 @@ export function clearAllLogs(): void {
             fs.unlinkSync(file);
         }
         currentLogSize = 0;
-        info('Logger', '所有日志文件已清空');
+        info('Logger', 'All log files cleared');
     } catch (err) {
-        console.error('清空日志文件失败:', err);
+        console.error('Failed to clear log file:', err);
     }
 }
 

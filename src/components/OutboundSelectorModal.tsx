@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 import { Button } from './ui/Button';
 import { X, Search, RefreshCw, Clock, Check } from 'lucide-react';
 import { cn } from './Sidebar';
@@ -43,9 +44,9 @@ function getDelayClass(delay?: number): string {
 /**
  * 格式化延迟显示文本
  */
-function formatDelay(delay?: number): string {
+function formatDelay(delay: number | undefined, timeoutLabel: string): string {
     if (delay === undefined) return '';
-    if (delay === 0) return 'Timeout';
+    if (delay === 0) return timeoutLabel;
     return `${delay}ms`;
 }
 
@@ -57,8 +58,10 @@ export function OutboundSelectorModal(props: OutboundSelectorModalProps) {
         open,
         availableOutbounds = [],
         onClose,
-        title = '选择订阅出站节点',
+        title,
     } = props;
+    const { t } = useTranslation();
+    const modalTitle = title ?? t('outboundSelector.modalTitle');
     const multiple = props.multiple === true;
     const preferredOutbound = !multiple ? props.preferredOutbound : null;
     const preferredOutbounds = multiple ? props.preferredOutbounds : [];
@@ -147,7 +150,7 @@ export function OutboundSelectorModal(props: OutboundSelectorModalProps) {
     const selectOutbound = (tag: string) => {
         if (multiple) {
             setLocalSelectedMulti(prev =>
-                prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
+                prev.includes(tag) ? prev.filter((sel) => sel !== tag) : [...prev, tag]
             );
         } else {
             setLocalSelected(prev => (prev === tag ? null : tag));
@@ -159,7 +162,7 @@ export function OutboundSelectorModal(props: OutboundSelectorModalProps) {
         if (names.length === 0) return;
         const allOn = names.every(n => localSelectedMulti.includes(n));
         if (allOn) {
-            setLocalSelectedMulti(prev => prev.filter(t => !names.includes(t)));
+            setLocalSelectedMulti(prev => prev.filter((sel) => !names.includes(sel)));
         } else {
             setLocalSelectedMulti(prev => {
                 const next = new Set(prev);
@@ -207,7 +210,7 @@ export function OutboundSelectorModal(props: OutboundSelectorModalProps) {
                 >
                     {/* Header - 固定高度 */}
                     <div className="flex shrink-0 items-center justify-between px-6 py-4 border-b border-[var(--app-divider)] bg-[var(--app-sidebar)]/50">
-                        <h2 className="text-[15px] font-semibold text-[var(--app-text)]">{title}</h2>
+                        <h2 className="text-[15px] font-semibold text-[var(--app-text)]">{modalTitle}</h2>
                         <button
                             type="button"
                             onClick={onClose}
@@ -227,7 +230,7 @@ export function OutboundSelectorModal(props: OutboundSelectorModalProps) {
                                     type="text"
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
-                                    placeholder="搜索节点名称或类型..."
+                                    placeholder={t('outboundSelector.modalSearchPlaceholder')}
                                     className="w-full pl-9 pr-3 py-2 text-[13px] rounded-[10px] border border-[rgba(39,44,54,0.12)] bg-white text-[var(--app-text)] placeholder:text-[var(--app-text-quaternary)] focus:outline-none focus:border-[var(--app-accent-border)] hover:border-[rgba(39,44,54,0.18)] transition-colors"
                                 />
                             </div>
@@ -241,10 +244,10 @@ export function OutboundSelectorModal(props: OutboundSelectorModalProps) {
                                         ? "border-[var(--app-accent)] bg-[var(--app-accent-soft)] text-[var(--app-accent)]"
                                         : "border-[rgba(39,44,54,0.12)] bg-white text-[var(--app-text-secondary)] hover:bg-[var(--app-hover)]"
                                 )}
-                                title="过滤超时节点"
+                                title={t('outboundSelector.filterTimeoutTitle')}
                             >
                                 <Clock className="w-3.5 h-3.5" />
-                                隐藏超时
+                                {t('outboundSelector.filterTimeout')}
                             </button>
                         </div>
                         {multiple && filteredOutbounds.length > 0 && (
@@ -255,8 +258,8 @@ export function OutboundSelectorModal(props: OutboundSelectorModalProps) {
                                     className="text-[12px] text-[var(--app-accent-strong)] hover:underline px-1"
                                 >
                                     {filteredOutbounds.every(o => localSelectedMulti.includes(o.tag))
-                                        ? '取消全选当前筛选'
-                                        : '全选当前筛选'}
+                                        ? t('outboundSelector.deselectAllInFilter')
+                                        : t('outboundSelector.selectAllInFilter')}
                                 </button>
                             </div>
                         )}
@@ -311,10 +314,10 @@ export function OutboundSelectorModal(props: OutboundSelectorModalProps) {
                                             <RefreshCw className="w-3 h-3 animate-spin text-[var(--app-accent)]" />
                                         ) : hasDelay ? (
                                             <span className={cn("text-[10px] font-mono ml-1", getDelayClass(delay))}>
-                                                {formatDelay(delay)}
+                                                {formatDelay(delay, t('proxies.timeout'))}
                                             </span>
                                         ) : showAsTimeout ? (
-                                            <span className="text-[10px] font-mono ml-1 text-red-500">Timeout</span>
+                                            <span className="text-[10px] font-mono ml-1 text-red-500">{t('proxies.timeout')}</span>
                                         ) : null}
                                     </div>
                                 );
@@ -322,7 +325,7 @@ export function OutboundSelectorModal(props: OutboundSelectorModalProps) {
                         </div>
                         {filteredOutbounds.length === 0 && (
                             <div className="text-center py-8 text-[var(--app-text-tertiary)] text-[13px]">
-                                {searchQuery ? '未找到匹配的节点' : '暂无可用节点'}
+                                {searchQuery ? t('outboundSelector.noMatchingNodes') : t('outboundSelector.noNodesAvailable')}
                             </div>
                         )}
                     </div>
@@ -332,10 +335,10 @@ export function OutboundSelectorModal(props: OutboundSelectorModalProps) {
                         <div className="flex items-center gap-3 min-w-0">
                             <span className="text-[12px] text-[var(--app-text-quaternary)] truncate">
                                 {multiple
-                                    ? `已选择 ${localSelectedMulti.length} 个节点`
+                                    ? t('outboundSelector.selectedCount', { count: localSelectedMulti.length })
                                     : localSelected
-                                      ? `已选择: ${localSelected}`
-                                      : '未选择节点'}
+                                      ? t('outboundSelector.selectedLabel', { name: localSelected })
+                                      : t('outboundSelector.noneSelected')}
                             </span>
                             {multiple ? (
                                 localSelectedMulti.length > 0 && (
@@ -344,7 +347,7 @@ export function OutboundSelectorModal(props: OutboundSelectorModalProps) {
                                         onClick={() => setLocalSelectedMulti([])}
                                         className="text-[11px] text-[var(--app-text-tertiary)] hover:text-red-500 transition-colors shrink-0"
                                     >
-                                        清除选择
+                                        {t('outboundSelector.clearSelection')}
                                     </button>
                                 )
                             ) : (
@@ -354,14 +357,14 @@ export function OutboundSelectorModal(props: OutboundSelectorModalProps) {
                                         onClick={() => setLocalSelected(null)}
                                         className="text-[11px] text-[var(--app-text-tertiary)] hover:text-red-500 transition-colors shrink-0"
                                     >
-                                        清除选择
+                                        {t('outboundSelector.clearSelection')}
                                     </button>
                                 )
                             )}
                         </div>
                         <div className="flex gap-2">
-                            <Button variant="ghost" onClick={onClose}>取消</Button>
-                            <Button variant="primary" onClick={handleConfirm}>确定</Button>
+                            <Button variant="ghost" onClick={onClose}>{t('common.cancel')}</Button>
+                            <Button variant="primary" onClick={handleConfirm}>{t('common.confirm')}</Button>
                         </div>
                     </div>
                 </motion.div>

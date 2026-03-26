@@ -61,6 +61,7 @@ import {
     getSelectedProfileWithConfig
 } from './app-utils';
 import { clearAllDns } from './dns-macos';
+import { initMainI18n, setMainLanguage, t } from './i18n-main';
 
 const log = createLogger('Main');
 
@@ -169,18 +170,22 @@ ipcMain.handle('db:selectProfile', (_, id) => dbUtils.selectProfile(id));
 ipcMain.handle('db:getSetting', (_, key, defaultValue) => dbUtils.getSetting(key, defaultValue));
 ipcMain.handle('db:setSetting', async (_, key, value) => {
     dbUtils.setSetting(key, value);
+    if (key === 'app-language' && typeof value === 'string') {
+        await setMainLanguage(value);
+        updateTrayMenu();
+    }
     if (key === 'rule-provider-update-interval') {
         scheduler.initSchedulers();
     }
-    // TUN 模式切换时重置控制器，下次启动时将根据新设置自动选择正确的控制器
+    // TUN mode toggle: reset controller, next start will choose correct controller based on new setting
     if (key === 'dashboard-tun-mode') {
         await singbox.resetController();
-        log.info(`[DB] TUN 模式已${value === 'true' ? '启用' : '禁用'}，控制器已重置`);
+        log.info(`[DB] TUN mode ${value === 'true' ? 'enabled' : 'disabled'}, controller reset`);
     }
 });
 ipcMain.handle('db:setPolicyFinalOutbound', async (_, value: string) => {
     if (!POLICY_FINAL_OUTBOUND_VALUES.has(value)) {
-        throw new Error('Invalid policy final outbound value');
+        throw new Error(t('main.errors.invalidPolicyFinalOutbound'));
     }
     dbUtils.setSetting('policy-final-outbound', value);
 });
@@ -266,30 +271,30 @@ ipcMain.handle('db:updateProfileCustomGroupsOrder', (_, profileId: string, order
 ipcMain.handle('db:clearProfileCustomGroups', (_, profileId: string) => dbUtils.clearProfileCustomGroups(profileId));
 ipcMain.handle('db:getProfileNodes', (_, profileId: string) => dbUtils.getProfileNodes(profileId));
 
-// 新的接口：同时设置数据库和重新生成配置
+// New API: set database and regenerate config together
 ipcMain.handle('db:setTunModeWithConfigGeneration', async (_, key, value) => {
-    // 1. 保存到数据库
+    // 1. Save to database
     dbUtils.setSetting(key, value);
     
-    // 2. TUN 模式切换时重置控制器
+    // 2. TUN mode toggle: reset controller
     if (key === 'dashboard-tun-mode') {
         await singbox.resetController();
-        log.info(`[DB] TUN 模式已${value === 'true' ? '启用' : '禁用'}，控制器已重置`);
+        log.info(`[DB] TUN mode ${value === 'true' ? 'enabled' : 'disabled'}, controller reset`);
     }
     
-    // 3. 重新生成配置文件（使用纯净函数）
+    // 3. Regenerate config file (using pure function)
     try {
-        // 获取当前选中的 profile
+        // Get current selected profile
         const selectedProfile = dbUtils.getSelectedProfile();
         if (!selectedProfile) {
-            throw new Error('No profile selected');
+            throw new Error(t('main.errors.noProfileSelected'));
         }
         
-        // 使用纯净函数重新生成配置
+        // Regenerate config using pure function
         const configPath = await writeConfigFileOnly(selectedProfile.id);
-        log.info(`[DB] config.json 已更新 (dashboard-tun-mode=${value}) -> ${configPath}`);
+        log.info(`[DB] config.json updated (dashboard-tun-mode=${value}) -> ${configPath}`);
     } catch (err: any) {
-        log.error(`[DB] 重新生成配置文件失败: ${err.message}`);
+        log.error(`[DB] Failed to regenerate config file: ${err.message}`);
         throw err;
     }
 });
@@ -341,7 +346,7 @@ ipcMain.handle('core:getTemplatePolicies', async (_, templatePath: string) => {
 // 查看规则集内容：本地类型直接返回 logical_rule，远程类型反编译 SRS
 ipcMain.handle('core:getRuleProviderViewContent', async (_, providerId: string) => {
     const provider = dbUtils.getRuleProviderById(providerId);
-    if (!provider) throw new Error('规则集不存在');
+    if (!provider) throw new Error(t('main.errors.ruleProviderNotFound'));
 
     // 本地类型：直接返回数据库中的 logical_rule
     if (provider.type === 'local') {
@@ -349,12 +354,12 @@ ipcMain.handle('core:getRuleProviderViewContent', async (_, providerId: string) 
         if (logicalRule) {
             return { content: JSON.stringify(logicalRule, null, 2), error: '' };
         }
-        // 如果没有 logical_rule，尝试从 SRS 反编译
+        // If no logical_rule, try decompile from SRS
     }
 
     const filePath = provider.path ? resolveDataPath(provider.path) : null;
     if (!filePath || !fs.existsSync(filePath)) {
-        throw new Error('规则集文件不存在，请先刷新下载');
+        throw new Error(t('main.errors.ruleProviderFileNotFound'));
     }
 
     const content = decompileSrsToJson(filePath);
@@ -392,20 +397,20 @@ ipcMain.handle('core:getSystemProxyStatus', () => proxy.getSystemProxyStatus());
 
 // 网络检测：内核运行中走代理，未启动走直连
 ipcMain.handle('core:fetchIpThroughProxy', async () => {
-    log.info('[网络检测] 收到代理检测请求');
+    log.info('[NetworkCheck] Received proxy check request');
     try {
         return await fetchIpThroughProxy();
     } catch (e: any) {
-        log.warn(`[网络检测] 通过代理获取 IP 失败: ${e?.message || e}`);
+        log.warn(`[NetworkCheck] Failed to get IP through proxy: ${e?.message || e}`);
         return null;
     }
 });
 ipcMain.handle('core:fetchIpDirect', async () => {
-    log.info('[网络检测] 收到直连检测请求');
+    log.info('[NetworkCheck] Received direct check request');
     try {
         return await fetchIpDirect();
     } catch (e: any) {
-        log.warn(`[网络检测] 直连获取 IP 失败: ${e?.message || e}`);
+        log.warn(`[NetworkCheck] Failed to get IP directly: ${e?.message || e}`);
         return null;
     }
 });
@@ -770,7 +775,7 @@ ipcMain.handle('singbox:readLog', async (_event, options?: { fromLine?: number; 
                         
                         setImmediate(readChunk);
                     } catch (err) {
-                        log.error(`反向读取日志失败: ${(err as Error).message}`);
+                        log.error(`Failed to read log backwards: ${(err as Error).message}`);
                         fs.closeSync(fd);
                         resolve({ lines: results, stopped: false });
                     }
@@ -785,7 +790,7 @@ ipcMain.handle('singbox:readLog', async (_event, options?: { fromLine?: number; 
         return { lines: matched, totalLines, isSearch };
         
     } catch (err) {
-        log.error(`读取 sing-box 日志失败: ${(err as Error).message}`);
+        log.error(`Failed to read sing-box log: ${(err as Error).message}`);
         return { lines: [], totalLines: 0, isSearch };
     }
 });
@@ -799,7 +804,7 @@ ipcMain.handle('singbox:clearLog', async () => {
         singboxLogInitialLineCount = 0;
         return { success: true };
     } catch (err) {
-        log.error(`清理 sing-box 日志失败: ${(err as Error).message}`);
+        log.error(`Failed to clear sing-box log: ${(err as Error).message}`);
         return { success: false, error: (err as Error).message };
     }
 });
@@ -819,7 +824,7 @@ ipcMain.handle('roverservice:install', async () => {
     if (result.success) {
         const isLoaded = roverservice.isServiceLoaded();
         setCachedIsServiceInstalled(isLoaded);
-        log.info(`[RoverService] 安装完成，服务状态已缓存: ${isLoaded ? '服务已运行' : '服务未运行'}`);
+        log.info(`[RoverService] Installation complete, service status cached: ${isLoaded ? 'service running' : 'service not running'}`);
     }
     return result;
 });
@@ -831,7 +836,7 @@ ipcMain.handle('roverservice:uninstall', async () => {
         setCachedIsServiceInstalled(false);
         // 重置控制器，下次启动时将根据 TUN 模式自动选择
         await singbox.resetController();
-        log.info('[RoverService] 卸载完成，服务状态已缓存: 服务未安装');
+        log.info('[RoverService] Uninstall complete, service status cached: service not installed');
     }
     return result;
 });
@@ -869,28 +874,31 @@ app.whenReady().then(async () => {
     // 重定向 console.log/error 到 logger
     redirectConsole();
 
-    log.info('应用程序启动');
-    log.info(`应用版本: ${app.getVersion()}`);
-    log.info(`操作系统: ${process.platform} ${process.arch}`);
-    log.info(`用户数据目录: ${getDataDir()}`);
+    const appLang = dbUtils.getSetting('app-language', 'zh') || 'zh';
+    await initMainI18n(appLang);
+
+    log.info('Application started');
+    log.info(`App version: ${app.getVersion()}`);
+    log.info(`OS: ${process.platform} ${process.arch}`);
+    log.info(`User data directory: ${getDataDir()}`);
 
     // 同步内置规则集到用户数据目录，确保 root 进程可以访问
-    log.info('同步内置规则集到用户数据目录...');
+    log.info('Syncing builtin rulesets to user data directory...');
     const syncResult = syncBuiltinRulesetsToUserData();
     if (syncResult.success) {
-        log.info(`规则集同步完成: 复制了 ${syncResult.copied} 个文件`);
+        log.info(`Rulesets sync complete: ${syncResult.copied} files copied`);
     } else {
-        log.error(`规则集同步失败: ${syncResult.errors.join(', ')}`);
+        log.error(`Rulesets sync failed: ${syncResult.errors.join(', ')}`);
     }
 
     // 检测 RoverService 服务是否已安装并运行
-    log.info('[RoverService] 检测 RoverService 服务安装状态...');
+    log.info('[RoverService] Checking service installation status...');
     const binaryInstalled = roverservice.isInstalled();
     const serviceRunning = roverservice.isServiceLoaded();
     // 服务需要二进制存在且服务正在运行
     const isInstalled = binaryInstalled && serviceRunning;
     setCachedIsServiceInstalled(isInstalled);
-    log.info(`[RoverService] 检测结果: 二进制=${binaryInstalled}, 服务运行=${serviceRunning}, 缓存=${isInstalled ? '服务已安装' : '服务未安装'}`);
+    log.info(`[RoverService] Detection result: binary=${binaryInstalled}, service running=${serviceRunning}, cache=${isInstalled ? 'service installed' : 'service not installed'}`);
 
 // 清理无效的 profile.policies / profile.dnsPolicies 条目
 dbUtils.cleanupProfilePolicies();
@@ -902,10 +910,10 @@ dbUtils.cleanupProfileDnsServerDetours();
     const tunModeEnabled = dbUtils.getSetting('dashboard-tun-mode') === 'true';
     const isServiceInstalledCached = getCachedIsServiceInstalled();
     
-    log.info('[启动检测] TUN模式: ${tunModeEnabled}, RootService已安装: ${isServiceInstalledCached}');
+    log.info(`[StartupCheck] TUN mode: ${tunModeEnabled}, RootService installed: ${isServiceInstalledCached}`);
     
     if (tunModeEnabled && !isServiceInstalledCached) {
-        log.warn('[启动检测] TUN模式已启用但RootService未安装，请安装RootService以使用TUN模式');
+        log.warn('[StartupCheck] TUN mode enabled but RootService not installed, please install RootService to use TUN mode');
     }
 
     // 初始化 sing-box 日志文件的当前行数，避免前端读取旧日志
@@ -914,10 +922,10 @@ dbUtils.cleanupProfileDnsServerDetours();
         if (fs.existsSync(singboxLogPath)) {
             const content = fs.readFileSync(singboxLogPath, 'utf8');
             singboxLogInitialLineCount = content.split(/\r?\n/).length;
-            log.info(`[启动] sing-box 日志文件当前行数: ${singboxLogInitialLineCount}`);
+            log.info(`[Startup] sing-box log file current line count: ${singboxLogInitialLineCount}`);
         }
     } catch (err) {
-        log.warn(`[启动] 读取 sing-box 日志文件行数失败: ${(err as Error).message}`);
+        log.warn(`[Startup] Failed to read sing-box log file line count: ${(err as Error).message}`);
     }
 
     createWindow();
@@ -933,7 +941,7 @@ dbUtils.cleanupProfileDnsServerDetours();
     }
 
     // 初始化定时任务调度器
-    log.info('初始化定时任务调度器...');
+    log.info('Initializing scheduler...');
     scheduler.initSchedulers();
 
     startSingboxLogMaintenance();
@@ -942,18 +950,18 @@ dbUtils.cleanupProfileDnsServerDetours();
     const autoStartKernel = dbUtils.getSetting('auto-start-proxy');
     const shouldAutoStart = autoStartKernel !== 'false';
     if (shouldAutoStart) {
-        log.info('启动自动打开内核已启用，正在启动内核...');
+        log.info('Auto start kernel enabled, starting kernel...');
         (async () => {
             try {
                 const selectedProfile = dbUtils.getSelectedProfile();
                 if (!selectedProfile) {
-                    log.warn('未选择配置，跳过自动启动内核');
+                    log.warn('No profile selected, skip auto start kernel');
                     return;
                 }
                 const configPath = getConfigPath();
                 // 主程序启动时不再重新生成配置，仅使用已有配置
                 if (!fs.existsSync(configPath)) {
-                    log.warn('config.json 不存在，跳过自动启动内核（请手动启动）');
+                    log.warn('config.json not found, skip auto start kernel (please start manually)');
                     return;
                 }
                 const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
@@ -967,18 +975,18 @@ dbUtils.cleanupProfileDnsServerDetours();
                 }
                 const binaryPath = singbox.getSingboxBinaryPath();
                 if (!fs.existsSync(binaryPath)) {
-                    log.error('Sing-box 二进制文件不存在');
+                    log.error('Sing-box binary not found');
                     return;
                 }
                 await singbox.startSingbox(configPath, binaryPath);
-                log.info('内核已自动启动');
+                log.info('Kernel auto started');
             } catch (err: any) {
-                log.error(`自动启动内核失败: ${err?.message || err}`);
+                log.error(`Auto start kernel failed: ${err?.message || err}`);
             }
         })();
     }
 
-    log.info('应用程序启动完成');
+    log.info('Application startup complete');
 }).catch(err => {
     console.error('App failed to start:', err);
 });

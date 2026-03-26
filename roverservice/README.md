@@ -48,26 +48,6 @@ It is managed by the Electron application via IPC.
 ### Prerequisites
 
 - Go 1.21 or later
-- For Windows builds: PowerShell
-- For macOS builds: Xcode Command Line Tools (for `lipo`)
-
-### Build for All Platforms
-
-**macOS/Linux:**
-```bash
-chmod +x build.sh
-./build.sh
-```
-
-**Windows:**
-```powershell
-.\build.ps1
-```
-
-This will produce:
-- `roverservice` - macOS universal binary (Intel + Apple Silicon)
-- `roverservice.exe` - Windows x64
-- `roverservice-arm64.exe` - Windows ARM64
 
 ### Build for Specific Platform
 

@@ -6,6 +6,7 @@
 import fs from 'node:fs';
 import AdmZip from 'adm-zip';
 import { createLogger } from './logger';
+import { t } from './i18n-main';
 import { getDbPath, getDataDir, getBuildInfoPath } from './paths';
 
 const log = createLogger('ConfigBackup');
@@ -38,7 +39,7 @@ export function createBackupZipBuffer(): Buffer {
     getDataDir();
     const dbPath = getDbPath();
     if (!fs.existsSync(dbPath)) {
-        throw new Error('数据库文件不存在，无法导出');
+        throw new Error(t('main.errors.configBackup.dbMissing'));
     }
 
     const zip = new AdmZip();
@@ -79,7 +80,7 @@ export function createBackupZipBuffer(): Buffer {
  */
 export function restoreFromZip(zipPath: string): void {
     if (!fs.existsSync(zipPath)) {
-        throw new Error('备份文件不存在');
+        throw new Error(t('main.errors.configBackup.zipMissing'));
     }
 
     const zip = new AdmZip(zipPath);
@@ -87,7 +88,7 @@ export function restoreFromZip(zipPath: string): void {
     const dbEntry = zip.getEntry('database.json');
 
     if (!manifestEntry || !dbEntry) {
-        throw new Error('无效的备份文件：缺少 manifest.json 或 database.json');
+        throw new Error(t('main.errors.configBackup.invalidMissingFiles'));
     }
 
     const manifestRaw = zip.readAsText(manifestEntry);
@@ -95,16 +96,19 @@ export function restoreFromZip(zipPath: string): void {
     try {
         manifest = JSON.parse(manifestRaw) as BackupManifest;
     } catch {
-        throw new Error('无效的备份文件：manifest.json 格式错误');
+        throw new Error(t('main.errors.configBackup.invalidManifestJson'));
     }
 
     if (typeof manifest.formatVersion !== 'number') {
-        throw new Error('无效的备份文件：缺少格式版本');
+        throw new Error(t('main.errors.configBackup.invalidNoFormatVersion'));
     }
 
     if (!SUPPORTED_FORMAT_VERSIONS.includes(manifest.formatVersion)) {
         throw new Error(
-            `不支持的备份格式版本: ${manifest.formatVersion}，当前支持: ${SUPPORTED_FORMAT_VERSIONS.join(', ')}`
+            t('main.errors.configBackup.unsupportedFormatVersion', {
+                version: String(manifest.formatVersion),
+                supported: SUPPORTED_FORMAT_VERSIONS.join(', ')
+            })
         );
     }
 
@@ -112,7 +116,7 @@ export function restoreFromZip(zipPath: string): void {
     try {
         JSON.parse(dbContent); // 校验 JSON 格式
     } catch {
-        throw new Error('无效的备份文件：database.json 格式错误');
+        throw new Error(t('main.errors.configBackup.invalidDatabaseJson'));
     }
 
     getDataDir();

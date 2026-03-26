@@ -1,5 +1,6 @@
 import React from 'react';
 import { Activity, Globe, FileText, Settings, List, Zap, GitBranch, Route, ScrollText, Network } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { Page } from '../App';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -13,20 +14,22 @@ interface SidebarProps {
   onPageChange: (page: Page) => void;
 }
 
-const NAV_ITEMS: { id: Page; label: string; icon: React.ElementType }[] = [
-  { id: 'Dashboard', label: '仪表盘', icon: Activity },
-  { id: 'Proxies', label: '代理', icon: Globe },
-  { id: 'Profiles', label: '订阅', icon: FileText },
-  { id: 'Routes', label: '路由', icon: Route },
-  { id: 'Logs', label: '日志', icon: ScrollText },
-  { id: 'Connections', label: '连接', icon: Zap },
-  { id: 'Policies', label: '策略', icon: GitBranch },
-  { id: 'DnsPolicies', label: 'DNS策略', icon: Network },
-  { id: 'RuleProviders', label: '规则集', icon: List },
-  { id: 'Settings', label: '设置', icon: Settings },
+const NAV_ITEMS: { id: Page; translationKey: string; icon: React.ElementType }[] = [
+  { id: 'Dashboard', translationKey: 'navigation.dashboard', icon: Activity },
+  { id: 'Proxies', translationKey: 'navigation.proxies', icon: Globe },
+  { id: 'Profiles', translationKey: 'navigation.profiles', icon: FileText },
+  { id: 'Routes', translationKey: 'navigation.routes', icon: Route },
+  { id: 'Logs', translationKey: 'navigation.logs', icon: ScrollText },
+  { id: 'Connections', translationKey: 'navigation.connections', icon: Zap },
+  { id: 'Policies', translationKey: 'navigation.policies', icon: GitBranch },
+  { id: 'DnsPolicies', translationKey: 'navigation.dnsPolicies', icon: Network },
+  { id: 'RuleProviders', translationKey: 'navigation.ruleProviders', icon: List },
+  { id: 'Settings', translationKey: 'navigation.settings', icon: Settings },
 ];
 
 export function Sidebar({ currentPage, onPageChange }: SidebarProps) {
+  const { t } = useTranslation();
+  
   return (
     <aside className="app-sidebar" style={{ zIndex: 40, WebkitAppRegion: 'drag' } as React.CSSProperties}>
       <div className="app-sidebar-header">
@@ -51,7 +54,7 @@ export function Sidebar({ currentPage, onPageChange }: SidebarProps) {
               <span className="nav-item-icon">
                 <Icon className="w-[15px] h-[15px]" />
               </span>
-              <span className="text-[13px] font-medium tracking-tight">{item.label}</span>
+              <span className="text-[13px] font-medium tracking-tight">{t(item.translationKey)}</span>
             </button>
           );
         })}

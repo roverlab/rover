@@ -1,13 +1,9 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { config as loadDotenv } from 'dotenv';
 import { rspack } from '@rspack/core';
 import ReactRefreshRspackPlugin from '@rspack/plugin-react-refresh';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-// 加载 .env
-loadDotenv();
 
 const isDev = process.env.NODE_ENV !== 'production';
 

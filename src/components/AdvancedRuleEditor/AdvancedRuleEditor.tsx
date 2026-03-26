@@ -6,6 +6,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 import { X } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { useNotificationState, NotificationList } from '../ui/Notification';
@@ -56,9 +57,11 @@ export function AdvancedRuleEditor({
     onClose,
     onConfirm,
     initialLogicRule,
-    title = '规则编辑器',
+    title,
     fieldConfig = RULE_FIELD_CONFIG,
 }: AdvancedRuleEditorProps) {
+    const { t } = useTranslation();
+    const defaultTitle = title ?? t('common.ruleEditor');
     const { notifications, addNotification, removeNotification } = useNotificationState();
 
     // Visual mode state
@@ -129,13 +132,13 @@ export function AdvancedRuleEditor({
                             {/* Header */}
                             <div className="flex shrink-0 items-center justify-between px-6 py-4 border-b border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/50">
                                 <h2 className="text-[15px] font-semibold text-[var(--app-text)]">
-                                    {title}
+                                    {defaultTitle}
                                 </h2>
                                 <button
                                     type="button"
                                     onClick={onClose}
                                     className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[var(--app-text-tertiary)] hover:bg-[var(--app-hover)] hover:text-[var(--app-text)] transition-colors"
-                                    aria-label="关闭"
+                                    aria-label={t('common.close')}
                                 >
                                     <X className="w-4 h-4" />
                                 </button>
@@ -166,14 +169,14 @@ export function AdvancedRuleEditor({
                                                     await navigator.clipboard.writeText(
                                                         JSON.stringify(jsonPreview, null, 2)
                                                     );
-                                                    addNotification('JSON预览已复制到剪贴板');
+                                                    addNotification(t('common.jsonCopied'));
                                                 } catch (err: any) {
-                                                    addNotification(`复制失败: ${err?.message || '未知错误'}`, 'error');
+                                                    addNotification(t('common.copyFailed', { error: err?.message || 'Unknown' }), 'error');
                                                 }
                                             }}
                                             className="text-[11px] font-medium px-3 py-1.5 rounded-[8px] bg-[var(--app-accent-soft)] hover:bg-[var(--app-accent-soft-card)] text-[var(--app-accent-strong)] border border-[var(--app-accent-border)] transition"
                                         >
-                                            复制
+                                            {t('common.copy')}
                                         </button>
                                     </div>
                                     <pre className="flex-1 p-4 text-[12px] text-[var(--app-text-secondary)] overflow-auto font-mono leading-relaxed">
@@ -186,15 +189,15 @@ export function AdvancedRuleEditor({
 
                             {/* Footer */}
                             <div className="flex shrink-0 items-center justify-between px-6 py-3 border-t border-[var(--app-divider)] bg-[var(--app-bg-secondary)]/30">
-                                <span className="text-[11px] text-[var(--app-text-quaternary)]">
-                                    共 {groupCount} 个规则
-                                </span>
+                                    <span className="text-[11px] text-[var(--app-text-quaternary)]">
+                                        {t('common.totalRules', { count: groupCount })}
+                                    </span>
                                 <div className="flex gap-2">
                                     <Button variant="ghost" size="sm" onClick={onClose}>
-                                        取消
+                                        {t('common.cancel')}
                                     </Button>
                                     <Button variant="primary" size="sm" onClick={handleConfirm}>
-                                        确定
+                                        {t('common.confirm')}
                                     </Button>
                                 </div>
                             </div>

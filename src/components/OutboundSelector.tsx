@@ -3,10 +3,11 @@
  * 封装了选择器触发器和 OutboundSelectorModal 弹窗
  */
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ChevronDown, X } from 'lucide-react';
 import { cn } from './Sidebar';
 import { OutboundSelectorModal } from './OutboundSelectorModal';
-import { POLICY_FINAL_OPTIONS } from '../pages/Policies/utils';
+import { POLICY_FINAL_OPTION_DEFS } from '../types/policy';
 
 export type OutboundItem = { tag: string; type: string; all?: string[]; delay?: number };
 
@@ -49,22 +50,25 @@ export type OutboundSelectorProps =
       });
 
 // 静态定义内置标签，避免每次渲染创建新数组
-const BUILTIN_TAGS = POLICY_FINAL_OPTIONS.map(o => o.value);
+const BUILTIN_TAGS = POLICY_FINAL_OPTION_DEFS.map(o => o.value);
 
 /**
  * 出站节点选择器（单选或多选）
  */
 export function OutboundSelector(props: OutboundSelectorProps) {
+    const { t } = useTranslation();
     const {
-        placeholder = '请选择节点',
+        placeholder: placeholderProp,
         label,
         hint,
         filterDirectBlock = true,
         disabled = false,
         className,
-        modalTitle,
+        modalTitle: modalTitleProp,
         availableOutboundsOverride,
     } = props;
+    const placeholder = placeholderProp ?? t('outboundSelector.placeholder');
+    const modalTitle = modalTitleProp ?? t('outboundSelector.modalTitle');
     const multiple = props.multiple === true;
 
     const [showModal, setShowModal] = useState(false);
@@ -201,7 +205,7 @@ export function OutboundSelector(props: OutboundSelectorProps) {
                             ))}
                             {summaryChips.rest > 0 && (
                                 <span className="text-[11px] text-[var(--app-text-tertiary)]">
-                                    +{summaryChips.rest} 更多
+                                    {t('outboundSelector.moreCount', { count: summaryChips.rest })}
                                 </span>
                             )}
                         </div>
@@ -217,7 +221,9 @@ export function OutboundSelector(props: OutboundSelectorProps) {
             </div>
             {hint && <p className="text-[11px] text-[var(--app-text-quaternary)]">{hint}</p>}
             {loading && availableOutboundsOverride === undefined && (
-                <p className="text-[11px] text-[var(--app-text-quaternary)]">加载节点...</p>
+                <p className="text-[11px] text-[var(--app-text-quaternary)]">
+                    {t('outboundSelector.loadingNodes')}
+                </p>
             )}
 
             {multiple ? (

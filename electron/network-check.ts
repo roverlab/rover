@@ -7,6 +7,7 @@ import axios from 'axios';
 import { HttpsProxyAgent } from 'https-proxy-agent';
 import * as dbUtils from './db';
 import { createLogger } from './logger';
+import { t } from './i18n-main';
 
 const log = createLogger('NetworkCheck');
 
@@ -31,7 +32,7 @@ function hasAddressInfo(country: string, code: string): boolean {
 }
 
 async function fetchWithApis(axiosConfig: object, mode: 'direct' | 'proxy'): Promise<NetworkCheckResult | null> {
-  log.info(`[网络检测] 开始检测，模式: ${mode === 'proxy' ? '代理(selector_out)' : '直连'}`);
+  log.info(`[NetworkCheck] Starting check, mode: ${mode === 'proxy' ? 'proxy(selector_out)' : 'direct'}`);
 
   let fallback: NetworkCheckResult | null = null;
 
@@ -43,29 +44,29 @@ async function fetchWithApis(axiosConfig: object, mode: 'direct' | 'proxy'): Pro
         validateStatus: () => true,
       });
       if (res.status !== 200 || !res.data) {
-        log.debug(`[网络检测] ${api.name} 返回异常 status=${res.status}`);
+        log.debug(`[NetworkCheck] ${api.name} returned abnormal status=${res.status}`);
         continue;
       }
       const { ip, country, code } = api.parse(res.data);
       if (ip) {
         const hasGeo = hasAddressInfo(country || '', code || '');
-        log.info(`[网络检测] 成功 ${api.name} → IP=${ip} 国家=${country || '—'} 代码=${code || '—'}`);
+        log.info(`[NetworkCheck] Success ${api.name} → IP=${ip} Country=${country || '—'} Code=${code || '—'}`);
         if (hasGeo) {
-          return { ip, country: country || '未知', countryCode: (code || '').toUpperCase() || 'UN' };
+          return { ip, country: country || t('main.network.unknownCountry'), countryCode: (code || '').toUpperCase() || 'UN' };
         }
-        log.debug(`[网络检测] ${api.name} 无地址信息，尝试其他 API`);
-        fallback = { ip, country: country || '未知', countryCode: (code || '').toUpperCase() || 'UN' };
+        log.debug(`[NetworkCheck] ${api.name} no address info, trying other API`);
+        fallback = { ip, country: country || t('main.network.unknownCountry'), countryCode: (code || '').toUpperCase() || 'UN' };
       }
     } catch (err: any) {
-      log.debug(`[网络检测] ${api.name} 请求失败: ${err?.message || err}`);
+      log.debug(`[NetworkCheck] ${api.name} request failed: ${err?.message || err}`);
     }
   }
 
   if (fallback) {
-    log.info(`[网络检测] 无 API 返回地址信息，使用 IP 结果`);
+    log.info(`[NetworkCheck] No API returned address info, using IP result`);
     return fallback;
   }
-  log.warn('[网络检测] 所有 API 均失败');
+  log.warn('[NetworkCheck] All APIs failed');
   return null;
 }
 
@@ -79,7 +80,7 @@ export async function fetchIpThroughProxy(): Promise<NetworkCheckResult | null> 
   const settings = dbUtils.getAllSettings();
   const port = parseInt(settings['mixed-port'], 10) || 7890;
   const proxyUrl = `http://127.0.0.1:${port}`;
-  log.debug(`[网络检测] 使用代理 ${proxyUrl}`);
+  log.debug(`[NetworkCheck] Using proxy ${proxyUrl}`);
   const agent = new HttpsProxyAgent(proxyUrl);
   return fetchWithApis({ httpsAgent: agent, httpAgent: agent }, 'proxy');
 }

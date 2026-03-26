@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '../../components/ui/Button';
@@ -27,9 +28,11 @@ export function DnsPolicyDetailModal({
     onEdit,
     onClose,
 }: DnsPolicyDetailModalProps) {
+    const { t, i18n } = useTranslation();
     if (!open || !policy) return null;
 
     const detailPolicy = policy;
+    const locale = i18n.language?.startsWith('zh') ? 'zh-CN' : undefined;
 
     return createPortal(
         <AnimatePresence>
@@ -50,13 +53,13 @@ export function DnsPolicyDetailModal({
                     onClick={e => e.stopPropagation()}
                 >
                     <div className="flex shrink-0 items-center justify-between px-6 py-4 border-b border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/50">
-                        <h2 className="text-[15px] font-semibold text-[var(--app-text)]">DNS策略详情</h2>
+                        <h2 className="text-[15px] font-semibold text-[var(--app-text)]">{t('dnsPolicies.dnsPolicyDetailTitle')}</h2>
                         <div className="flex items-center gap-2">
                             <button
                                 type="button"
                                 onClick={onClose}
                                 className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[var(--app-text-tertiary)] hover:bg-[var(--app-hover)] hover:text-[var(--app-text)] transition-colors -mr-2"
-                                aria-label="关闭"
+                                aria-label={t('common.close')}
                             >
                                 <X className="w-4 h-4" />
                             </button>
@@ -67,34 +70,34 @@ export function DnsPolicyDetailModal({
                         <div className="space-y-3">
                             <h3 className="text-[13px] font-semibold text-[var(--app-text)] flex items-center gap-2">
                                 <span className="w-1 h-4 bg-[var(--app-accent)] rounded-full" />
-                                基本信息
+                                {t('policies.basicInfo')}
                             </h3>
                             <div className="grid grid-cols-2 gap-3">
                                 <div className="bg-[var(--app-bg-secondary)] rounded-[10px] p-3">
-                                    <p className="text-[11px] text-[var(--app-text-quaternary)] mb-1">策略名称</p>
+                                    <p className="text-[11px] text-[var(--app-text-quaternary)] mb-1">{t('policies.fieldPolicyName')}</p>
                                     <p className="text-[13px] text-[var(--app-text)] font-medium">{detailPolicy.name}</p>
                                 </div>
                                 <div className="bg-[var(--app-bg-secondary)] rounded-[10px] p-3">
-                                    <p className="text-[11px] text-[var(--app-text-quaternary)] mb-1">类型</p>
+                                    <p className="text-[11px] text-[var(--app-text-quaternary)] mb-1">{t('policies.fieldType')}</p>
                                     <p className="text-[13px] text-[var(--app-text)] font-medium">
-                                        {detailPolicy.type === 'raw' ? '原始' : '标准'}
+                                        {detailPolicy.type === 'raw' ? t('policies.typeRaw') : t('policies.typeStandard')}
                                     </p>
                                 </div>
                                 {getPolicyServer(detailPolicy) && (
                                     <div className="bg-[var(--app-bg-secondary)] rounded-[10px] p-3">
-                                        <p className="text-[11px] text-[var(--app-text-quaternary)] mb-1">DNS服务器</p>
+                                        <p className="text-[11px] text-[var(--app-text-quaternary)] mb-1">{t('policies.fieldDnsServer')}</p>
                                         <p className="text-[13px] text-[var(--app-text)] font-medium">
                                             <Badge tone={getServerTone(getPolicyServer(detailPolicy) ?? '')}>
-                                                {getServerLabel(getPolicyServer(detailPolicy))}
+                                                {getServerLabel(getPolicyServer(detailPolicy), t)}
                                             </Badge>
                                         </p>
                                     </div>
                                 )}
                                 <div className="bg-[var(--app-bg-secondary)] rounded-[10px] p-3">
-                                    <p className="text-[11px] text-[var(--app-text-quaternary)] mb-1">状态</p>
+                                    <p className="text-[11px] text-[var(--app-text-quaternary)] mb-1">{t('policies.fieldStatus')}</p>
                                     <p className="text-[13px] text-[var(--app-text)] font-medium">
                                         <Badge tone={detailPolicy.enabled ? 'success' : 'neutral'}>
-                                            {detailPolicy.enabled ? '已启用' : '已禁用'}
+                                            {detailPolicy.enabled ? t('common.enabled') : t('common.disabled')}
                                         </Badge>
                                     </p>
                                 </div>
@@ -106,11 +109,11 @@ export function DnsPolicyDetailModal({
                                 <div className="flex items-center justify-between gap-2">
                                     <h3 className="text-[13px] font-semibold text-[var(--app-text)] flex items-center gap-2">
                                         <span className="w-1 h-4 bg-purple-500 rounded-full" />
-                                        原始规则
+                                        {t('policies.rawRules')}
                                     </h3>
                                     <Button variant="ghost" size="sm" onClick={onCopy}>
                                         <Copy className="w-3.5 h-3.5 mr-1" />
-                                        复制
+                                        {t('common.copy')}
                                     </Button>
                                 </div>
                                 <pre className="bg-[var(--app-bg-secondary)] rounded-[10px] p-4 overflow-x-auto border border-[rgba(39,44,54,0.08)]">
@@ -128,7 +131,7 @@ export function DnsPolicyDetailModal({
                                         <div className="space-y-3">
                                             <h3 className="text-[13px] font-semibold text-[var(--app-text)] flex items-center gap-2">
                                                 <span className="w-1 h-4 bg-emerald-500 rounded-full" />
-                                                规则集 ({arr.length})
+                                                {t('policies.ruleSetsHeading', { count: arr.length })}
                                             </h3>
                                             <div className="flex flex-wrap gap-1.5">
                                                 {arr.map((rule: string, idx: number) => (
@@ -155,12 +158,12 @@ export function DnsPolicyDetailModal({
                                         <div className="space-y-3">
                                             <h3 className="text-[13px] font-semibold text-[var(--app-text)] flex items-center gap-2">
                                                 <span className="w-1 h-4 bg-blue-500 rounded-full" />
-                                                域名规则
+                                                {t('policies.domainRules')}
                                             </h3>
                                             <div className="space-y-2">
                                                 {domain.length > 0 && (
                                                     <div className="bg-blue-50 rounded-[10px] p-3">
-                                                        <p className="text-[11px] text-blue-600 mb-2">域名 ({domain.length})</p>
+                                                        <p className="text-[11px] text-blue-600 mb-2">{t('policies.domainCount', { count: domain.length })}</p>
                                                         <div className="flex flex-wrap gap-1">
                                                             {domain.map((d, idx) => (
                                                                 <span key={idx} className="text-[11px] px-2 py-0.5 bg-white rounded text-blue-700">{d}</span>
@@ -170,7 +173,7 @@ export function DnsPolicyDetailModal({
                                                 )}
                                                 {domainKeyword.length > 0 && (
                                                     <div className="bg-purple-50 rounded-[10px] p-3">
-                                                        <p className="text-[11px] text-purple-600 mb-2">域名关键词 ({domainKeyword.length})</p>
+                                                        <p className="text-[11px] text-purple-600 mb-2">{t('policies.domainKeywordCount', { count: domainKeyword.length })}</p>
                                                         <div className="flex flex-wrap gap-1">
                                                             {domainKeyword.map((d, idx) => (
                                                                 <span key={idx} className="text-[11px] px-2 py-0.5 bg-white rounded text-purple-700">{d}</span>
@@ -180,7 +183,7 @@ export function DnsPolicyDetailModal({
                                                 )}
                                                 {domainSuffix.length > 0 && (
                                                     <div className="bg-indigo-50 rounded-[10px] p-3">
-                                                        <p className="text-[11px] text-indigo-600 mb-2">域名后缀 ({domainSuffix.length})</p>
+                                                        <p className="text-[11px] text-indigo-600 mb-2">{t('policies.domainSuffixCount', { count: domainSuffix.length })}</p>
                                                         <div className="flex flex-wrap gap-1">
                                                             {domainSuffix.map((d, idx) => (
                                                                 <span key={idx} className="text-[11px] px-2 py-0.5 bg-white rounded text-indigo-700">{d}</span>
@@ -198,19 +201,19 @@ export function DnsPolicyDetailModal({
                         <div className="space-y-3">
                             <h3 className="text-[13px] font-semibold text-[var(--app-text)] flex items-center gap-2">
                                 <span className="w-1 h-4 bg-gray-400 rounded-full" />
-                                时间信息
+                                {t('policies.timeInfo')}
                             </h3>
                             <div className="grid grid-cols-2 gap-3">
                                 <div className="bg-[var(--app-bg-secondary)] rounded-[10px] p-3">
-                                    <p className="text-[11px] text-[var(--app-text-quaternary)] mb-1">创建时间</p>
+                                    <p className="text-[11px] text-[var(--app-text-quaternary)] mb-1">{t('policies.createdAt')}</p>
                                     <p className="text-[12px] text-[var(--app-text-secondary)]">
-                                        {new Date(detailPolicy.createdAt).toLocaleString('zh-CN')}
+                                        {new Date(detailPolicy.createdAt).toLocaleString(locale)}
                                     </p>
                                 </div>
                                 <div className="bg-[var(--app-bg-secondary)] rounded-[10px] p-3">
-                                    <p className="text-[11px] text-[var(--app-text-quaternary)] mb-1">更新时间</p>
+                                    <p className="text-[11px] text-[var(--app-text-quaternary)] mb-1">{t('policies.updatedAt')}</p>
                                     <p className="text-[12px] text-[var(--app-text-secondary)]">
-                                        {new Date(detailPolicy.updatedAt).toLocaleString('zh-CN')}
+                                        {new Date(detailPolicy.updatedAt).toLocaleString(locale)}
                                     </p>
                                 </div>
                             </div>
@@ -218,10 +221,10 @@ export function DnsPolicyDetailModal({
                     </div>
 
                     <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/30">
-                        <Button variant="ghost" onClick={onClose}>关闭</Button>
+                        <Button variant="ghost" onClick={onClose}>{t('common.close')}</Button>
                         <Button variant="primary" onClick={() => { onClose(); onEdit(detailPolicy); }}>
                             <Edit2 className="w-3.5 h-3.5 mr-1" />
-                            编辑
+                            {t('common.edit')}
                         </Button>
                     </div>
                 </motion.div>

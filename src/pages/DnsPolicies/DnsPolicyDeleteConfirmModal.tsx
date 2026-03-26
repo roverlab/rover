@@ -1,6 +1,7 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 import { Button } from '../../components/ui/Button';
 import { Trash2 } from 'lucide-react';
 
@@ -17,6 +18,7 @@ export function DnsPolicyDeleteConfirmModal({
     onConfirm,
     onClose,
 }: DnsPolicyDeleteConfirmModalProps) {
+    const { t } = useTranslation();
     if (!open) return null;
 
     return createPortal(
@@ -41,17 +43,17 @@ export function DnsPolicyDeleteConfirmModal({
                         <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-red-100 flex items-center justify-center">
                             <Trash2 className="w-6 h-6 text-red-500" />
                         </div>
-                        <h3 className="text-[15px] font-semibold text-[var(--app-text)] mb-2">确认删除</h3>
+                        <h3 className="text-[15px] font-semibold text-[var(--app-text)] mb-2">{t('dnsPolicies.deleteConfirmTitle')}</h3>
                         <p className="text-[13px] text-[var(--app-text-secondary)]">
-                            确定要删除DNS策略 <span className="font-medium text-[var(--app-text)]">"{targetName}"</span> 吗？
+                            {t('dnsPolicies.deleteConfirmMessage', { name: targetName })}
                         </p>
-                        <p className="text-[12px] text-[var(--app-text-quaternary)] mt-2">此操作无法撤销</p>
+                        <p className="text-[12px] text-[var(--app-text-quaternary)] mt-2">{t('dnsPolicies.deleteConfirmSubtitle')}</p>
                     </div>
 
                     <div className="flex items-center gap-2 px-6 py-4 border-t border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/30">
-                        <Button variant="ghost" className="flex-1" onClick={onClose}>取消</Button>
+                        <Button variant="ghost" className="flex-1" onClick={onClose}>{t('common.cancel')}</Button>
                         <Button variant="primary" className="flex-1 bg-red-500 hover:bg-red-600" onClick={onConfirm}>
-                            确认删除
+                            {t('dnsPolicies.confirmDeleteAction')}
                         </Button>
                     </div>
                 </motion.div>

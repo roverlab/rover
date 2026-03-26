@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { useTranslation } from 'react-i18next';
 import { X } from 'lucide-react';
 import { cn } from '../Sidebar';
 
@@ -16,7 +17,9 @@ export interface TagInputProps {
  * 单行展示，每个值为一个可删除的 tag，支持输入添加
  */
 export const TagInput = React.forwardRef<HTMLDivElement, TagInputProps>(
-    ({ value, onChange, placeholder = '输入后按回车添加', className, separators }, ref) => {
+    ({ value, onChange, placeholder, className, separators }, ref) => {
+        const { t } = useTranslation();
+        const defaultPlaceholder = placeholder ?? t('common.tagInputPlaceholder');
         const [inputValue, setInputValue] = React.useState('');
         const inputRef = React.useRef<HTMLInputElement>(null);
 
@@ -107,7 +110,7 @@ export const TagInput = React.forwardRef<HTMLDivElement, TagInputProps>(
                                     e.stopPropagation();
                                     removeTag(idx);
                                 }}
-                                aria-label="删除"
+                                aria-label={t('common.delete')}
                             >
                                 <X className="w-3 h-3" />
                             </button>
@@ -121,7 +124,7 @@ export const TagInput = React.forwardRef<HTMLDivElement, TagInputProps>(
                     onChange={handleInputChange}
                     onKeyDown={handleKeyDown}
                     onPaste={handlePaste}
-                    placeholder={value.length === 0 ? placeholder : ''}
+                    placeholder={value.length === 0 ? defaultPlaceholder : ''}
                     className="min-w-[80px] flex-1 bg-transparent border-0 outline-none shadow-none focus:ring-0 focus:shadow-none focus-visible:ring-0 focus-visible:shadow-none placeholder:text-[var(--app-text-quaternary)] text-left"
                 />
             </div>
