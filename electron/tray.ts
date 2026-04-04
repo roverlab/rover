@@ -1,7 +1,7 @@
 import { Tray, Menu, nativeImage, app, BrowserWindow, clipboard } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
-import * as singbox from './core-controller';
+import { isSingboxRunningAsync } from './core-controller';
 import * as dbUtils from './db';
 import { getSetting } from './db';
 import { handleAppQuit } from './app-utils';
@@ -89,6 +89,9 @@ export function createTray(mainWindow: BrowserWindow) {
             const pngPath = path.join(publicDir, 'icon.png');
             const iconPath = fs.existsSync(icoPath) ? icoPath : pngPath;
             icon = nativeImage.createFromPath(iconPath);
+            if (icon.isEmpty()) {
+                throw new Error('Icon is empty, cannot create tray');
+            }
         }
         tray = new Tray(icon);
     } catch (e) {
@@ -125,13 +128,14 @@ export function createTray(mainWindow: BrowserWindow) {
     }
 
     const updateMenu = async () => {
-        const isRunning = singbox.isSingboxRunning();
         const currentMode = await getCurrentMode();
-
         const contextMenu = Menu.buildFromTemplate([
             {
                 label: t('tray.show'),
-                click: () => mainWindow.show()
+                click: () => {
+                    console.log('[Tray] show clicked');
+                    mainWindow.show();
+                }
             },
             { type: 'separator' },
             {
@@ -185,8 +189,9 @@ export function createTray(mainWindow: BrowserWindow) {
     tray.on('double-click', () => {
         mainWindow.show();
     });
-
     updateMenu();
+
     // Update menu periodically to reflect status changes
     setInterval(updateMenu, 5000);
+
 }

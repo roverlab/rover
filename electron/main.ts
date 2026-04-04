@@ -376,7 +376,9 @@ ipcMain.handle('core:getCurrentConfigRules', async () => {
 });
 
 // IPC Handlers for Sing-box Core
-ipcMain.handle('core:isRunning', () => singbox.isSingboxRunning());
+ipcMain.handle('core:isRunning', async () => {
+    return await singbox.isSingboxRunningAsync();
+});
 ipcMain.handle('core:getStartTime', () => singbox.getSingboxStartTime());
 ipcMain.handle('core:stop', async () => {
     log.info('IPC core:stop');
@@ -532,6 +534,7 @@ function createWindow() {
     console.log('Initializing tray...');
     try {
         createTray(win);
+        console.log('[Window] createTray returned, continuing...');
     } catch (e) {
         console.error('Failed to create tray:', e);
     }
@@ -553,16 +556,34 @@ function createWindow() {
 
     // Test active push message to Renderer-process.
     win.webContents.on('did-finish-load', () => {
+        console.log('[Window] did-finish-load event fired');
         win?.webContents.send('main-process-message', (new Date()).toLocaleString());
+    });
+
+    win.webContents.on('dom-ready', () => {
+        console.log('[Window] dom-ready event fired');
+    });
+
+    win.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+        console.error('[Window] did-fail-load:', errorCode, errorDescription);
+    });
+
+    win.webContents.on('render-process-gone', (event, details) => {
+        console.error('[Window] renderer process gone:', details);
     });
 
     if (devServerUrl) {
         console.log(`Loading URL: ${devServerUrl}`);
-        win.loadURL(devServerUrl);
+        win.loadURL(devServerUrl).catch(err => {
+            console.error('[Window] Failed to load URL:', err);
+        });
     } else {
         const indexPath = path.join(process.env.DIST as string, 'index.html');
         console.log(`Loading File: ${indexPath}`);
-        win.loadFile(indexPath);
+        console.log('[Window] File exists:', require('fs').existsSync(indexPath));
+        win.loadFile(indexPath).catch(err => {
+            console.error('[Window] Failed to load file:', err);
+        });
     }
 
     // win.webContents.openDevTools(); // Open DevTools to debug renderer

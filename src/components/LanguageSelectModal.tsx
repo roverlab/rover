@@ -11,19 +11,22 @@ interface LanguageSelectModalProps {
 
 export const LanguageSelectModal: React.FC<LanguageSelectModalProps> = ({ open, onClose }) => {
   const { t } = useTranslation();
-  const [currentLanguage, setCurrentLanguage] = useState(getSystemLanguage());
+  const [selectedLanguage, setSelectedLanguage] = useState(getSystemLanguage());
   const availableLanguages = getAvailableLanguages();
 
-  // 每次打开时更新当前语言为系统语言
+  // 每次打开时更新当前选中语言为系统语言
   useEffect(() => {
     if (open) {
-      setCurrentLanguage(getSystemLanguage());
+      setSelectedLanguage(getSystemLanguage());
     }
   }, [open]);
 
-  const handleLanguageSelect = async (languageCode: string) => {
-    await changeLanguage(languageCode);
-    setCurrentLanguage(languageCode);
+  const handleLanguageSelect = (languageCode: string) => {
+    setSelectedLanguage(languageCode);
+  };
+
+  const handleConfirm = async () => {
+    await changeLanguage(selectedLanguage);
     onClose();
   };
 
@@ -63,7 +66,7 @@ export const LanguageSelectModal: React.FC<LanguageSelectModalProps> = ({ open, 
                     key={language.code}
                     onClick={() => handleLanguageSelect(language.code)}
                     className={`w-full flex items-center justify-between px-4 py-3 rounded-[12px] transition-all border ${
-                      currentLanguage === language.code
+                      selectedLanguage === language.code
                         ? 'border-[var(--app-accent-border)] bg-[var(--app-accent-soft-card)] text-[var(--app-text)]'
                         : 'border-[var(--app-stroke)] bg-white/40 text-[var(--app-text-secondary)] hover:bg-[var(--app-hover)]'
                     }`}
@@ -71,10 +74,9 @@ export const LanguageSelectModal: React.FC<LanguageSelectModalProps> = ({ open, 
                     <div className="flex items-center gap-3">
                       <div className="text-left">
                         <div className="text-[14px] font-medium">{t(language.nameKey)}</div>
-                        <div className="text-[11px] text-[var(--app-text-quaternary)]">{language.code}</div>
                       </div>
                     </div>
-                    {currentLanguage === language.code && (
+                    {selectedLanguage === language.code && (
                       <Check className="w-5 h-5 text-[var(--app-accent)]" />
                     )}
                   </button>
@@ -82,10 +84,16 @@ export const LanguageSelectModal: React.FC<LanguageSelectModalProps> = ({ open, 
               </div>
             </div>
 
-            <div className="flex shrink-0 items-center justify-end gap-2 px-6 py-4 border-t border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/30">
-              <p className="text-[11px] text-[var(--app-text-quaternary)]">
+            <div className="flex shrink-0 items-center justify-end gap-3 px-6 py-4 border-t border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/30">
+              <p className="text-[11px] text-[var(--app-text-quaternary)] flex-1">
                 {t('languageModal.changeLater')}
               </p>
+              <button
+                onClick={handleConfirm}
+                className="px-5 py-2 text-[13px] font-medium text-white bg-[var(--app-accent)] hover:bg-[var(--app-accent-hover)] rounded-[10px] transition-colors"
+              >
+                {t('common.confirm')}
+              </button>
             </div>
           </motion.div>
         </div>

@@ -8,6 +8,7 @@ import crypto from 'node:crypto';
 import yaml from 'js-yaml';
 import * as dbUtils from './db';
 import * as singbox from './core-controller';
+import { isSingboxRunningAsync } from './core-controller';
 import { getConfigPath, resolveDataPath } from './paths';
 import type {
     SingboxConfig,
@@ -252,7 +253,8 @@ export function writeConfig(config: any): void {
 
 /** 若内核运行中则重启，使新配置生效 */
 async function restartKernelIfRunning(): Promise<void> {
-    if (!singbox.isSingboxRunning()) return;
+    const isRunning = await isSingboxRunningAsync();
+    if (!isRunning) return;
     await singbox.stopSingbox();
     await new Promise((r) => setTimeout(r, 500));
     const configPath = getConfigPath();

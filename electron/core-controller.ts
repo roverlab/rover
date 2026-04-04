@@ -7,43 +7,9 @@
  */
 
 import { ChildProcess } from 'node:child_process';
-import * as net from 'node:net';
 import { getSingboxBinaryPath as getSingboxBinaryPathFromPaths } from './paths';
 import { t } from './i18n-main';
 
-/**
- * 检查端口是否可绑定（通过实际 bind 检测，避免 TIME_WAIT 误判）
- * connect 检测会误判：TIME_WAIT 时无进程监听会返回 ECONNREFUSED，但端口仍不可 bind
- */
-function isPortBindable(host: string, port: number): Promise<boolean> {
-    return new Promise((resolve) => {
-        const server = net.createServer();
-        server.once('error', () => {
-            server.close();
-            resolve(false); // 绑定失败 = 端口不可用（被占用或 TIME_WAIT）
-        });
-        server.once('listening', () => {
-            server.close();
-            resolve(true); // bind 成功 = 端口可用
-        });
-        server.listen(port, host);
-    });
-}
-
-/**
- * 等待端口可绑定（轮询直到可 bind 或超时）
- * 轮询间隔 200ms，总超时 12s（SIGTERM 优雅退出可显著缩短 TIME_WAIT）
- */
-async function waitForPortBindable(host: string, port: number, timeoutMs: number): Promise<void> {
-    const pollInterval = 200;
-    const deadline = Date.now() + timeoutMs;
-    while (Date.now() < deadline) {
-        const bindable = await isPortBindable(host, port);
-        if (bindable) return;
-        await new Promise((r) => setTimeout(r, pollInterval));
-    }
-    throw new Error(t('main.errors.core.portNotReleased', { host, port, timeoutMs }));
-}
 
 /**
  * 获取 sing-box 二进制文件路径
@@ -174,38 +140,102 @@ function isProcessAlive(pid: number | null | undefined): boolean {
 }
 
 /**
- * 列出系统中所有 sing-box 进程 PID
+ * 获取系统中运行的 sing-box 进程 PID 列表（已根据路径过滤）
  */
-export function listSystemSingboxPids(): number[] {
+function listSystemSingboxProcesses(): number[] {
+    const expectedPath = getSingboxBinaryPathFromPaths().toLowerCase();
+    const processes: Array<{ pid: number; path: string }> = [];
+
+    /* ---------------- Windows ---------------- */
     if (process.platform === 'win32') {
-        const result = spawnSync('tasklist', ['/fo', 'csv', '/nh', '/fi', 'IMAGENAME eq sing-box.exe'], {
-            encoding: 'utf8',
-            windowsHide: true
-        });
+        const result = spawnSync(
+            'powershell',
+            [
+                '-Command',
+                'Get-Process sing-box -ErrorAction SilentlyContinue | Select-Object Id, Path | ConvertTo-Csv -NoTypeInformation | Select-Object -Skip 1'
+            ],
+            { encoding: 'utf8', windowsHide: true, timeout: 2000 }
+        );
+
         const output = (result.stdout || '').trim();
-        if (!output || output.includes('INFO: No tasks are running')) {
-            return [];
+        if (output) {
+            const parsed = output.split(/\r?\n/)
+                .map(line => {
+                    const parts = line.split(',').map(s => s.replace(/^"|"$/g, ''));
+                    const pid = parseInt(parts[0], 10);
+                    const exePath = parts[1] || '';
+                    return (pid && exePath) ? { pid, path: exePath } : null;
+                })
+                .filter(Boolean) as Array<{ pid: number; path: string }>;
+            processes.push(...parsed);
         }
-        return output
-            .split(/\r?\n/)
-            .map((line) => line.trim())
-            .filter(Boolean)
-            .map((line) => {
-                const parts = line.replace(/^"|"$/g, '').split('","');
-                const pidText = parts[1] || '';
-                const pid = Number.parseInt(pidText, 10);
-                return Number.isFinite(pid) ? pid : null;
-            })
-            .filter((pid): pid is number => pid !== null && pid > 0);
     }
 
-    const result = spawnSync('pgrep', ['-x', 'sing-box'], { encoding: 'utf8' });
-    const output = (result.stdout || '').trim();
-    if (!output) return [];
-    return output
-        .split(/\r?\n/)
-        .map((line) => Number.parseInt(line.trim(), 10))
-        .filter((pid) => Number.isFinite(pid) && pid > 0);
+    /* ---------------- macOS / Linux ---------------- */
+    else {
+        // 1️⃣ 获取 sing-box PID（精确匹配）
+        const pgrep = spawnSync('pgrep', ['-x', 'sing-box'], { encoding: 'utf8' });
+
+        const pids = (pgrep.stdout || '')
+            .split(/\r?\n/)
+            .map(s => parseInt(s.trim(), 10))
+            .filter(pid => Number.isFinite(pid) && pid > 0);
+
+        for (const pid of pids) {
+            let exePath = '';
+
+            /* ---------- Linux：优先 /proc ---------- */
+            if (process.platform === 'linux') {
+                const readlink = spawnSync('readlink', [`/proc/${pid}/exe`], { encoding: 'utf8' });
+
+                if (readlink.status === 0) {
+                    exePath = (readlink.stdout || '').trim();
+                    if (exePath.endsWith(' (deleted)')) {
+                        exePath = exePath.replace(' (deleted)', '');
+                    }
+                }
+            }
+
+            /* ---------- macOS or fallback ---------- */
+            if (!exePath) {
+                // macOS 推荐：先拿 comm（稳定）
+                if (process.platform === 'darwin') {
+                    const psComm = spawnSync('ps', ['-p', String(pid), '-o', 'comm='], {
+                        encoding: 'utf8'
+                    });
+                    exePath = (psComm.stdout || '').trim();
+                }
+
+                // fallback：用 args 拿完整路径
+                if (!exePath) {
+                    const psArgs = spawnSync('ps', ['-p', String(pid), '-o', 'args='], {
+                        encoding: 'utf8'
+                    });
+
+                    const fullArgs = (psArgs.stdout || '').trim();
+
+                    if (fullArgs) {
+                        // 提取第一个 token（支持引号路径）
+                        const match = fullArgs.match(/^(".*?"|'.*?'|\S+)/);
+                        if (match) {
+                            let cmd = match[1];
+                            cmd = cmd.replace(/^['"]|['"]$/g, '');
+                            exePath = cmd;
+                        }
+                    }
+                }
+            }
+
+            if (exePath) {
+                processes.push({ pid, path: exePath });
+            }
+        }
+    }
+
+    // 根据路径过滤并返回 PID 数组
+    return processes
+        .filter(proc => proc.path.toLowerCase() === expectedPath)
+        .map(proc => proc.pid);
 }
 
 /**
@@ -296,14 +326,76 @@ export class LocalSingboxController implements CoreController {
     }
 
     async start(configPath: string, binaryPath: string): Promise<void> {
-        // 检查现有进程
+        // 检查本地已有进程
         const currentPid = this.process?.pid ?? this.pid;
         const ourProcessAlive = currentPid ? isProcessAlive(currentPid) : false;
-        const systemPids = listSystemSingboxPids();
-        const hasRunning = ourProcessAlive || systemPids.length > 0;
+
+        // 检查系统中是否已有相同路径的 sing-box 进程在运行
+        const processes = listSystemSingboxProcesses();
+        const normalizedNewPath = process.platform === 'win32' 
+            ? binaryPath.toLowerCase() 
+            : binaryPath;
+        
+        // 获取系统进程路径进行匹配
+        const systemProcsWithPaths: Array<{ pid: number; path: string }> = [];
+        if (process.platform === 'win32') {
+            const result = spawnSync(
+                'powershell',
+                ['-Command', 'Get-Process sing-box -ErrorAction SilentlyContinue | Select-Object Id, Path | ConvertTo-Csv -NoTypeInformation | Select-Object -Skip 1'],
+                { encoding: 'utf8', windowsHide: true, timeout: 2000 }
+            );
+            const output = (result.stdout || '').trim();
+            if (output) {
+                output.split(/\r?\n/).forEach(line => {
+                    const parts = line.split(',').map(s => s.replace(/^"|"$/g, ''));
+                    const pid = parseInt(parts[0], 10);
+                    const path = parts[1] || '';
+                    if (pid && path) systemProcsWithPaths.push({ pid, path });
+                });
+            }
+        } else {
+            const pgrep = spawnSync('pgrep', ['-x', 'sing-box'], { encoding: 'utf8' });
+            (pgrep.stdout || '').split(/\r?\n/).forEach(s => {
+                const pid = parseInt(s.trim(), 10);
+                if (!Number.isFinite(pid) || pid <= 0) return;
+                let exePath = '';
+                if (process.platform === 'linux') {
+                    const readlink = spawnSync('readlink', [`/proc/${pid}/exe`], { encoding: 'utf8' });
+                    if (readlink.status === 0) {
+                        exePath = (readlink.stdout || '').trim().replace(' (deleted)', '');
+                    }
+                } else if (process.platform === 'darwin') {
+                    const psComm = spawnSync('ps', ['-p', String(pid), '-o', 'comm='], { encoding: 'utf8' });
+                    exePath = (psComm.stdout || '').trim();
+                    if (!exePath) {
+                        const psArgs = spawnSync('ps', ['-p', String(pid), '-o', 'args='], { encoding: 'utf8' });
+                        const fullArgs = (psArgs.stdout || '').trim();
+                        if (fullArgs) {
+                            const match = fullArgs.match(/^(".*?"|'.*?'|\S+)/);
+                            if (match) exePath = match[1].replace(/^['"]|['"]$/g, '');
+                        }
+                    }
+                }
+                if (exePath) systemProcsWithPaths.push({ pid, path: exePath });
+            });
+        }
+        
+        const existingProcess = systemProcsWithPaths.find(proc => {
+            const normalizedProcPath = process.platform === 'win32' 
+                ? proc.path.toLowerCase() 
+                : proc.path;
+            return normalizedProcPath === normalizedNewPath;
+        });
+
+        const hasRunning = ourProcessAlive || (existingProcess !== undefined);
 
         if (hasRunning) {
             log.warn('Detected existing sing-box process, stopping first');
+            if (existingProcess && !ourProcessAlive) {
+                // 系统中有匹配进程但本地未记录，先更新状态再停止
+                log.warn(`[Local] Found existing system process, PID: ${existingProcess.pid}`);
+                this.pid = existingProcess.pid;
+            }
             // TUN mode on macOS: use full stop flow to restore DNS
             if (process.platform === 'darwin' && isTunModeEnabled()) {
                 log.info('macOS TUN mode, using full stop flow to restore DNS');
@@ -396,28 +488,18 @@ export class LocalSingboxController implements CoreController {
             return;
         }
 
+        // 如果本地没有 PID 或进程不存活，尝试从系统中查找匹配的进程
         if (!currentPid || !actuallyAlive) {
-            const pids = listSystemSingboxPids();
-            if (pids.length === 0) {
-                this.clearState();
-                return;
+            const processes = listSystemSingboxProcesses();
+            if (processes.length > 0) {
+                log.warn(`[Local] Found matching sing-box process to stop, PID: ${processes[0]}`);
+                const stopped = await killByPid(processes[0]);
+                if (!stopped || isProcessAlive(processes[0])) {
+                    log.warn(`[Local] Failed to stop system process, PID: ${processes[0]}`);
+                    throw new Error(t('main.errors.core.stopFailedPidRunning', { pid: String(processes[0]) }));
+                }
+                log.info(`[Local] Stopped system sing-box process, PID: ${processes[0]}`);
             }
-
-            log.warn(`[Local] Detected system sing-box processes: ${pids.join(', ')}`);
-
-            // 尝试终止
-            for (const fallbackPid of pids) {
-                await killByPid(fallbackPid);
-            }
-
-            const remaining = listSystemSingboxPids();
-            if (remaining.length > 0) {
-                log.warn(`[Local] Processes still running after stop: ${remaining.join(', ')}`);
-                this.process = null;
-                this.pid = remaining[0];
-                throw new Error(t('main.errors.core.stopFailedStillRunning', { pids: remaining.join(', ') }));
-            }
-
             this.clearState();
             return;
         }
@@ -446,23 +528,29 @@ export class LocalSingboxController implements CoreController {
         const currentPid = this.process?.pid ?? this.pid;
         const alive = currentPid ? isProcessAlive(currentPid) : false;
 
-        if (!alive) {
-            // 检查系统是否有 sing-box 进程
-            const systemPids = listSystemSingboxPids();
-            if (systemPids.length > 0) {
-                return {
-                    running: true,
-                    pid: systemPids[0],
-                };
-            }
-            return { running: false };
+        // 如果本地记录的 PID 存活，直接返回
+        if (alive) {
+            return {
+                running: true,
+                pid: currentPid ?? undefined,
+                startTime: this.startTime ?? undefined,
+            };
         }
 
-        return {
-            running: true,
-            pid: currentPid ?? undefined,
-            startTime: this.startTime ?? undefined,
-        };
+        // 如果本地 PID 不存活，检查系统中是否有匹配的 sing-box 进程（路径验证）
+        const processes = listSystemSingboxProcesses();
+        if (processes.length > 0) {
+            log.info(`[Local] Found matching sing-box process in system, PID: ${processes[0]}`);
+            // 更新本地状态
+            this.pid = processes[0];
+            return {
+                running: true,
+                pid: processes[0],
+                startTime: this.startTime ?? undefined,
+            };
+        }
+
+        return { running: false };
     }
 
     async isRunning(): Promise<boolean> {
@@ -904,10 +992,10 @@ export async function stopSingbox(): Promise<void> {
 }
 
 /**
- * 检查 sing-box 是否在运行（同步版本，兼容旧代码）
+ * 检查 sing-box 是否在运行（同步版本）
+ * 仅检查当前 controller 实例的状态
  */
 export function isSingboxRunning(): boolean {
-    // 如果有 controller，检查其状态
     if (controllerInstance) {
         const pid = controllerInstance.getPid();
         if (pid) {
@@ -919,9 +1007,7 @@ export function isSingboxRunning(): boolean {
             }
         }
     }
-
-    // 回退到检查系统进程
-    return listSystemSingboxPids().length > 0;
+    return false;
 }
 
 /**

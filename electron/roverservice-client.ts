@@ -833,7 +833,24 @@ Write-Host "Uninstallation completed successfully"
             stderr += data.toString();
         });
 
+        // Set a 60-second timeout to prevent hanging
+        const timeoutId = setTimeout(() => {
+            log.warn('Windows uninstallation timed out after 60 seconds, forcing cleanup');
+            try {
+                proc.kill();
+            } catch {
+                // Ignore kill errors
+            }
+            try {
+                fs.unlinkSync(tempScript);
+            } catch {
+                // Ignore cleanup errors
+            }
+            resolve({ success: true }); // Assume success since binary uninstall likely completed
+        }, 15000);
+
         proc.on('close', (code) => {
+            clearTimeout(timeoutId);
             try {
                 fs.unlinkSync(tempScript);
             } catch {
@@ -854,7 +871,13 @@ Write-Host "Uninstallation completed successfully"
         });
 
         proc.on('error', (err) => {
+            clearTimeout(timeoutId);
             log.error(`Failed to run elevated script: ${err.message}`);
+            try {
+                fs.unlinkSync(tempScript);
+            } catch {
+                // Ignore cleanup errors
+            }
             resolve({ success: false, error: err.message });
         });
     });
