@@ -67,9 +67,8 @@
         box-sizing: border-box;
     }
 
-    /* 允许拖拽句柄元素进行拖动 */
-    .sortable-handle,
-    .sortable-item {
+    /* 允许拖拽句柄元素进行拖动（仅限手柄，sortable-item 由 JS 控制拖拽行为） */
+    .sortable-handle {
         -webkit-user-drag: element;
     }
 

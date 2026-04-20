@@ -167,49 +167,6 @@ interface NativeStyleRuleEditorProps {
   isRoot?: boolean;
 }
 
-function getNodeAtPath(root: RuleTreeNode, path: string): RuleTreeNode | null {
-  if (!path) return root;
-  const indices = path.split(',').map(Number);
-  let current: RuleTreeNode = root;
-
-  for (const index of indices) {
-    if ('rules' in current && Array.isArray(current.rules)) {
-      current = current.rules[index];
-      if (!current) return null;
-    } else {
-      return null;
-    }
-  }
-  return current;
-}
-
-function setNodeAtPath(root: RuleTreeNode, path: string, newNode: RuleTreeNode): RuleTreeNode {
-  if (!path) return newNode;
-
-  const indices = path.split(',').map(Number);
-
-  function replaceAt(node: RuleTreeNode, pathIndices: number[]): RuleTreeNode {
-    if (pathIndices.length === 1) {
-      if ('rules' in node && Array.isArray(node.rules)) {
-        const newRules = [...node.rules];
-        newRules[pathIndices[0]] = newNode;
-        return { ...node, rules: newRules };
-      }
-      return node;
-    }
-
-    const [currentIndex, ...remainingIndices] = pathIndices;
-    if ('rules' in node && Array.isArray(node.rules)) {
-      const newRules = [...node.rules];
-      newRules[currentIndex] = replaceAt(newRules[currentIndex], remainingIndices);
-      return { ...node, rules: newRules };
-    }
-    return node;
-  }
-
-  const clonedRoot = JSON.parse(JSON.stringify(root));
-  return replaceAt(clonedRoot, indices);
-}
 
 export function NativeStyleRuleEditor({
   node,
@@ -236,17 +193,18 @@ export function NativeStyleRuleEditor({
   useEffect(() => {
     if (!sortableRef.current || !isGroup) return;
     
-    const groupNode = callbacksRef.current.node as LogicGroup;
-    
     sortableInstance.current = Sortable.create(sortableRef.current, {
       group: 'rules',
       animation: 200,
       handle: '.sortable-handle',
-      filter: '.sortable-no-drag',
       preventOnFilter: false,
-      delay: 50,
-      delayOnTouchOnly: false,
-      touchStartThreshold: 5,
+      ghostClass: 'sortable-ghost',
+      chosenClass: 'sortable-chosen',
+      dragClass: 'sortable-drag',
+      onMove: (evt) => {
+        // 允许所有移动
+        return true;
+      },
       onEnd: (evt) => {
         if (evt.from === evt.to && evt.oldIndex === evt.newIndex) return;
         
@@ -370,7 +328,7 @@ export function NativeStyleRuleEditor({
             value={leafNode.value}
             onChange={(e) => handleValueChange(path, e.target.value)}
             placeholder={fieldConfig?.placeholder || t('advancedRuleEditor.matchValuePlaceholder')}
-            className="flex-1 text-[13px] bg-transparent border-none outline-none focus:ring-0 placeholder:text-[var(--app-text-quaternary)] min-w-0"
+            className="flex-1 text-[13px] bg-[var(--app-panel-soft)] px-3 py-1.5 rounded-[10px] border border-[var(--app-stroke)] hover:border-[var(--app-stroke-strong)] focus:border-[var(--app-accent-border)] outline-none focus:ring-0 placeholder:text-[var(--app-text-quaternary)] min-w-0"
           />
         )}
         <button

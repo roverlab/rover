@@ -15,6 +15,7 @@ interface GroupEditorProps {
 }
 
 export function GroupEditor({ profileId, profileName, onClose, onSave }: GroupEditorProps) {
+    const { t } = useTranslation();
     const [groups, setGroups] = useState<CustomProxyGroup[]>([]);
     const [availableNodes, setAvailableNodes] = useState<ProxyNode[]>([]);
     const [loading, setLoading] = useState(true);

@@ -31,7 +31,10 @@ export async function initMainI18n(lang: string): Promise<void> {
         await i18n.init({
             resources,
             lng,
-            fallbackLng: 'en',
+            fallbackLng: {
+                'zh-TW': ['zh-CN', 'en'],
+                default: ['en']
+            },
             interpolation: { escapeValue: false }
         });
         initialized = true;

@@ -314,10 +314,10 @@ export function OutboundSelectorModal(props: OutboundSelectorModalProps) {
                                             <RefreshCw className="w-3 h-3 animate-spin text-[var(--app-accent)]" />
                                         ) : hasDelay ? (
                                             <span className={cn("text-[10px] font-mono ml-1", getDelayClass(delay))}>
-                                                {formatDelay(delay, t('proxies.timeout'))}
+                                                {formatDelay(delay, 'Timeout')}
                                             </span>
                                         ) : showAsTimeout ? (
-                                            <span className="text-[10px] font-mono ml-1 text-red-500">{t('proxies.timeout')}</span>
+                                            <span className="text-[10px] font-mono ml-1 text-red-500">Timeout</span>
                                         ) : null}
                                     </div>
                                 );

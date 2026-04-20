@@ -789,7 +789,7 @@ const { apiUrl, apiSecret } = useApi();
                     onSelect={() => handleCardSelect(group.name, node.name, isSelectable)}
                     getDelayClass={getDelayClass}
                     currentNode={(node.type === 'urltest' || node.type === 'URLTest') ? selectedNodes[node.name] : undefined}
-                    timeoutLabel={t('proxies.timeout')}
+                    timeoutLabel={'Timeout'}
                   />
                 ))
               )}

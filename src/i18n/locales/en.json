@@ -387,7 +387,30 @@
     "traffic": "Traffic",
     "time": "Time",
     "action": "Action",
-    "noActiveConnections": "No active connections"
+    "noActiveConnections": "No active connections",
+    "addToRuleSetTitle": "Add to Rule Set",
+    "connectionInfo": "Connection Info",
+    "extractedRules": "The following rules will be extracted",
+    "selectRuleToAdd": "Select rule to add",
+    "domain": "Domain",
+    "ip": "IP",
+    "noExtractableInfo": "No extractable information from this connection",
+    "targetRuleSet": "Target Rule Set",
+    "selectExisting": "Select Existing",
+    "createNew": "Create New",
+    "noLocalRuleSets": "No local rule sets, please create one",
+    "newRuleSetNamePlaceholder": "Enter rule set name, e.g., My Rules",
+  "searchRuleSetPlaceholder": "Search rule sets...",
+    "ruleSetNameRequired": "Please enter a rule set name",
+    "selectRuleSetRequired": "Please select a target rule set",
+    "ruleSetCreated": "Rule set created successfully",
+    "addedToRuleSet": "Added to rule set \"{{name}}\"",
+    "addToRuleSetFailed": "Add failed: {{error}}",
+    "saving": "Saving...",
+    "selected": "Selected",
+    "newRuleSet": "New Rule Set",
+    "willBeAddedTo": "will be added to",
+    "selectRuleHint": "Select a rule above to continue"
   },
   "routes": {
     "title": "Routes",
@@ -783,7 +806,10 @@
     "logicAny": "Match any",
     "logicNot": "Match none",
     "addRule": "+ Add",
-    "emptyGroupRules": "No rules yet"
+    "emptyGroupRules": "No rules yet",
+    "sortModeHint": "Enable to drag and reorder rules",
+    "sortOn": "Sorting",
+    "sortOff": "Sort"
   },
   "ruleFields": {
     "processNames": "Process Name",

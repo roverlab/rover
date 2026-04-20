@@ -58,30 +58,7 @@ function RuleTreeNodeView({
 
     if (isGroup) {
         const groupNode = node as LogicGroup;
-        return (
-            <div
-                className={`rule-group mb-4 p-5 rounded-2xl border-2 ${theme.bg} ${theme.border}`}
-            >
-                <div className="flex items-center mb-4">
-                    <span
-                        className={`px-2 py-0.5 rounded text-[10px] font-black text-white uppercase tracking-tighter ${theme.badge}`}
-                    >
-                        {groupNode.type}
-                    </span>
-                    <div className="h-[1px] flex-grow ml-3 bg-slate-200/50" />
-                </div>
-                <div className="group-content ml-6 space-y-3">
-                    {groupNode.rules.map((child, idx) => (
-                        <RuleTreeNodeView
-                            key={(child as LogicGroup).id ?? (child as LeafRule).id ?? idx}
-                            node={child}
-                            formConfig={formConfig}
-                            t={t}
-                        />
-                    ))}
-                </div>
-            </div>
-        );
+        return <GroupView groupNode={groupNode} theme={theme} formConfig={formConfig} t={t} />;
     }
 
     const leafNode = node as LeafRule;
@@ -104,6 +81,48 @@ function RuleTreeNodeView({
     );
 }
 
+function GroupView({
+    groupNode,
+    theme,
+    formConfig,
+    t,
+}: {
+    groupNode: LogicGroup;
+    theme: (typeof THEMES)[keyof typeof THEMES];
+    formConfig?: RuleFieldConfig[];
+    t: (key: string) => string;
+}) {
+    return (
+        <div
+            className={`rule-group p-5 rounded-2xl border-2 ${theme.bg} ${theme.border}`}
+        >
+            <div className="flex items-center mb-4">
+                <span
+                    className={`px-2 py-0.5 rounded text-[10px] font-black text-white uppercase tracking-tighter ${theme.badge}`}
+                >
+                    {groupNode.type}
+                </span>
+                <div className="h-[1px] flex-grow ml-3 bg-slate-200/50" />
+            </div>
+            <div className="flex gap-3">
+                {/* 竖向线 */}
+                <div className="w-[1px] bg-slate-200/50 shrink-0" />
+                <div className="group-content flex-1">
+                    {groupNode.rules.map((child, idx) => (
+                        <div key={(child as LogicGroup).id ?? (child as LeafRule).id ?? idx} className={idx < groupNode.rules.length - 1 ? 'mb-3' : ''}>
+                            <RuleTreeNodeView
+                                node={child}
+                                formConfig={formConfig}
+                                t={t}
+                            />
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
+}
+
 /**
  * 规则树层级化逻辑视图（只读）
  * 基于嵌套逻辑流模板，展示 all/any/not 与叶子规则的层级关系
@@ -118,7 +137,7 @@ export function RuleTreeView({ node, formConfig }: RuleTreeViewProps) {
         );
     }
     return (
-        <div className="space-y-4">
+        <div>
             <RuleTreeNodeView node={node} formConfig={formConfig} t={t} />
         </div>
     );

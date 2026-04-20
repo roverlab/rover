@@ -108,7 +108,10 @@ export async function initI18n(): Promise<typeof i18n> {
   await i18n.use(initReactI18next).init({
     resources,
     lng: savedLang,
-    fallbackLng: 'en',
+    fallbackLng: {
+      'zh-TW': ['zh-CN', 'en'],
+      default: ['en']
+    },
     debug: false,
     interpolation: {
       escapeValue: false // React already safes from xss

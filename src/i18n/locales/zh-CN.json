@@ -387,7 +387,30 @@
     "traffic": "流量",
     "time": "时间",
     "action": "操作",
-    "noActiveConnections": "无活跃连接"
+    "noActiveConnections": "无活跃连接",
+    "addToRuleSetTitle": "添加到规则集",
+    "connectionInfo": "连接信息",
+    "extractedRules": "将提取以下规则",
+    "selectRuleToAdd": "选择要添加的规则",
+    "domain": "域名",
+    "ip": "IP",
+    "noExtractableInfo": "无法从该连接中提取有效信息",
+    "targetRuleSet": "目标规则集",
+    "selectExisting": "选择已有",
+    "createNew": "新建规则集",
+    "noLocalRuleSets": "暂无本地规则集，请新建一个",
+    "newRuleSetNamePlaceholder": "输入规则集名称，如：我的规则",
+  "searchRuleSetPlaceholder": "搜索规则集...",
+    "ruleSetNameRequired": "请输入规则集名称",
+    "selectRuleSetRequired": "请选择一个目标规则集",
+    "ruleSetCreated": "规则集创建成功",
+    "addedToRuleSet": "已添加到规则集「{{name}}」",
+    "addToRuleSetFailed": "添加失败：{{error}}",
+    "saving": "保存中...",
+    "selected": "已选",
+    "newRuleSet": "新规则集",
+    "willBeAddedTo": "将添加到",
+    "selectRuleHint": "请先选择要提取的规则"
   },
   "routes": {
     "title": "路由",
@@ -783,7 +806,10 @@
     "logicAny": "符合任一",
     "logicNot": "不符合",
     "addRule": "+ 增加",
-    "emptyGroupRules": "暂无规则"
+    "emptyGroupRules": "暂无规则",
+    "sortModeHint": "开启后可拖拽调整规则顺序",
+    "sortOn": "排序中",
+    "sortOff": "排序"
   },
   "ruleFields": {
     "processNames": "进程名",

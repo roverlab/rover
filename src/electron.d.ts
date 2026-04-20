@@ -112,7 +112,7 @@ export interface ElectronAPI {
             downloadRuleProvider(providerId: string): Promise<{ success: boolean; path: string }>;
             getRuleProviderViewContent(providerId: string): Promise<{ content: string | null; error: string | null }>;
             // Rule Provider Save (unified)
-            saveRuleProvider(provider: { id?: string; name: string; url?: string; type: RuleProviderType; enabled?: boolean; rules?: import('./types/singbox').HeadlessRule[] }): Promise<void>;
+            saveRuleProvider(provider: { id?: string; name: string; url?: string; type: RuleProviderType; enabled?: boolean; rules?: import('./types/singbox').HeadlessRule[]; logical_rule?: import('./types/singbox').RouteLogicRule }): Promise<void>;
             // Templates & Policies
             getTemplates(): Promise<Array<{ name: string; description: string; path: string }>>;
             getTemplatePolicies(templatePath: string): Promise<{ rules: any[]; dns?: any; rule_unmatched_outbound?: string }>;
