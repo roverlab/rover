@@ -231,7 +231,7 @@ function buildVlessTls(n: VLESSProxy): OutboundTls | undefined {
     return tls;
 }
 
-function convertProxyNodeToOutbound(node: ProxyNode): OutboundConfig {
+export function convertProxyNodeToOutbound(node: ProxyNode): OutboundConfig {
     switch (node.type) {
         case 'ss': {
             const n = node as ShadowsocksProxy;
@@ -244,6 +244,17 @@ function convertProxyNodeToOutbound(node: ProxyNode): OutboundConfig {
             };
             if (n.password) out.password = n.password;
             if (n.tfo) out.tcp_fast_open = true;
+
+            // 处理 plugin 和 plugin-opts → 转为 SingBox 的 plugin / plugin_opts 字符串
+            // 仅支持白名单内的 SIP003 插件，其余忽略
+            const SUPPORTED_SS_PLUGINS = new Set(['v2ray-plugin', 'obfs-local']);
+            if (n.plugin && SUPPORTED_SS_PLUGINS.has(n.plugin)) {
+                out.plugin = n.plugin;
+                if (n['plugin-opts']) {
+                    out.plugin_opts = buildShadowsocksPluginOpts(n['plugin-opts']);
+                }
+            }
+
             return out;
         }
         case 'vmess': {
@@ -608,6 +619,61 @@ function buildTransport(
     }
     if (network === 'h2') return { type: 'http' };
     return undefined;
+}
+
+/**
+ * 将 Clash 的 plugin-opts 对象转换为 SingBox 的 plugin_opts 字符串
+ *
+ * v2ray-plugin 示例: {mode: websocket, path: /, mux: true, skip-cert-verify: true}
+ * → "mode=websocket;path=/;mux=1;skip-cert-verify=true"
+ *
+ * obfs-local 示例: {obfs: tls, obfs-host: www.apple.com}
+ * → "obfs=tls;obfs-host=www.apple.com"
+ *
+ * 规则：
+ * - 布尔值为 false 的字段直接忽略（不输出）
+ * - 布尔值为 true 的字段：skip-cert-verify/tls 输出 true/false，其余如 mux 输出 0/1
+ */
+function buildShadowsocksPluginOpts(pluginOpts: Record<string, unknown>): string {
+    const parts: string[] = [];
+
+    // 按照常见顺序排列字段（v2ray-plugin + obfs-local）
+    const fieldOrder = ['mode', 'host', 'path', 'tls', 'mux', 'skip-cert-verify', 'obfs', 'obfs-host'];
+
+    // 需要使用 true/false 而非 0/1 的字段
+    const BOOL_AS_STRING = new Set(['skip-cert-verify', 'tls']);
+
+    for (const key of fieldOrder) {
+        if (!(key in pluginOpts)) continue;
+        const value = pluginOpts[key];
+        if (value === undefined || value === null || value === '') continue;
+
+        if (typeof value === 'boolean') {
+            // 布尔值为 false 直接忽略
+            if (!value) continue;
+            // 值为 true：skip-cert-verify / tls 等用 true，其余如 mux 用 1
+            const strVal = BOOL_AS_STRING.has(key) ? 'true' : '1';
+            parts.push(`${key}=${strVal}`);
+        } else {
+            parts.push(`${key}=${value}`);
+        }
+    }
+
+    // 处理其他未在 fieldOrder 中的额外字段
+    for (const [key, value] of Object.entries(pluginOpts)) {
+        if (fieldOrder.includes(key)) continue;
+        if (value === undefined || value === null || value === '') continue;
+
+        if (typeof value === 'boolean') {
+            if (!value) continue;
+            const strVal = BOOL_AS_STRING.has(key) ? 'true' : '1';
+            parts.push(`${key}=${strVal}`);
+        } else {
+            parts.push(`${key}=${value}`);
+        }
+    }
+
+    return parts.join(';');
 }
 
 function normalizeListenAddress(config: MihomoConfig): string | undefined {

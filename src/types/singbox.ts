@@ -86,6 +86,12 @@ export interface ShadowsocksOutbound {
     server_port: number;
     method: string;
     password?: string;
+    /** Shadowsocks SIP003 plugin (如 v2ray-plugin, obfs-local) */
+    plugin?: string;
+    /** Shadowsocks SIP003 plugin options (分号分隔的字符串，如 "path=/;mode=websocket;mux=1;skip-cert-verify=true") */
+    plugin_opts?: string;
+    transport?: TransportConfig;
+    tls?: OutboundTls;
     tcp_fast_open?: boolean;
 }
 

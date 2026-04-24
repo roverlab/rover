@@ -93,6 +93,23 @@ export interface ShadowsocksProxy extends BaseProxy {
   type: 'ss';
   cipher: string;
   password?: string;
+  /** SIP003 插件名称，如 v2ray-plugin、obfs-local */
+  plugin?: string;
+  /** 插件选项（v2ray-plugin 为对象格式，obfs-local 也为对象格式） */
+  'plugin-opts'?: {
+    // v2ray-plugin 字段
+    mode?: string;
+    host?: string;
+    path?: string;
+    tls?: boolean;
+    'skip-cert-verify'?: boolean;
+    mux?: boolean;
+    // obfs-local 字段
+    obfs?: 'http' | 'tls' | string;
+    'obfs-host'?: string;
+    // 其他可能的扩展字段
+    [key: string]: unknown;
+  };
 }
 
 export interface VMessProxy extends BaseProxy {
