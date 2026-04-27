@@ -154,16 +154,17 @@ export function getCurrentLanguage(): string {
 
 /**
  * 获取可用语言列表
+ * 语言名称始终显示为对应语言的本地名称，不进行翻译
  */
-export function getAvailableLanguages(): { code: string; nameKey: string }[] {
+export function getAvailableLanguages(): { code: string; name: string }[] {
   return [
-    { code: 'en', nameKey: 'settings.langEnglish' },
-    { code: 'zh-CN', nameKey: 'settings.langChinese' },
-    { code: 'zh-TW', nameKey: 'settings.langChineseTW' },
-    { code: 'ru', nameKey: 'settings.langRussian' },
-    { code: 'ko', nameKey: 'settings.langKorean' },
-    { code: 'fa', nameKey: 'settings.langPersian' },
-    { code: 'es', nameKey: 'settings.langSpanish' }
+    { code: 'en', name: 'English' },
+    { code: 'zh-CN', name: '简体中文' },
+    { code: 'zh-TW', name: '繁體中文' },
+    { code: 'ru', name: 'Русский' },
+    { code: 'ko', name: '한국어' },
+    { code: 'fa', name: 'فارسی' },
+    { code: 'es', name: 'Español' }
   ];
 }
 

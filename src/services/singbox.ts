@@ -7,6 +7,8 @@ import type {
     ProxyGroup,
     ProxyNode,
     ShadowsocksProxy,
+    Socks5Proxy,
+    HttpProxy,
     VMessProxy,
     VLESSProxy,
     Hysteria2Proxy,
@@ -17,11 +19,13 @@ import type {
 import type {
     ConvertOptions,
     HeadlessPlainRule,
+    HTTPOutbound,
     OutboundConfig,
     RouteRule,
     RoutePlainRule,
     RuleConversionStats,
     ShadowsocksOutbound,
+    SocksOutbound,
     SingboxConfig,
     TransportConfig,
     VMessOutbound,
@@ -146,10 +150,10 @@ function buildOutbounds(config: MihomoConfig): OutboundConfig[] {
             .map(group => group.name)
     );
 
-    // Filter out SSR proxies as sing-box doesn't support SSR protocol
+    // Convert proxies and filter out null (unsupported types)
     const proxies = (config.proxies ?? [])
-        .filter(proxy => (proxy as any).type !== 'ssr')
-        .map(convertProxyNodeToOutbound);
+        .map(convertProxyNodeToOutbound)
+        .filter((proxy): proxy is OutboundConfig => proxy !== null);
 
     const validProxyTags = new Set(proxies.map((proxy) => proxy.tag));
 
@@ -231,15 +235,48 @@ function buildVlessTls(n: VLESSProxy): OutboundTls | undefined {
     return tls;
 }
 
-export function convertProxyNodeToOutbound(node: ProxyNode): OutboundConfig {
+/** Clash 代理类型 → sing-box 出站类型的白名单映射 */
+const CLASH_TYPE_SINGBOX_MAP: Record<string, string> = {
+    ss: 'shadowsocks',
+    socks5: 'socks',
+    http: 'http',
+    vmess: 'vmess',
+    vless: 'vless',
+    trojan: 'trojan',
+    hysteria2: 'hysteria2',
+    tuic: 'tuic',
+    anytls: 'anytls',
+};
+
+/** 将 port 值安全地转为 number（YAML 中可能为字符串） */
+function toPortNumber(port: unknown): number {
+    if (typeof port === 'number') return port;
+    if (typeof port === 'string') {
+        const n = parseInt(port, 10);
+        return isNaN(n) ? 0 : n;
+    }
+    return 0;
+}
+
+
+export function convertProxyNodeToOutbound(node: ProxyNode): OutboundConfig | null {
+    const singboxType = CLASH_TYPE_SINGBOX_MAP[node.type];
+    if (!singboxType) {
+        const json = JSON.stringify(node)
+        console.warn(`[singbox] Unsupported proxy type: ${node.type}, skipping node: ${json}`);
+        return null;
+    }
+
+    const server_port = toPortNumber(node.port);
+
     switch (node.type) {
         case 'ss': {
             const n = node as ShadowsocksProxy;
             const out: ShadowsocksOutbound = {
-                type: 'shadowsocks',
+                type: singboxType as 'shadowsocks',
                 tag: n.name,
                 server: n.server,
-                server_port: n.port,
+                server_port,
                 method: n.cipher
             };
             if (n.password) out.password = n.password;
@@ -257,13 +294,38 @@ export function convertProxyNodeToOutbound(node: ProxyNode): OutboundConfig {
 
             return out;
         }
+        case 'socks5': {
+            const n = node as Socks5Proxy;
+            const out: SocksOutbound = {
+                type: singboxType as 'socks',
+                tag: n.name,
+                server: n.server,
+                server_port,
+                version: '5',
+            };
+            if (n.username) out.username = n.username;
+            if (n.password) out.password = n.password;
+            return out;
+        }
+        case 'http': {
+            const n = node as HttpProxy;
+            const out: HTTPOutbound = {
+                type: singboxType as 'http',
+                tag: n.name,
+                server: n.server,
+                server_port,
+            };
+            if (n.username) out.username = n.username;
+            if (n.password) out.password = n.password;
+            return out;
+        }
         case 'vmess': {
             const n = node as VMessProxy;
             const out: VMessOutbound = {
-                type: 'vmess',
+                type: singboxType as 'vmess',
                 tag: n.name,
                 server: n.server,
-                server_port: n.port,
+                server_port,
                 uuid: n.uuid,
                 alter_id: n.alterId,
                 security: n.cipher
@@ -278,10 +340,10 @@ export function convertProxyNodeToOutbound(node: ProxyNode): OutboundConfig {
         case 'vless': {
             const n = node as VLESSProxy;
             const out: VLESSOutbound = {
-                type: 'vless',
+                type: singboxType as 'vless',
                 tag: n.name,
                 server: n.server,
-                server_port: n.port,
+                server_port,
                 uuid: n.uuid
             };
             if (n.flow) out.flow = n.flow;
@@ -297,10 +359,10 @@ export function convertProxyNodeToOutbound(node: ProxyNode): OutboundConfig {
             const upMbps = parseMbps(n.up);
             const downMbps = parseMbps(n.down);
             const out: Hysteria2Outbound = {
-                type: 'hysteria2',
+                type: singboxType as 'hysteria2',
                 tag: n.name,
                 server: n.server,
-                server_port: n.port,
+                server_port,
                 tls: {
                     enabled: true,
                     insecure: n['skip-cert-verify'],
@@ -316,10 +378,10 @@ export function convertProxyNodeToOutbound(node: ProxyNode): OutboundConfig {
         case 'tuic': {
             const n = node as TuicProxy;
             const out: TuicOutbound = {
-                type: 'tuic',
+                type: singboxType as 'tuic',
                 tag: n.name,
                 server: n.server,
-                server_port: n.port,
+                server_port,
                 uuid: n.uuid,
                 tls: { enabled: true, insecure: n['skip-cert-verify'] }
             };
@@ -332,10 +394,10 @@ export function convertProxyNodeToOutbound(node: ProxyNode): OutboundConfig {
             const n = node as TrojanProxy;
             const trojanNode = n as { network?: string; 'ws-opts'?: { path?: string; headers?: Record<string, string> }; 'grpc-opts'?: { 'grpc-service-name'?: string } };
             const out: TrojanOutbound = {
-                type: 'trojan',
+                type: singboxType as 'trojan',
                 tag: n.name,
                 server: n.server,
-                server_port: n.port,
+                server_port,
                 tls: {
                     enabled: true,
                     insecure: n['skip-cert-verify'],
@@ -357,10 +419,10 @@ export function convertProxyNodeToOutbound(node: ProxyNode): OutboundConfig {
             };
             if (n['client-fingerprint']) tls.utls = { enabled: true, fingerprint: n['client-fingerprint'] };
             const out: OutboundConfig = {
-                type: 'anytls',
+                type: singboxType,
                 tag: n.name,
                 server: n.server,
-                server_port: n.port,
+                server_port,
                 password: n.password,
                 tls: { ...tls, ...(n.alpn?.length && { alpn: n.alpn }) }
             };
@@ -369,16 +431,6 @@ export function convertProxyNodeToOutbound(node: ProxyNode): OutboundConfig {
             if (n['min-idle-session'] != null) out.min_idle_session = n['min-idle-session'];
             if (n.tfo) out.tcp_fast_open = true;
             return out;
-        }
-        default: {
-            const n = node as { type: string; name: string; server: string; port: number; tfo?: boolean };
-            return {
-                type: n.type,
-                tag: n.name,
-                server: n.server,
-                server_port: n.port,
-                ...(n.tfo && { tcp_fast_open: true })
-            };
         }
     }
 }

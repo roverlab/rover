@@ -124,6 +124,7 @@ export function loadBuiltinRulesets(): import('../src/types/rule-providers').Rul
     const allRulesets: import('../src/types/rule-providers').RuleProvider[] = [];
     const seenIds = new Set<string>();
 
+
     try {
         const files = fs.readdirSync(rulesetsDir);
         for (const file of files) {
@@ -139,7 +140,7 @@ export function loadBuiltinRulesets(): import('../src/types/rule-providers').Rul
                             seenIds.add(item.id);
                             allRulesets.push({
                                 id: item.id,
-                                name: item.name,
+                                name: item.id,
                                 url: item.url || '',
                                 type: item.type || 'singbox',
                                 enabled: item.enabled !== false,

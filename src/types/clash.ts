@@ -73,6 +73,8 @@ export interface MihomoDnsConfig {
 // --- 代理节点联合类型 (Discriminated Unions) ---
 export type ProxyNode = 
   | ShadowsocksProxy 
+  | Socks5Proxy
+  | HttpProxy
   | VMessProxy 
   | VLESSProxy 
   | Hysteria2Proxy 
@@ -110,6 +112,18 @@ export interface ShadowsocksProxy extends BaseProxy {
     // 其他可能的扩展字段
     [key: string]: unknown;
   };
+}
+
+export interface Socks5Proxy extends BaseProxy {
+  type: 'socks5';
+  username?: string;
+  password?: string;
+}
+
+export interface HttpProxy extends BaseProxy {
+  type: 'http';
+  username?: string;
+  password?: string;
 }
 
 export interface VMessProxy extends BaseProxy {

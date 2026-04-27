@@ -34,6 +34,7 @@ export interface ElectronAPI {
             setPolicyFinalOutbound(value: 'direct_out' | 'block_out' | 'selector_out'): Promise<void>;
             updateProfileDetails(id: string, name: string, url: string, updateInterval?: number): Promise<void>;
             updateProfileInterval(id: string, updateInterval: number): Promise<void>;
+            updateProfilesOrder(orderedIds: string[]): Promise<void>;
             updateProfileContent(id: string, content: string): Promise<void>;
             getProfileContent(id: string): Promise<string | null>;
             getAllSettings(): Promise<Record<string, string>>;

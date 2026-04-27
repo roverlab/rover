@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { useDropdownPosition } from '../hooks/useDropdownPosition';
-import { Download, RefreshCw, Plus, MoreVertical, Trash2, Loader2, Edit2, FileText, X, Copy, Layers } from 'lucide-react';
+import { Download, RefreshCw, Plus, MoreVertical, Trash2, Loader2, Edit2, FileText, X, Copy, Layers, GripVertical } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../components/Sidebar';
 import { Button } from '../components/ui/Button';
@@ -11,6 +11,7 @@ import { Badge, Card } from '../components/ui/Surface';
 import { useNotificationState, NotificationList, useConfirm } from '../components/ui/Notification';
 import { formatRelativeTime } from '../shared/date-utils';
 import { GroupEditor } from './Profiles/components/GroupEditor';
+import Sortable from 'sortablejs';
 
 /** 格式化更新间隔显示 */
 function formatInterval(seconds: number | undefined, t: (key: string, options?: Record<string, unknown>) => string): string {
@@ -95,6 +96,16 @@ const [profiles, setProfiles] = useState<Profile[]>([]);
 
   // 分组编辑器状态
   const [editingGroupProfile, setEditingGroupProfile] = useState<Profile | null>(null);
+
+  // 拖拽排序相关
+  const gridRef = useRef<HTMLDivElement>(null);
+  const sortableRef = useRef<Sortable | null>(null);
+  const profilesRef = useRef<Profile[]>(profiles);
+
+  // 保持 profilesRef 最新
+  useEffect(() => {
+    profilesRef.current = profiles;
+  }, [profiles]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -330,6 +341,43 @@ const [profiles, setProfiles] = useState<Profile[]>([]);
     }
   };
 
+  // 拖拽排序：保存新顺序到数据库
+  const persistProfilesOrder = useCallback(async (orderedIds: string[]) => {
+    try {
+      await window.ipcRenderer.db.updateProfilesOrder(orderedIds);
+    } catch (err) {
+      console.error('Failed to update profiles order:', err);
+      addNotification(t('profiles.reorderFailed'), 'error');
+      loadProfiles(); // 恢复原始顺序
+    }
+  }, [addNotification, t]);
+
+  // 初始化拖拽排序（只在组件挂载时执行一次）
+  useEffect(() => {
+    if (!gridRef.current) return;
+
+    sortableRef.current = Sortable.create(gridRef.current, {
+      animation: 200,
+      handle: '.drag-handle',
+      ghostClass: 'sortable-ghost',
+      chosenClass: 'sortable-chosen',
+      onEnd: (evt) => {
+        if (evt.oldIndex === evt.newIndex) return;
+        const currentProfiles = profilesRef.current;
+        const newProfiles = [...currentProfiles];
+        const [movedItem] = newProfiles.splice(evt.oldIndex!, 1);
+        newProfiles.splice(evt.newIndex!, 0, movedItem);
+        setProfiles(newProfiles);
+        persistProfilesOrder(newProfiles.map(p => p.id));
+      },
+    });
+
+    return () => {
+      sortableRef.current?.destroy();
+      sortableRef.current = null;
+    };
+  }, [persistProfilesOrder]);
+
   return (
     <div className="page-shell relative overflow-hidden">
       {/* Notification - 使用 Portal 渲染到 body，避免被弹窗遮挡 */}
@@ -369,7 +417,7 @@ const [profiles, setProfiles] = useState<Profile[]>([]);
         </div>
 
         <div className="flex-1 overflow-y-auto">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div ref={gridRef} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {profiles.map((profile) => (
               <Card
                 key={profile.id}
@@ -383,6 +431,10 @@ const [profiles, setProfiles] = useState<Profile[]>([]);
               >
                 <div className="relative flex justify-between items-start mb-1.5 z-10">
                   <div className="flex items-center gap-2 min-w-0 pr-3">
+                    {/* 拖拽手柄 */}
+                    <div className="drag-handle sortable-handle flex-shrink-0 cursor-grab active:cursor-grabbing text-[var(--app-text-quaternary)] hover:text-[var(--app-text-secondary)] transition-colors">
+                      <GripVertical className="w-4 h-4" />
+                    </div>
                     <h3 className="font-medium text-[14px] text-[var(--app-text)] truncate max-w-[160px]">{profile.name}</h3>
                     <span className="shrink-0 text-[11px] text-[var(--app-text-tertiary)]">{profile.nodes?.length ?? 0} {t('profiles.nodes')}</span>
                   </div>
@@ -478,7 +530,7 @@ const [profiles, setProfiles] = useState<Profile[]>([]);
                   </div>
                   {profile.url && (
                     <Button
-                      variant={updatingId === profile.id ? 'tonal' : 'secondary'}
+                      variant={updatingId === profile.id ? 'tonal' : 'ghost'}
                       size="icon"
                       onClick={(e) => handleUpdate(e, profile.id)}
                       disabled={updatingId !== null}

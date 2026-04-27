@@ -26,7 +26,7 @@ export const LanguageSwitcher: React.FC = () => {
         <span className="font-medium">
           {(() => {
             const lang = availableLanguages.find((l) => l.code === currentLanguage);
-            return lang ? t(lang.nameKey) : t('settings.languageLabel');
+            return lang ? lang.name : t('settings.languageLabel');
           })()}
         </span>
       </button>
@@ -43,7 +43,7 @@ export const LanguageSwitcher: React.FC = () => {
                   : 'text-[var(--app-text-secondary)]'
               }`}
             >
-              {t(language.nameKey)}
+              {language.name}
             </button>
           ))}
         </div>

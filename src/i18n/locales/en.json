@@ -230,13 +230,6 @@
     "apiUrlPlaceholder": "http://127.0.0.1:9090",
     "apiSecretPlaceholder": "Optional",
     "subscriptionUaPlaceholder": "mihomo/1.19.16; sing-box 1.12.0",
-    "langEnglish": "English",
-    "langChinese": "中文",
-    "langChineseTW": "繁體中文",
-    "langRussian": "Русский",
-    "langKorean": "한국어",
-    "langPersian": "فارسی",
-    "langSpanish": "Español",
     "hostsPlaceholder": "# Comments supported\n127.0.0.1   localhost\n::1         localhost\n127.0.0.1   *.example.com",
     "tunExcludePlaceholder": "# Comments supported\n192.168.0.0/16\n10.0.0.0/8\n172.16.0.0/12\nfc00::/7"
   },
@@ -312,6 +305,7 @@
     "copiedToClipboard": "Copied to clipboard",
     "copyFailed": "Copy failed",
     "selectFailed": "Failed to select profile: {{error}}",
+    "reorderFailed": "Failed to reorder profiles",
     "noAutoUpdate": "No auto-update",
     "intervalSeconds": "{{count}} seconds",
     "intervalMinutes": "{{count}} minutes",
@@ -506,11 +500,16 @@
   },
   "policies": {
     "title": "Policies",
+    "settingsTitle": "Policy Settings",
     "policyEntity": "Policy",
     "subtitle": "Configure routing policy rules and set default outbound for unmatched traffic.",
     "finalOutbound": {
       "label": "Final Outbound",
-      "description": "Default exit when no rules match"
+      "description": "Default exit when no rules match",
+      "direct_outDesc": "Connect directly without proxy",
+      "block_outDesc": "Block connections, disconnect traffic",
+      "selector_outDesc": "Use the currently selected proxy node",
+      "hint": "Policies are matched in order. When no rules match, the default outbound set here will be used."
     },
     "finalOutboundChanged": "Final outbound changed to: {{value}}",
     "finalOutboundChangeFailed": "Failed to update final outbound: {{error}}",

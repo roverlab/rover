@@ -199,6 +199,9 @@ ipcMain.handle('db:updateProfileInterval', (_, id, updateInterval) => {
     // 全量重新加载定时任务
     scheduler.initSchedulers();
 });
+ipcMain.handle('db:updateProfilesOrder', (_, orderedIds) => {
+    dbUtils.updateProfilesOrder(orderedIds);
+});
 
 // IPC Handlers for Scheduler
 // 定时任务已改为全量更新，在数据库操作后自动调用 initSchedulers()

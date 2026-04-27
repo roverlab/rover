@@ -95,6 +95,27 @@ export interface ShadowsocksOutbound {
     tcp_fast_open?: boolean;
 }
 
+/** sing-box socks 出站 */
+export interface SocksOutbound {
+    type: 'socks';
+    tag: string;
+    server: string;
+    server_port: number;
+    version?: '4' | '4a' | '5';
+    username?: string;
+    password?: string;
+}
+
+/** sing-box http 出站 */
+export interface HTTPOutbound {
+    type: 'http';
+    tag: string;
+    server: string;
+    server_port: number;
+    username?: string;
+    password?: string;
+}
+
 /** sing-box vmess 出站 */
 export interface VMessOutbound {
     type: 'vmess';
@@ -171,6 +192,7 @@ export interface OutboundConfig {
     interval?: string;
     tolerance?: number;
     password?: string;
+    users?: Array<{ username: string; password: string }>;
     uuid?: string;
     method?: string;
     security?: string;

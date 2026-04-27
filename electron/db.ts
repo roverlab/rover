@@ -565,6 +565,31 @@ export function updateProfileInterval(id: string, updateInterval: number) {
     });
 }
 
+/**
+ * 更新订阅配置的排序顺序
+ * @param orderedIds 按新顺序排列的 Profile ID 数组
+ */
+export function updateProfilesOrder(orderedIds: string[]): void {
+    withDb((data) => {
+        // 根据 orderedIds 重新排列 profiles 数组
+        const profileMap = new Map(data.profiles.map(p => [p.id, p]));
+        const reordered: Profile[] = [];
+        for (const id of orderedIds) {
+            const profile = profileMap.get(id);
+            if (profile) {
+                reordered.push(profile);
+            }
+        }
+        // 保留不在 orderedIds 中的 profile（理论上不应该有）
+        for (const p of data.profiles) {
+            if (!orderedIds.includes(p.id)) {
+                reordered.push(p);
+            }
+        }
+        data.profiles = reordered;
+    });
+}
+
 export function getAllSettings(): Record<string, string> {
     const data = loadDb();
     return { ...data.settings };

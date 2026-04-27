@@ -73,7 +73,7 @@ export const LanguageSelectModal: React.FC<LanguageSelectModalProps> = ({ open, 
                   >
                     <div className="flex items-center gap-3">
                       <div className="text-left">
-                        <div className="text-[14px] font-medium">{t(language.nameKey)}</div>
+                        <div className="text-[14px] font-medium">{language.name}</div>
                       </div>
                     </div>
                     {selectedLanguage === language.code && (

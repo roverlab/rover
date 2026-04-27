@@ -230,13 +230,6 @@
     "apiUrlPlaceholder": "http://127.0.0.1:9090",
     "apiSecretPlaceholder": "اختیاری",
     "subscriptionUaPlaceholder": "mihomo/1.19.16; sing-box 1.12.0",
-    "langEnglish": "English",
-    "langChinese": "简体中文",
-    "langChineseTW": "繁體中文",
-    "langRussian": "Русский",
-    "langKorean": "한국어",
-    "langPersian": "فارسی",
-    "langSpanish": "Español",
     "hostsPlaceholder": "# نظرات پشتیبانی می‌شوند\n127.0.0.1   localhost\n::1         localhost\n127.0.0.1   *.example.com",
     "tunExcludePlaceholder": "# نظرات پشتیبانی می‌شوند\n192.168.0.0/16\n10.0.0.0/8\n172.16.0.0/12\nfc00::/7"
   },
@@ -483,6 +476,7 @@
   },
   "policies": {
     "title": "سیاست‌ها",
+    "settingsTitle": "تنظیمات سیاست",
     "policyEntity": "سیاست",
     "subtitle": "پیکربندی قوانین سیاست مسیریابی و تنظیم خروجی پیش‌فرض برای ترافیک نامطابق.",
     "finalOutbound": {

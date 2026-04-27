@@ -230,13 +230,6 @@
     "apiUrlPlaceholder": "http://127.0.0.1:9090",
     "apiSecretPlaceholder": "可选",
     "subscriptionUaPlaceholder": "mihomo/1.19.16; sing-box 1.12.0",
-    "langEnglish": "English",
-    "langChinese": "简体中文",
-    "langChineseTW": "繁體中文",
-    "langRussian": "俄语",
-    "langKorean": "朝鲜语",
-    "langPersian": "波斯语",
-    "langSpanish": "西班牙语",
     "hostsPlaceholder": "# 支持注释\n127.0.0.1   localhost\n::1         localhost\n127.0.0.1   *.example.com",
     "tunExcludePlaceholder": "# 支持注释\n192.168.0.0/16\n10.0.0.0/8\n172.16.0.0/12\nfc00::/7"
   },
@@ -312,6 +305,7 @@
     "copiedToClipboard": "已复制到剪贴板",
     "copyFailed": "复制失败",
     "selectFailed": "选择配置失败: {{error}}",
+    "reorderFailed": "调整顺序失败",
     "noAutoUpdate": "不自动更新",
     "intervalSeconds": "{{count}} 秒",
     "intervalMinutes": "{{count}} 分钟",
@@ -506,11 +500,16 @@
   },
   "policies": {
     "title": "策略",
+    "settingsTitle": "策略设置",
     "policyEntity": "策略",
     "subtitle": "配置分流策略规则，设置未匹配时的默认出站。",
     "finalOutbound": {
       "label": "未匹配时的出站",
-      "description": "无规则命中时使用的默认出口"
+      "description": "无规则命中时使用的默认出口",
+      "direct_outDesc": "流量不经过代理，直接连接目标",
+      "block_outDesc": "阻止连接，断开流量",
+      "selector_outDesc": "使用当前选择的代理节点",
+      "hint": "策略规则按顺序匹配，当所有规则都不匹配时，将使用此处设置的默认出站。"
     },
     "finalOutboundChanged": "未匹配时出站已切换为：{{value}}",
     "finalOutboundChangeFailed": "更新未匹配时出站失败: {{error}}",

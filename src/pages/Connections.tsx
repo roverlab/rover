@@ -242,19 +242,35 @@ export function Connections({ isActive = true }: ConnectionsProps) {
       rules.push({ id: crypto.randomUUID(), type: 'processNames', value: conn.process.trim() });
     }
 
+    // 判断是否为 IP 地址（支持 IPv4 和 IPv6）
+    const isIpAddress = (str: string) => {
+      // IPv4 格式
+      if (/^\d+\.\d+\.\d+\.\d+$/.test(str)) return true;
+      // IPv6 格式（包含冒号）
+      if (str.includes(':')) return true;
+      return false;
+    };
+
+    const host = conn.host?.trim();
+    const destinationIP = conn.destinationIP?.trim();
+
     // 域名 -> domain (host 不是 IP 时)
-    if ((!extractType || extractType === 'domain') && conn.host && conn.host.trim() && conn.host !== 'unknown' && conn.host !== conn.destinationIP) {
-      const host = conn.host.trim();
-      // 判断是否为 IP 地址
-      const isIp = /^\d+\.\d+\.\d+\.\d+$/.test(host) || host.includes(':');
-      if (!isIp) {
+    if ((!extractType || extractType === 'domain') && host && host !== 'unknown') {
+      if (!isIpAddress(host) && host !== destinationIP) {
         rules.push({ id: crypto.randomUUID(), type: 'domain', value: host });
       }
     }
 
     // IP -> ipCidr
-    if ((!extractType || extractType === 'ip') && conn.destinationIP && conn.destinationIP.trim()) {
-      rules.push({ id: crypto.randomUUID(), type: 'ipCidr', value: conn.destinationIP.trim() });
+    if (!extractType || extractType === 'ip') {
+      // 优先使用 destinationIP（域名解析后的 IP）
+      if (destinationIP) {
+        rules.push({ id: crypto.randomUUID(), type: 'ipCidr', value: destinationIP });
+      }
+      // 如果 host 本身就是 IP（直接访问 IP，没有域名），则使用 host
+      else if (host && host !== 'unknown' && isIpAddress(host)) {
+        rules.push({ id: crypto.randomUUID(), type: 'ipCidr', value: host });
+      }
     }
 
     return rules;

@@ -85,6 +85,9 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
   const [roverserviceUninstalling, setRoverServiceUninstalling] = useState(false);
   const [roverserviceError, setRoverServiceError] = useState<string | null>(null);
 
+  // 数据加载状态
+  const [isDataLoaded, setIsDataLoaded] = useState(false);
+
   const loadSettings = async () => {
     try {
       const allSettings = await window.ipcRenderer.db.getAllSettings();
@@ -130,6 +133,8 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
       }
     } catch (e) {
       console.error(e);
+    } finally {
+      setIsDataLoaded(true);
     }
   };
 
@@ -425,6 +430,13 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
         </div>
 
       <div className="page-content">
+        {!isDataLoaded ? (
+          <div className="flex items-center justify-center h-40">
+            <div className="w-6 h-6 border-2 border-[var(--app-text-quaternary)] border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : null}
+        {isDataLoaded && (
+        <>
         {/* Tab 导航 */}
         <div className="flex gap-1 mb-4 p-1 bg-[rgba(39,44,54,0.06)] rounded-xl w-fit">
           {[
@@ -604,7 +616,7 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
                   >
                     {availableLanguages.map((language) => (
                       <option key={language.code} value={language.code}>
-                        {t(language.nameKey)}
+                        {language.name}
                       </option>
                     ))}
                   </Select>
@@ -908,6 +920,8 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
               </Card>
             )}
           </div>
+        )}
+        </>
         )}
       </div>
 

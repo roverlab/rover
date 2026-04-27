@@ -106,9 +106,9 @@ export function parseProxyNodes(content: string): ProxyNode[] {
             const outbounds = singboxConfig.outbounds ?? [];
             
             for (const outbound of outbounds) {
-                // 排除内置类型和分组类型
+                // 排除内置类型、分组类型和不支持的类型
                 const type = (outbound.type || '').toLowerCase();
-                if (!BUILTIN_OUTBOUND_TYPES.has(type) && !GROUP_OUTBOUND_TYPES.has(type)) {
+                if (!BUILTIN_OUTBOUND_TYPES.has(type) && !GROUP_OUTBOUND_TYPES.has(type) && type !== '__unsupported__') {
                     nodes.push({
                         name: outbound.tag,
                         type: outbound.type

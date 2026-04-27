@@ -951,8 +951,6 @@ function applyCustomProxyGroups(config: SingboxConfig, profileId: string): void 
             return !['selector', 'urltest',  'direct', 'block'].includes(type);
         });
     
-        console.log(allProxyNodes)
-    
     const existingNodeTags = new Set(allProxyNodes.map(a=>a.tag));
     console.log(`[Config] Found ${allProxyNodes.length} proxy nodes in current config`);
 

@@ -230,13 +230,6 @@
     "apiUrlPlaceholder": "http://127.0.0.1:9090",
     "apiSecretPlaceholder": "選填",
     "subscriptionUaPlaceholder": "mihomo/1.19.16; sing-box 1.12.0",
-    "langEnglish": "English",
-    "langChinese": "简体中文",
-    "langChineseTW": "繁體中文",
-    "langRussian": "俄語",
-    "langKorean": "朝鮮語",
-    "langPersian": "波斯語",
-    "langSpanish": "西班牙語",
     "hostsPlaceholder": "# 支援註解\n127.0.0.1   localhost\n::1         localhost\n127.0.0.1   *.example.com",
     "tunExcludePlaceholder": "# 支援註解\n192.168.0.0/16\n10.0.0.0/8\n172.16.0.0/12\nfc00::/7"
   },
@@ -483,6 +476,7 @@
   },
   "policies": {
     "title": "策略",
+    "settingsTitle": "策略設定",
     "policyEntity": "策略",
     "subtitle": "設定分流策略規則，設定未符合時的預設出站。",
     "finalOutbound": {

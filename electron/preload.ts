@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld('ipcRenderer', {
         setPolicyFinalOutbound: (value: 'direct_out' | 'block_out' | 'selector_out') => ipcRenderer.invoke('db:setPolicyFinalOutbound', value),
         updateProfileDetails: (id: string, name: string, url: string, updateInterval?: number) => ipcRenderer.invoke('db:updateProfileDetails', id, name, url, updateInterval),
         updateProfileInterval: (id: string, updateInterval: number) => ipcRenderer.invoke('db:updateProfileInterval', id, updateInterval),
+        updateProfilesOrder: (orderedIds: string[]) => ipcRenderer.invoke('db:updateProfilesOrder', orderedIds),
         updateProfileContent: (id: string, content: string) => ipcRenderer.invoke('db:updateProfileContent', id, content),
         getProfileContent: (id: string) => ipcRenderer.invoke('db:getProfileContent', id),
         getAllSettings: () => ipcRenderer.invoke('db:getAllSettings'),

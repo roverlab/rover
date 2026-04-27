@@ -72,6 +72,19 @@
         -webkit-user-drag: element;
     }
 
+    /* Sortable 拖拽样式 */
+    .sortable-ghost {
+        opacity: 0.4;
+    }
+    .sortable-chosen {
+        background: var(--app-accent-soft-card) !important;
+        border-color: var(--app-accent-border) !important;
+    }
+    .sortable-drag {
+        opacity: 1;
+        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+    }
+
     ::selection {
         background: rgba(85, 96, 111, 0.18);
     }

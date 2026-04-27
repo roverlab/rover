@@ -230,13 +230,6 @@
     "apiUrlPlaceholder": "http://127.0.0.1:9090",
     "apiSecretPlaceholder": "선택사항",
     "subscriptionUaPlaceholder": "mihomo/1.19.16; sing-box 1.12.0",
-    "langEnglish": "English",
-    "langChinese": "简体中文",
-    "langChineseTW": "繁體中文",
-    "langRussian": "Русский",
-    "langKorean": "한국어",
-    "langPersian": "فارسی",
-    "langSpanish": "Español",
     "hostsPlaceholder": "# 주석 지원\n127.0.0.1   localhost\n::1         localhost\n127.0.0.1   *.example.com",
     "tunExcludePlaceholder": "# 주석 지원\n192.168.0.0/16\n10.0.0.0/8\n172.16.0.0/12\nfc00::/7"
   },
@@ -483,6 +476,7 @@
   },
   "policies": {
     "title": "정책",
+    "settingsTitle": "정책 설정",
     "policyEntity": "정책",
     "subtitle": "라우팅 정책 규칙을 구성하고 일치하지 않는 트래픽에 대한 기본 아웃바운드를 설정합니다.",
     "finalOutbound": {

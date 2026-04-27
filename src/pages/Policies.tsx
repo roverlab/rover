@@ -5,6 +5,7 @@ import type { RuleProvider } from '../types/rule-providers';
 import { useNotificationState, NotificationList } from '../components/ui/Notification';
 import { POLICY_FINAL_OPTION_DEFS } from '../types/policy';
 import { PolicyHeader } from './Policies/PolicyHeader';
+import { PolicySettingsModal } from './Policies/PolicySettingsModal';
 import { PolicyEmptyState } from './Policies/PolicyEmptyState';
 import { PolicyListCard } from './Policies/PolicyListCard';
 import { PolicyEditModalContainer } from './Policies/PolicyEditModalContainer';
@@ -34,6 +35,7 @@ const [loading, setLoading] = useState(true);
     const [showBatchDeleteConfirm, setShowBatchDeleteConfirm] = useState(false);
     const [batchDeleteIds, setBatchDeleteIds] = useState<Set<string>>(new Set());
     const [ruleProviders, setRuleProviders] = useState<RuleProvider[]>([]);
+    const [showSettingsModal, setShowSettingsModal] = useState(false);
 
     const { notifications, addNotification, removeNotification } = useNotificationState();
     const policyFinalOutbound = usePolicyFinalOutbound();
@@ -275,9 +277,7 @@ const [loading, setLoading] = useState(true);
             <NotificationList notifications={notifications} onRemove={removeNotification} />
 
             <PolicyHeader
-                policyFinalOutbound={policyFinalOutbound.value}
-                savingPolicyFinalOutbound={policyFinalOutbound.saving}
-                onPolicyFinalOutboundChange={handlePolicyFinalOutboundChange}
+                onOpenSettings={() => setShowSettingsModal(true)}
             />
 
             <div className="page-content space-y-3">
@@ -339,6 +339,14 @@ const [loading, setLoading] = useState(true);
                 count={batchDeleteIds.size}
                 onConfirm={confirmBatchDelete}
                 onClose={() => setShowBatchDeleteConfirm(false)}
+            />
+
+            <PolicySettingsModal
+                open={showSettingsModal}
+                policyFinalOutbound={policyFinalOutbound.value}
+                saving={policyFinalOutbound.saving}
+                onClose={() => setShowSettingsModal(false)}
+                onPolicyFinalOutboundChange={handlePolicyFinalOutboundChange}
             />
         </div>
     );
