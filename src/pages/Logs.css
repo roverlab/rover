@@ -1,0 +1,259 @@
+/* ====== Logs Page Styles (Connections-style) ====== */
+
+/* ---- Header: 状态指示器 ---- */
+.log-indicator {
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+    flex-shrink: 0;
+    box-shadow: 0 0 0 3px var(--app-panel-soft);
+}
+
+.log-indicator-on {
+    background: var(--app-success);
+    box-shadow: 0 0 0 3px var(--app-success-soft), 0 0 10px rgba(34, 201, 154, 0.40);
+}
+
+.log-indicator-off {
+    background: var(--app-text-quaternary);
+}
+
+.log-indicator-paused {
+    background: var(--app-warning);
+    box-shadow: 0 0 0 3px var(--app-warning-soft), 0 0 10px rgba(202, 138, 4, 0.30);
+}
+
+/* ---- Header: 统计胶囊 ---- */
+.log-stat-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 26px;
+    padding: 0 8px;
+    border-radius: 999px;
+    border: 1px solid rgba(214, 226, 246, 0.78);
+    background: rgba(255, 255, 255, 0.64);
+    color: var(--app-text-secondary);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    font-size: 11px;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+    white-space: nowrap;
+}
+
+.dark .log-stat-pill {
+    border-color: rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.04);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+/* 统计胶囊内的 Badge 微调 */
+.log-stat-pill .badge {
+    min-width: 20px;
+    justify-content: center;
+}
+
+/* ---- 列表头 ---- */
+.log-list-header {
+    display: grid;
+    grid-template-columns: 130px 80px 1fr;
+    column-gap: 16px;
+    align-items: center;
+    padding: 0 16px;
+    min-height: 32px;
+    border-bottom: 1px solid rgba(214, 226, 246, 0.78);
+    background: rgba(249, 251, 255, 0.94);
+    color: var(--app-text-tertiary);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    backdrop-filter: blur(12px);
+    position: sticky;
+    top: 0;
+    z-index: 6;
+    flex-shrink: 0;
+}
+
+.dark .log-list-header {
+    background: rgba(15, 20, 32, 0.94);
+    border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+/* ---- 列表滚动区域 ---- */
+.log-list-scroll {
+    padding: 6px 0;
+}
+
+.log-list-scroll::-webkit-scrollbar {
+    width: 5px;
+}
+
+.log-list-scroll::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.log-list-scroll::-webkit-scrollbar-thumb {
+    background: rgba(39, 44, 54, 0.12);
+    border-radius: 3px;
+}
+
+.log-list-scroll::-webkit-scrollbar-thumb:hover {
+    background: rgba(39, 44, 54, 0.22);
+}
+
+.dark .log-list-scroll::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.14);
+}
+
+.dark .log-list-scroll::-webkit-scrollbar-thumb:hover {
+    background: rgba(148, 163, 184, 0.24);
+}
+
+/* ---- 列表主体 ---- */
+.log-list-body {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+/* ---- 列表行 ---- */
+.log-list-row {
+    display: grid;
+    grid-template-columns: 130px 80px 1fr;
+    column-gap: 16px;
+    align-items: start;
+    padding: 7px 16px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.52);
+    box-shadow: inset 0 -1px 0 rgba(214, 226, 246, 0.36);
+    transition: background 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.log-list-row:hover {
+    border-color: rgba(31, 119, 255, 0.14);
+    background: rgba(244, 249, 255, 0.90);
+    box-shadow: inset 3px 0 0 rgba(31, 119, 255, 0.64), inset 0 -1px 0 rgba(197, 215, 242, 0.40);
+}
+
+.dark .log-list-row {
+    border-color: transparent;
+    background: rgba(20, 28, 44, 0.44);
+    box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.dark .log-list-row:hover {
+    border-color: rgba(92, 154, 255, 0.16);
+    background: rgba(31, 119, 255, 0.10);
+    box-shadow: inset 3px 0 0 rgba(92, 154, 255, 0.64), inset 0 -1px 0 rgba(255, 255, 255, 0.05);
+}
+
+/* ---- 各列 ---- */
+.log-list-col-time {
+    display: flex;
+    align-items: center;
+}
+
+.log-list-col-level {
+    display: flex;
+    align-items: center;
+}
+
+.log-list-col-message {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+/* ---- 时间 ---- */
+.log-time {
+    color: var(--app-text-quaternary);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    font-size: 11px;
+    white-space: nowrap;
+}
+
+/* ---- 级别徽章 ---- */
+.log-level-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 5px;
+    padding: 1px 5px;
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    flex-shrink: 0;
+}
+
+.log-level-info {
+    background: rgba(31, 119, 255, 0.10);
+    color: var(--app-info);
+    border: 1px solid rgba(31, 119, 255, 0.18);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.66);
+}
+
+.log-level-warning {
+    background: var(--app-warning-soft);
+    color: var(--app-warning);
+    border: 1px solid rgba(202, 138, 4, 0.18);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.66);
+}
+
+.log-level-error {
+    background: var(--app-danger-soft);
+    color: var(--app-danger);
+    border: 1px solid rgba(239, 68, 68, 0.18);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.66);
+}
+
+.log-level-debug {
+    background: rgba(100, 116, 139, 0.10);
+    color: var(--app-text-quaternary);
+    border: 1px solid rgba(100, 116, 139, 0.18);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.66);
+}
+
+.dark .log-level-badge {
+    border-color: rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.04);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+/* ---- 消息文本 ---- */
+.log-message {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--app-text-secondary);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    font-size: 11px;
+}
+
+.log-list-row:hover .log-message {
+    white-space: normal;
+    word-break: break-all;
+}
+
+/* 配置解析错误提示 */
+.log-config-hint {
+    margin-top: 2px;
+    color: var(--app-warning);
+    background: var(--app-warning-soft);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 10px;
+    line-height: 1.4;
+}
+
+/* ---- 空状态 ---- */
+.log-empty-state {
+    display: flex;
+    min-height: 180px;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    color: var(--app-text-quaternary);
+}

@@ -7,7 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Field';
 import { Select } from '../../components/ui/Field';
-import { Badge } from '../../components/ui/Surface';
+
 import { Modal } from '../../components/ui/Modal';
 import { Plus, Check, AlertCircle, Star, Server, MoreVertical } from 'lucide-react';
 import { OutboundSelector } from '../../components/OutboundSelector';
@@ -325,14 +325,20 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
   };
 
   // 拖拽排序回调
-  const handleReorder = useCallback(async (itemId: string, _oldIndex: number, newIndex: number) => {
+  const handleReorder = useCallback(async (itemId: string, _oldIndex: number, newIndex: number, visibleOrderedIds: string[]) => {
     const currentServers = [...dnsServers];
     const fromIndex = currentServers.findIndex(s => s.id === itemId);
     if (fromIndex === -1 || fromIndex === newIndex) return;
-    const [movedItem] = currentServers.splice(fromIndex, 1);
-    currentServers.splice(newIndex, 0, movedItem);
-    setDnsServers(currentServers);
-    const orderedIds = currentServers.map(s => s.id);
+    const visibleIdSet = new Set(visibleOrderedIds);
+    const reorderedVisible = visibleOrderedIds
+      .map(id => currentServers.find(s => s.id === id))
+      .filter((s): s is DnsServerConfig => Boolean(s));
+    let visibleIndex = 0;
+    const reorderedServers = currentServers.map(server =>
+      visibleIdSet.has(server.id) ? reorderedVisible[visibleIndex++] : server
+    );
+    setDnsServers(reorderedServers);
+    const orderedIds = reorderedServers.map(s => s.id);
     try {
       await window.ipcRenderer.db.updateDnsServersOrder(orderedIds);
       window.ipcRenderer.core.generateConfig().catch(console.error);
@@ -368,26 +374,26 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
   // 列定义
   const columns: ColumnDef<any>[] = useMemo(() => [
     {
-      id: 'type',
-      header: t('dnsServersTab.colType'),
-      width: 'w-[72px]',
-      align: 'text-center',
-    },
-    {
       id: 'name',
       header: t('dnsServersTab.colName'),
-      width: 'min-w-[100px]',
+      width: 'minmax(100px, 1fr)',
+    },
+    {
+      id: 'type',
+      header: t('dnsServersTab.colType'),
+      width: '72px',
+      align: 'center',
     },
     {
       id: 'address',
       header: t('dnsServersTab.colAddress'),
-      width: 'min-w-[140px]',
+      width: 'minmax(140px, 1fr)',
     },
     {
       id: 'detour',
       header: t('dnsServersTab.colDetour'),
-      width: 'w-[70px]',
-      align: 'text-center',
+      width: '70px',
+      align: 'center',
     },
   ], [t]);
 
@@ -403,12 +409,6 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
   const renderCell = (s: any, columnId: string, _index: number) => {
     const enabled = s.enabled !== false;
     switch (columnId) {
-      case 'type':
-        return (
-          <Badge tone={enabled ? 'accent' : 'neutral'} className="text-[12px] px-2.5 py-0.5 whitespace-nowrap inline-block">
-            {s.type}
-          </Badge>
-        );
       case 'name':
         return (
           <span className={cn(
@@ -416,6 +416,12 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
             enabled ? "text-[var(--app-text)]" : "text-[var(--app-text-tertiary)] line-through"
           )}>
             {s.name || s.id}
+          </span>
+        );
+      case 'type':
+        return (
+          <span className="policy-type-badge">
+            {s.type}
           </span>
         );
       case 'address':
@@ -432,9 +438,9 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
       case 'detour':
         return (
           <div className="flex items-center justify-center">
-            <Badge tone={s.detour ? 'accent' : 'neutral'} className="text-[10px] px-2 py-0.5 whitespace-nowrap inline-block">
+            <span className="policy-chip" title={s.detour ? t('dnsServersTab.detourProxy') : t('dnsServersTab.detourDirect')}>
               {s.detour ? t('dnsServersTab.detourProxy') : t('dnsServersTab.detourDirect')}
-            </Badge>
+            </span>
           </div>
         );
       default:
@@ -509,53 +515,6 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
         getEnabled={(s) => s.enabled !== false}
         onAdd={openAddModal}
         onToggleEnabled={handleToggleEnabled}
-        onBatchEnable={async (selectedIds) => {
-          for (const id of selectedIds) {
-            await window.ipcRenderer.db.toggleDnsServerEnabled(id, true);
-          }
-          setSaved(true);
-          setTimeout(() => setSaved(false), 3000);
-          await loadDnsServers();
-          await onRegenerateConfig?.();
-        }}
-        onBatchDisable={async (selectedIds) => {
-          // 检查引用
-          for (const id of selectedIds) {
-            const refs = await window.ipcRenderer.db.getDnsServerRefs(id);
-            if (refs.length > 0) {
-              const lines = refs.map((r) => `#${r.index} ${r.name}（${getSourceLabel(r.source)}）`);
-              setErrorMessage(t('dnsServersTab.refBlockDisable', { id, lines: lines.join('\n') }));
-              setErrorModalOpen(true);
-              return;
-            }
-          }
-          for (const id of selectedIds) {
-            await window.ipcRenderer.db.toggleDnsServerEnabled(id, false);
-          }
-          setSaved(true);
-          setTimeout(() => setSaved(false), 3000);
-          await loadDnsServers();
-          await onRegenerateConfig?.();
-        }}
-        onBatchDelete={async (selectedIds) => {
-          // 检查引用
-          for (const id of selectedIds) {
-            const refs = await window.ipcRenderer.db.getDnsServerRefs(id);
-            if (refs.length > 0) {
-              const lines = refs.map((r) => `#${r.index} ${r.name}（${getSourceLabel(r.source)}）`);
-              setErrorMessage(t('dnsServersTab.refBlockDelete', { id, lines: lines.join('\n') }));
-              setErrorModalOpen(true);
-              return;
-            }
-          }
-          for (const id of selectedIds) {
-            await window.ipcRenderer.db.deleteDnsServer(id);
-          }
-          setSaved(true);
-          setTimeout(() => setSaved(false), 3000);
-          await loadDnsServers();
-          await onRegenerateConfig?.();
-        }}
         onEdit={openEditModal}
         renderDropdown={renderDropdown}
         renderActions={renderActions}

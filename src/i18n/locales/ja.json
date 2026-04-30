@@ -348,6 +348,7 @@
     "kernelLog": "カーネルログ",
     "searchResult": "検索結果",
     "entries": "件",
+    "logCount": "ログ件数",
     "realtime": "リアルタイム",
     "paused": "一時停止",
     "searching": "検索中",

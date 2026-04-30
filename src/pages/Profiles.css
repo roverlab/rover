@@ -1,0 +1,301 @@
+/* ====== Profiles Page Styles ====== */
+
+/* ---- Header: Profile 状态指示器 ---- */
+.profile-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  flex-shrink: 0;
+  background: var(--app-success);
+  box-shadow: 0 0 0 3px var(--app-success-soft), 0 0 10px rgba(34, 201, 154, 0.40);
+  animation: profile-pulse 2.5s ease-in-out infinite;
+}
+
+.profile-status-dot-inactive {
+  background: var(--app-text-quaternary);
+  box-shadow: none;
+  animation: none;
+}
+
+@keyframes profile-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+/* ---- Header: 统计胶囊 ---- */
+.profile-stat-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(214, 226, 246, 0.78);
+  background: rgba(255, 255, 255, 0.64);
+  color: var(--app-text-secondary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 11px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  white-space: nowrap;
+}
+
+.dark .profile-stat-pill {
+  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+/* ---- 卡片列表容器 ---- */
+.profile-grid-container {
+  container-type: inline-size;
+  container-name: profile-grid;
+}
+
+/* ---- Profile 卡片 ---- */
+.profile-card {
+  border: 1px solid rgba(222, 231, 246, 0.9) !important;
+  border-radius: 12px;
+  background:
+    radial-gradient(ellipse at 85% 10%, rgba(79, 107, 246, 0.06), transparent 50%),
+    linear-gradient(180deg, rgba(255,255,255,0.82), rgba(249,252,255,0.68)) !important;
+  box-shadow: inset 0 -1px 0 rgba(214, 226, 246, 0.36), 0 2px 8px rgba(33, 66, 128, 0.04) !important;
+  backdrop-filter: blur(18px);
+  transition: background 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.profile-card:hover {
+  border-color: rgba(31, 119, 255, 0.14) !important;
+  background:
+    radial-gradient(ellipse at 85% 10%, rgba(79, 107, 246, 0.10), transparent 50%),
+    linear-gradient(180deg, rgba(244,249,255,0.92), rgba(235,244,255,0.82)) !important;
+  box-shadow: inset 3px 0 0 rgba(31, 119, 255, 0.64), inset 0 -1px 0 rgba(197, 215, 242, 0.40), 0 6px 20px rgba(31, 119, 255, 0.06) !important;
+}
+
+.dark .profile-card {
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  background:
+    radial-gradient(ellipse at 85% 10%, rgba(92, 154, 255, 0.08), transparent 50%),
+    linear-gradient(180deg, rgba(24, 31, 46, 0.78), rgba(19, 27, 44, 0.62)) !important;
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.04), 0 2px 8px rgba(0, 0, 0, 0.10) !important;
+}
+
+.dark .profile-card:hover {
+  border-color: rgba(92, 154, 255, 0.16) !important;
+  background:
+    radial-gradient(ellipse at 85% 10%, rgba(92, 154, 255, 0.14), transparent 50%),
+    linear-gradient(180deg, rgba(31, 119, 255, 0.12), rgba(24, 42, 72, 0.18)) !important;
+  box-shadow: inset 3px 0 0 rgba(92, 154, 255, 0.64), inset 0 -1px 0 rgba(255, 255, 255, 0.05), 0 6px 20px rgba(0, 0, 0, 0.20) !important;
+}
+
+.profile-card-selected {
+  border-color: rgba(31, 119, 255, 0.65) !important;
+  background:
+    radial-gradient(ellipse at 85% 10%, rgba(79, 107, 246, 0.12), transparent 50%),
+    linear-gradient(135deg, rgba(235,245,255,0.98), rgba(220,237,255,0.92)) !important;
+  box-shadow: inset 3px 0 0 rgba(31, 119, 255, 0.80), 0 8px 24px rgba(31,119,255,0.15), 0 0 0 1px rgba(31,119,255,0.12) !important;
+}
+
+.profile-card-selected::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 3.5px;
+  border-radius: 0 999px 999px 0;
+  background: linear-gradient(180deg, #3d8bff, #146dff);
+  box-shadow: 0 0 12px rgba(31, 119, 255, 0.55);
+}
+
+.dark .profile-card-selected {
+  border-color: rgba(92, 154, 255, 0.55) !important;
+  background: linear-gradient(135deg, rgba(20,32,56,0.95), rgba(15,25,50,0.88)) !important;
+  box-shadow: inset 3px 0 0 rgba(92, 154, 255, 0.80), 0 8px 24px rgba(0,0,0,0.30), 0 0 0 1px rgba(92,154,255,0.15) !important;
+}
+
+.dark .profile-card-selected::before {
+  background: linear-gradient(180deg, #5c9aff, #3d7aff);
+  box-shadow: 0 0 12px rgba(92, 154, 255, 0.65);
+}
+
+.profile-card-inner {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  position: relative;
+  z-index: 1;
+}
+
+/* 卡片右下角波浪装饰（参考 Dashboard card-decorative） */
+.profile-card::after {
+  content: '';
+  position: absolute;
+  bottom: -30%;
+  right: -15%;
+  width: 160px;
+  height: 100px;
+  background:
+    radial-gradient(ellipse at 75% 72%, rgba(31, 119, 255, 0.04), transparent 44%),
+    linear-gradient(135deg, rgba(224, 235, 255, 0) 22%, rgba(220, 233, 255, 0.18) 66%, rgba(202, 221, 255, 0.22) 100%);
+  border-radius: 46% 54% 0 0;
+  filter: blur(1px);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.dark .profile-card::after {
+  background:
+    radial-gradient(ellipse at 75% 72%, rgba(92, 154, 255, 0.06), transparent 44%),
+    linear-gradient(135deg, transparent 22%, rgba(20, 30, 55, 0.10) 66%, rgba(25, 40, 70, 0.12) 100%);
+}
+
+.profile-card-selected::after {
+  background:
+    radial-gradient(ellipse at 75% 72%, rgba(31, 119, 255, 0.06), transparent 44%),
+    linear-gradient(135deg, rgba(224, 235, 255, 0) 22%, rgba(220, 233, 255, 0.28) 66%, rgba(202, 221, 255, 0.34) 100%);
+}
+
+/* 卡片头部区域 */
+.profile-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 14px 16px 0;
+}
+
+/* 卡片信息区域 */
+.profile-card-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 16px 0;
+  min-height: 56px;
+}
+
+/* 卡片底部 */
+.profile-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 16px 16px;
+  margin-top: auto;
+}
+
+/* ---- 流量进度条 ---- */
+.profile-usage-bar {
+  height: 4px;
+  width: 100%;
+  border-radius: 999px;
+  background: rgba(214, 226, 246, 0.40);
+  overflow: hidden;
+}
+
+.dark .profile-usage-bar {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.profile-usage-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.4s ease;
+  box-shadow: 0 0 8px rgba(79, 107, 246, 0.30);
+}
+
+/* ---- 信息行 ---- */
+.profile-info-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--app-text-tertiary);
+  min-height: 16px;
+}
+
+.profile-info-row svg {
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.profile-info-label {
+  color: var(--app-text-quaternary);
+  flex-shrink: 0;
+}
+
+.profile-info-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 10px;
+}
+
+/* ---- 流量/过期信息 ---- */
+.profile-usage-text {
+  font-size: 10px;
+  color: var(--app-text-quaternary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+}
+
+/* ---- 分隔线 ---- */
+.profile-card-divider {
+  height: 1px;
+  background: linear-gradient(90deg, rgba(79, 107, 246, 0.12), rgba(214, 226, 246, 0.50), rgba(34, 197, 94, 0.08));
+  margin: 6px 16px 6px;
+}
+
+.dark .profile-card-divider {
+  background: linear-gradient(90deg, rgba(92, 154, 255, 0.12), rgba(255, 255, 255, 0.05), rgba(34, 201, 154, 0.06));
+}
+
+/* ---- 空状态 ---- */
+.profile-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 260px;
+  gap: 8px;
+}
+
+.profile-empty-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(31, 119, 255, 0.08);
+  color: var(--app-accent);
+  margin-bottom: 4px;
+}
+
+.dark .profile-empty-icon {
+  background: rgba(59, 130, 246, 0.12);
+  color: #5c9aff;
+}
+
+.profile-empty-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--app-text-secondary);
+}
+
+.profile-empty-desc {
+  font-size: 12px;
+  color: var(--app-text-quaternary);
+  text-align: center;
+  max-width: 260px;
+}
+
+/* ---- 窄容器响应 ---- */
+@container profile-grid (max-width: 640px) {
+  .profile-grid-inner {
+    grid-template-columns: 1fr !important;
+  }
+}

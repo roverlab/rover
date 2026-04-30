@@ -130,14 +130,20 @@ const [policies, setPolicies] = useState<DnsPolicy[]>([]);
     };
 
     // 拖拽排序回调
-    const handleReorder = useCallback(async (itemId: string, _oldIndex: number, newIndex: number) => {
+    const handleReorder = useCallback(async (itemId: string, _oldIndex: number, newIndex: number, visibleOrderedIds: string[]) => {
         const currentPolicies = [...policies];
         const fromIndex = currentPolicies.findIndex(p => p.id === itemId);
         if (fromIndex === -1 || fromIndex === newIndex) return;
-        const [movedItem] = currentPolicies.splice(fromIndex, 1);
-        currentPolicies.splice(newIndex, 0, movedItem);
-        setPolicies(currentPolicies);
-        const orders = currentPolicies.map((p, index) => ({ id: p.id, order: index }));
+        const visibleIdSet = new Set(visibleOrderedIds);
+        const reorderedVisible = visibleOrderedIds
+            .map(id => currentPolicies.find(p => p.id === id))
+            .filter((p): p is DnsPolicy => Boolean(p));
+        let visibleIndex = 0;
+        const reorderedPolicies = currentPolicies.map(policy =>
+            visibleIdSet.has(policy.id) ? reorderedVisible[visibleIndex++] : policy
+        );
+        setPolicies(reorderedPolicies);
+        const orders = reorderedPolicies.map((p, index) => ({ id: p.id, order: index }));
         try {
             await window.ipcRenderer.db.updateDnsPoliciesOrder(orders);
             window.ipcRenderer.core.generateConfig().catch(console.error);
@@ -233,9 +239,6 @@ const [policies, setPolicies] = useState<DnsPolicy[]>([]);
                         onViewDetail={handleViewDetail}
                         onDelete={openDeleteConfirm}
                         onToggleEnabled={handleToggleEnabled}
-                        onBatchEnable={handleBatchEnable}
-                        onBatchDisable={handleBatchDisable}
-                        onBatchDelete={handleBatchDelete}
                         onReorder={handleReorder}
                     />
                 )}

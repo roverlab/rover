@@ -433,20 +433,20 @@ export function Connections({ isActive = true }: ConnectionsProps) {
         </div>
       </div>
 
-      <div className="page-content min-w-0 flex flex-col min-h-0 overflow-hidden !px-2 sm:!px-4">
-        {/* 列表头 */}
-        <div className="conn-list-header">
-          <div className="conn-list-col-host">{t('connections.address')}</div>
-          <div className="conn-list-col-process">{t('connections.process')}</div>
-          <div className="conn-list-col-chain">{t('connections.chain')}</div>
-          <div className="conn-list-col-rule">{t('connections.rule')}</div>
-          <div className="conn-list-col-traffic">{t('connections.traffic')}</div>
-          <div className="conn-list-col-time">{t('connections.time')}</div>
-          <div className="conn-list-col-actions">{t('connections.action')}</div>
-        </div>
-
+      <div className="page-content min-w-0 flex flex-col min-h-0 overflow-hidden !px-2 sm:!px-4 conn-container">
         {/* 连接列表 */}
         <div className="flex-1 min-h-0 overflow-y-auto conn-list-scroll">
+          {/* 列表头 */}
+          <div className="conn-list-header">
+            <div className="conn-list-col-host">{t('connections.address')}</div>
+            <div className="conn-list-col-process">{t('connections.process')}</div>
+            <div className="conn-list-col-chain">{t('connections.chain')}</div>
+            <div className="conn-list-col-rule">{t('connections.rule')}</div>
+            <div className="conn-list-col-traffic">{t('connections.traffic')}</div>
+            <div className="conn-list-col-time">{t('connections.time')}</div>
+            <div className="conn-list-col-actions">{t('connections.action')}</div>
+          </div>
+
           {filteredConnections.length === 0 ? (
             <div className="conn-empty-state">
               <Activity className="w-5 h-5 mb-1.5 text-[var(--app-text-quaternary)]" />

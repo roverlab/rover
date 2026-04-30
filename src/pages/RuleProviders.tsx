@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Badge } from '../components/ui/Surface';
+
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Field';
 import { cn } from '../lib/utils';
@@ -359,14 +359,20 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
     };
 
     // 拖拽排序回调
-    const handleReorder = useCallback(async (itemId: string, _oldIndex: number, newIndex: number) => {
+    const handleReorder = useCallback(async (itemId: string, _oldIndex: number, newIndex: number, visibleOrderedIds: string[]) => {
         const currentProviders = [...providers];
         const fromIndex = currentProviders.findIndex(p => p.id === itemId);
         if (fromIndex === -1 || fromIndex === newIndex) return;
-        const [movedItem] = currentProviders.splice(fromIndex, 1);
-        currentProviders.splice(newIndex, 0, movedItem);
-        setProviders(currentProviders);
-        const orderedIds = currentProviders.map(p => p.id);
+        const visibleIdSet = new Set(visibleOrderedIds);
+        const reorderedVisible = visibleOrderedIds
+            .map(id => currentProviders.find(p => p.id === id))
+            .filter((p): p is RuleProvider => Boolean(p));
+        let visibleIndex = 0;
+        const reorderedProviders = currentProviders.map(provider =>
+            visibleIdSet.has(provider.id) ? reorderedVisible[visibleIndex++] : provider
+        );
+        setProviders(reorderedProviders);
+        const orderedIds = reorderedProviders.map(p => p.id);
         try {
             await window.ipcRenderer.db.updateRuleProvidersOrder(orderedIds);
             window.ipcRenderer.core.generateConfig().catch(console.error);
@@ -384,17 +390,17 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
         {
             id: 'name',
             header: t('ruleProviders.ruleSetName'),
-            width: 'min-w-[140px]',
+            width: 'minmax(120px, 2fr)',
         },
         {
             id: 'type',
             header: t('ruleProviders.type'),
-            width: 'w-[70px]',
+            width: '64px',
         },
         {
             id: 'lastUpdate',
             header: t('ruleProviders.lastUpdate'),
-            width: 'w-[110px]',
+            width: '100px',
         },
     ], [t]);
 
@@ -416,9 +422,9 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
                 );
             case 'type':
                 return (
-                    <Badge tone="accent" className="text-[12px] px-2.5 py-0.5">
+                    <span className="policy-type-badge">
                         {provider.type || 'clash'}
-                    </Badge>
+                    </span>
                 );
             case 'lastUpdate':
                 return (
@@ -512,9 +518,6 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
                     getEnabled={(p) => p.enabled !== false}
                     onAdd={handleAdd}
                     onToggleEnabled={handleToggleEnabled}
-                    onBatchEnable={handleBatchEnable}
-                    onBatchDisable={handleBatchDisable}
-                    onBatchDelete={handleBatchDeleteForTable}
                     onEdit={handleEdit}
                     renderDropdown={renderDropdown}
                     renderActions={renderActions}

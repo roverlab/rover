@@ -4,7 +4,7 @@ import { Badge } from '../../components/ui/Surface';
 import { cn } from '../../lib/utils';
 import type { DnsPolicy } from '../../types/dns-policy';
 import { PolicyListTable, type ColumnDef } from '../../components/PolicyListTable';
-import { getPolicyServer, getPolicyMatchCount, getServerTone, getServerLabel } from './utils';
+import { getPolicyServer, getPolicyMatchCount, getServerLabel } from './utils';
 import { DnsPolicyRowDropdown } from './DnsPolicyRowDropdown';
 
 interface DnsPolicyListCardProps {
@@ -17,10 +17,7 @@ interface DnsPolicyListCardProps {
     onViewDetail: (policy: DnsPolicy) => void;
     onDelete: (id: string, name: string) => void;
     onToggleEnabled: (policy: DnsPolicy) => void;
-    onBatchEnable: (selectedIds: Set<string>) => void;
-    onBatchDisable: (selectedIds: Set<string>) => void;
-    onBatchDelete: (selectedIds: Set<string>) => void;
-    onReorder?: (itemId: string, oldIndex: number, newIndex: number) => void;
+    onReorder?: (itemId: string, oldIndex: number, newIndex: number, visibleOrderedIds: string[]) => void;
 }
 
 export function DnsPolicyListCard({
@@ -33,9 +30,6 @@ export function DnsPolicyListCard({
     onViewDetail,
     onDelete,
     onToggleEnabled,
-    onBatchEnable,
-    onBatchDisable,
-    onBatchDelete,
     onReorder,
 }: DnsPolicyListCardProps) {
     const { t } = useTranslation();
@@ -50,25 +44,25 @@ export function DnsPolicyListCard({
         {
             id: 'name',
             header: t('policies.tableColName'),
-            width: 'min-w-[140px]',
+            width: 'minmax(100px, 1.5fr)',
         },
         {
             id: 'type',
             header: t('policies.tableColType'),
-            width: 'w-[60px] min-w-[60px]',
-            align: 'text-center',
+            width: '56px',
+            align: 'center',
         },
         {
             id: 'dnsServer',
             header: t('policies.tableColDnsServer'),
-            width: 'w-[100px] min-w-[100px]',
-            align: 'text-center',
+            width: 'minmax(80px, 0.8fr)',
+            align: 'center',
             nowrap: true,
         },
         {
             id: 'preferredDns',
             header: t('policies.tableColPreferredDns'),
-            width: 'min-w-[120px]',
+            width: 'minmax(90px, 1fr)',
             nowrap: true,
         },
     ], [t]);
@@ -96,9 +90,9 @@ export function DnsPolicyListCard({
             case 'type':
                 return (
                     <div className="flex items-center justify-center h-full">
-                        <Badge tone={policy.type === 'raw' ? 'warning' : 'accent'} className="text-[12px] px-2.5 py-0.5 whitespace-nowrap inline-block truncate max-w-[72px]">
+                        <span className="policy-type-badge">
                             {policy.type === 'raw' ? t('policies.typeRaw') : t('policies.typeStandard')}
-                        </Badge>
+                        </span>
                     </div>
                 );
             case 'dnsServer':
@@ -108,11 +102,10 @@ export function DnsPolicyListCard({
                             const serverId = getPolicyServer(policy);
                             const dnsServer = serverId ? dnsServers.find(s => s.id === serverId) : null;
                             const displayLabel = dnsServer ? (dnsServer.name || dnsServer.id) : getServerLabel(serverId, t);
-                            const tone = getServerTone(serverId ?? '');
                             return serverId ? (
-                                <Badge tone={tone} className="text-[12px] px-2.5 py-0.5 whitespace-nowrap inline-block truncate max-w-[96px]">
+                                <span className="policy-chip" title={displayLabel}>
                                     {displayLabel}
-                                </Badge>
+                                </span>
                             ) : null;
                         })()}
                     </div>
@@ -126,12 +119,12 @@ export function DnsPolicyListCard({
                             const dnsServer = dnsServers.find(s => s.id === preferredServer);
                             const displayTag = dnsServer?.name || dnsServer?.id || preferredServer;
                             return (
-                                <Badge
-                                    tone="accent"
-                                    className="text-[12px] px-2.5 py-0.5 whitespace-nowrap truncate max-w-[120px]"
+                                <span
+                                    className="policy-chip"
+                                    title={displayTag}
                                 >
                                     {displayTag}
-                                </Badge>
+                                </span>
                             );
                         })()}
                     </div>
@@ -163,9 +156,6 @@ export function DnsPolicyListCard({
             showIndexColumn={true}
             onAdd={onAdd}
             onToggleEnabled={onToggleEnabled}
-            onBatchEnable={onBatchEnable}
-            onBatchDisable={onBatchDisable}
-            onBatchDelete={onBatchDelete}
             onEdit={onEdit}
             renderDropdown={renderDropdown}
             onReorder={onReorder}

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { useDropdownPosition } from '../hooks/useDropdownPosition';
-import { Download, RefreshCw, Plus, MoreVertical, Trash2, Loader2, Edit2, FileText, Layers, GripVertical, X, Link } from 'lucide-react';
+import { Download, RefreshCw, Plus, MoreVertical, Trash2, Loader2, Edit2, FileText, Layers, GripVertical, X, Link, Search, Clock, Inbox } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../lib/utils';
 import { Button } from '../components/ui/Button';
@@ -13,6 +13,7 @@ import { formatRelativeTime } from '../shared/date-utils';
 import { GroupEditor } from './Profiles/components/GroupEditor';
 import { ViewConfigModal } from '../components/ui/ViewConfigModal';
 import Sortable from 'sortablejs';
+import './Profiles.css';
 
 /** 格式化更新间隔显示 */
 function formatInterval(seconds: number | undefined, t: (key: string, options?: Record<string, unknown>) => string): string {
@@ -94,6 +95,9 @@ const [profiles, setProfiles] = useState<Profile[]>([]);
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
   const { position: dropdownPosition, calculatePosition } = useDropdownPosition({ menuWidth: 144, menuHeight: 160 });
   const dropdownButtonRefs = useRef<{ [key: string]: HTMLButtonElement | null }>({});
+
+  // 搜索状态
+  const [searchQuery, setSearchQuery] = useState('');
 
   // 分组编辑器状态
   const [editingGroupProfile, setEditingGroupProfile] = useState<Profile | null>(null);
@@ -200,10 +204,15 @@ const [profiles, setProfiles] = useState<Profile[]>([]);
 
   const handleDownload = async () => {
     if (!urlInput || loading) return;
+    await handleDownloadFromUrl(urlInput);
+  };
+
+  const handleDownloadFromUrl = async (url: string) => {
+    if (!url || loading) return;
     const hadNoProfiles = profiles.length === 0;
     setLoading(true);
     try {
-      const profileId = await window.ipcRenderer.core.addSubscriptionProfile(urlInput);
+      const profileId = await window.ipcRenderer.core.addSubscriptionProfile(url);
       setUrlInput('');
       await loadProfiles();
       // 没有 profile 时添加后自动选中
@@ -290,6 +299,40 @@ const [profiles, setProfiles] = useState<Profile[]>([]);
   const handleSaveDetails = async () => {
     if (!editingProfile) return;
     try {
+      // 新建远程配置
+      if (editingProfile.id === '__new_remote__') {
+        if (!editUrl.trim()) return;
+        const hadNoProfiles = profiles.length === 0;
+        setLoading(true);
+        try {
+          const profileId = await window.ipcRenderer.core.addSubscriptionProfile(editUrl.trim());
+          // 更新名称和间隔（如果用户填写了）
+          if (editName.trim() || editInterval) {
+            try {
+              await window.ipcRenderer.db.updateProfileDetails(profileId, editName.trim() || undefined, editUrl.trim(), editInterval);
+            } catch {
+              // 忽略更新失败
+            }
+          }
+          await loadProfiles();
+          if (hadNoProfiles && profileId) {
+            await window.ipcRenderer.db.selectProfile(profileId);
+            await loadProfiles();
+            window.ipcRenderer.core.generateConfig();
+            setRefreshSeed(prev => prev + 1);
+          }
+          addNotification(t('profiles.profileAdded'));
+        } catch (err: any) {
+          console.error('Failed to add subscription', err);
+          addNotification(`${t('profiles.addFailed')}: ${err?.message || 'Unknown'}`, 'error');
+        } finally {
+          setLoading(false);
+          setUpdatingId(null);
+        }
+        setEditingProfile(null);
+        return;
+      }
+      // 编辑已有配置
       await window.ipcRenderer.db.updateProfileDetails(editingProfile.id, editName, editUrl, editInterval);
       await loadProfiles();
       addNotification(t('profiles.profileUpdated'));
@@ -353,9 +396,12 @@ const [profiles, setProfiles] = useState<Profile[]>([]);
     }
   }, [addNotification, t]);
 
-  // 初始化拖拽排序（只在组件挂载时执行一次）
+  // 初始化拖拽排序（等待卡片网格渲染后绑定）
   useEffect(() => {
-    if (!gridRef.current) return;
+    sortableRef.current?.destroy();
+    sortableRef.current = null;
+
+    if (!gridRef.current || gridRef.current.children.length < 2) return;
 
     sortableRef.current = Sortable.create(gridRef.current, {
       animation: 200,
@@ -365,9 +411,18 @@ const [profiles, setProfiles] = useState<Profile[]>([]);
       onEnd: (evt) => {
         if (evt.oldIndex === evt.newIndex) return;
         const currentProfiles = profilesRef.current;
-        const newProfiles = [...currentProfiles];
-        const [movedItem] = newProfiles.splice(evt.oldIndex!, 1);
-        newProfiles.splice(evt.newIndex!, 0, movedItem);
+        const orderedVisibleIds = Array.from(gridRef.current?.children ?? [])
+          .map((child) => (child as HTMLElement).dataset.id)
+          .filter((id): id is string => Boolean(id));
+        const profileMap = new Map(currentProfiles.map((profile) => [profile.id, profile]));
+        const visibleIdSet = new Set(orderedVisibleIds);
+        let visibleIndex = 0;
+        const newProfiles = currentProfiles.map((profile) => {
+          if (!visibleIdSet.has(profile.id)) return profile;
+          const nextVisibleId = orderedVisibleIds[visibleIndex++];
+          return profileMap.get(nextVisibleId) ?? profile;
+        });
+
         setProfiles(newProfiles);
         persistProfilesOrder(newProfiles.map(p => p.id));
       },
@@ -377,194 +432,296 @@ const [profiles, setProfiles] = useState<Profile[]>([]);
       sortableRef.current?.destroy();
       sortableRef.current = null;
     };
-  }, [persistProfilesOrder]);
+  }, [persistProfilesOrder, profiles.length, searchQuery]);
+
+  // 统计信息
+  const filteredProfiles = profiles.filter(p => !searchQuery.trim() || p.name.toLowerCase().includes(searchQuery.toLowerCase()) || (p.url && p.url.toLowerCase().includes(searchQuery.toLowerCase())));
+  const hasSelected = profiles.some(p => p.selected === 1);
 
   return (
     <div className="page-shell relative overflow-hidden">
           {/* Notification - 使用 Portal 渲染到 body，避免被弹窗遮挡 */}
       <NotificationList notifications={notifications} onRemove={removeNotification} />
 
-      <div className="page-header" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
-        <div>
+      <div className="page-header flex-wrap gap-3" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
+        <div className="min-w-0 shrink-0" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
           <h1 className="page-title">{t('profiles.title')}</h1>
+          <div className="flex items-center gap-3 mt-1.5">
+            <span className={cn("profile-status-dot", hasSelected ? "" : "profile-status-dot-inactive")} />
+            <span className="text-[12px] text-[var(--app-text-tertiary)]">
+              {hasSelected ? profiles.find(p => p.selected === 1)?.name : t('profiles.noActiveProfile')}
+            </span>
+            <span className="mx-0.5 h-3 w-px bg-[var(--app-stroke)]" />
+            <span className="text-[11px] text-[var(--app-text-quaternary)]">{t('profiles.subscriptionCount')}</span>
+            <Badge tone="accent" className="h-5 px-1.5 text-[10px]">{profiles.length}</Badge>
+            {filteredProfiles.length !== profiles.length && (
+              <span className="text-[11px] text-[var(--app-text-quaternary)]">
+                {filteredProfiles.length} / {profiles.length}
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+          <div className="relative w-full min-w-0 max-w-52 sm:w-auto">
+            <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--app-text-quaternary)] shrink-0" />
+            <Input
+              type="text"
+              placeholder={t('profiles.search')}
+              className="pl-8 text-[12px] w-full min-w-0 pr-7 h-8"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 rounded-full hover:bg-[var(--app-hover)] text-[var(--app-text-quaternary)] hover:text-[var(--app-text-secondary)] transition-colors"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => {
+              setEditingProfile({
+                id: '__new_remote__',
+                name: '',
+                type: 'remote',
+                url: '',
+                path: '',
+                selected: 0,
+                last_update: '',
+                updateInterval: 0,
+              } as Profile);
+              setEditName('');
+              setEditUrl('');
+              setEditInterval(0);
+            }}
+            className="h-8 rounded-md px-3 text-[12px] shadow-[0_8px_18px_rgba(31,119,255,0.15)]"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>{t('profiles.addRemote')}</span>
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={handleImportLocal}
+            className="h-8 rounded-md border-[var(--app-stroke)] bg-[var(--app-panel)]/75 px-3 text-[12px] shadow-none"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>{t('profiles.importLocal')}</span>
+          </Button>
         </div>
       </div>
 
       <div className="page-content">
-        <div className="pb-5" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-          <div className="flex flex-col gap-2 rounded-lg border border-[var(--app-divider)] bg-[var(--app-panel)]/55 px-3 py-3 shadow-[0_8px_22px_rgba(45,86,166,0.045)] sm:flex-row sm:items-center">
-            <div className="relative min-w-0 flex-1">
-              <Link className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--app-text-quaternary)]" />
-              <Input
-                type="text"
-                placeholder={t('profiles.subscriptionUrl')}
-                className="h-9 min-h-9 rounded-md border-[var(--app-stroke)] bg-[var(--app-bg-secondary)]/70 pl-8 pr-3 text-[12px] shadow-none"
-                value={urlInput}
-                onChange={(e) => setUrlInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-              />
+        <div className="flex-1 overflow-y-auto profile-grid-container">
+          {profiles.length === 0 ? (
+            <div className="profile-empty-state">
+              <div className="profile-empty-icon">
+                <Inbox className="w-6 h-6" />
+              </div>
+              <p className="profile-empty-title">{t('profiles.emptyTitle')}</p>
+              <p className="profile-empty-desc">{t('profiles.emptyDesc')}</p>
+              <div className="flex items-center gap-2 mt-3">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => {
+                    setEditingProfile({
+                      id: '__new_remote__',
+                      name: '',
+                      type: 'remote',
+                      url: '',
+                      path: '',
+                      selected: 0,
+                      last_update: '',
+                      updateInterval: 0,
+                    } as Profile);
+                    setEditName('');
+                    setEditUrl('');
+                    setEditInterval(0);
+                  }}
+                  className="h-8 rounded-md px-4 text-[12px] shadow-[0_8px_18px_rgba(31,119,255,0.15)]"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>{t('profiles.addRemote')}</span>
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleImportLocal}
+                  className="h-8 rounded-md border-[var(--app-stroke)] bg-[var(--app-panel)]/75 px-4 text-[12px] shadow-none"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>{t('profiles.importLocal')}</span>
+                </Button>
+              </div>
             </div>
-            <div className="grid shrink-0 grid-cols-2 gap-2 sm:flex sm:items-center">
-              <Button
-                onClick={handleDownload}
-                disabled={loading || !urlInput.trim()}
-                variant="primary"
-                size="sm"
-                className="h-9 min-w-[112px] rounded-md px-3 text-[12px] shadow-[0_8px_18px_rgba(31,119,255,0.15)]"
-              >
-                {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
-                <span>{loading ? t('profiles.adding') : t('profiles.addRemote')}</span>
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={handleImportLocal}
-                className="h-9 min-w-[104px] rounded-md border-[var(--app-stroke)] bg-[var(--app-panel)]/75 px-3 text-[12px] shadow-none"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>{t('profiles.importLocal')}</span>
-              </Button>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-y-auto">
-          <div ref={gridRef} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {profiles.map((profile) => (
+          ) : (
+            <div ref={gridRef} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 profile-grid-inner">
+              {filteredProfiles.map((profile) => (
               <Card
                 key={profile.id}
+                data-id={profile.id}
                 onClick={() => handleSelect(profile.id)}
                 className={cn(
-                  "panel-soft transition-all duration-200 flex flex-col relative overflow-hidden h-40",
+                  "profile-card transition-all duration-200 flex flex-col relative overflow-hidden",
                   profile.selected
                     ? "profile-card-selected"
-                    : "hover:border-[var(--app-stroke-strong)] hover:bg-[var(--app-panel)]/80"
+                    : ""
                 )}
               >
-                {/* 选中指示器 */}
-                <div className="relative flex justify-between items-start mb-1.5 z-10 px-4 pt-3">
-                  <div className="flex items-center gap-2 min-w-0 pr-3">
-                    {/* 拖拽手柄 */}
-                    <div className="drag-handle sortable-handle flex-shrink-0 cursor-grab active:cursor-grabbing text-[var(--app-text-quaternary)] hover:text-[var(--app-text-secondary)] transition-colors">
-                      <GripVertical className="w-4 h-4" />
+                <div className="profile-card-inner">
+                  {/* 卡片头部 */}
+                  <div className="profile-card-header">
+                    <div className="flex items-center gap-2 min-w-0 pr-1">
+                      {/* 拖拽手柄 */}
+                      <div className="drag-handle sortable-handle flex-shrink-0 cursor-grab active:cursor-grabbing text-[var(--app-text-quaternary)] hover:text-[var(--app-text-secondary)] transition-colors">
+                        <GripVertical className="w-4 h-4" />
+                      </div>
+                      <h3 className={cn(
+                        "font-medium text-[14px] truncate transition-colors",
+                        profile.selected === 1 ? "text-[var(--app-text)]" : "text-[var(--app-text)]"
+                      )}>{profile.name}</h3>
                     </div>
-                    <h3 className={cn(
-                      "font-medium text-[14px] truncate max-w-[160px] transition-colors",
-                      profile.selected === 1 ? "text-[var(--app-text)]" : "text-[var(--app-text)]"
-                    )}>{profile.name}</h3>
-                    <span className="shrink-0 text-[11px] text-[var(--app-text-tertiary)]">{profile.nodes?.length ?? 0} {t('profiles.nodes')}</span>
-                  </div>
-                  <div className={cn("flex space-x-0.5 transition-opacity", openDropdownId === profile.id ? "opacity-100 relative z-50" : "opacity-100")}>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="text-[var(--app-text-quaternary)] hover:text-[var(--app-text-secondary)] relative z-50"
-                      ref={(el) => { dropdownButtonRefs.current[profile.id] = el; }}
-                      onClick={(e) => handleOpenDropdown(e, profile.id)}
-                    >
-                      <MoreVertical className="w-3.5 h-3.5" />
-                    </Button>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="text-[var(--app-text-quaternary)] hover:text-[var(--app-text-secondary)] relative z-50 h-6 w-6"
+                        ref={(el) => { dropdownButtonRefs.current[profile.id] = el; }}
+                        onClick={(e) => handleOpenDropdown(e, profile.id)}
+                      >
+                        <MoreVertical className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+
+                    {/* Dropdown Menu */}
+                    {openDropdownId === profile.id && createPortal(
+                      <motion.div
+                        initial={{ opacity: 0, scale: 0.95, y: -5 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.95, y: -5 }}
+                        transition={{ duration: 0.15 }}
+                        className="dropdown-menu fixed bg-[var(--app-panel)] border border-[var(--app-stroke)] rounded-[12px] shadow-[var(--shadow-elevated)] overflow-hidden z-[200] flex flex-col py-1.5 w-36"
+                        style={{ top: dropdownPosition.top, left: dropdownPosition.left }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <button
+                          className="flex items-center px-3 py-1.5 text-[12px] text-[var(--app-text-secondary)] hover:bg-[var(--app-bg-secondary)] hover:text-[var(--app-text)] transition-colors text-left w-full"
+                          onClick={(e) => {
+                            setOpenDropdownId(null);
+                            openEditDetails(e, profile);
+                          }}
+                        >
+                          <Edit2 className="w-3.5 h-3.5 mr-2" />
+                          {t('profiles.edit')}
+                        </button>
+                        <button
+                          className="flex items-center px-3 py-1.5 text-[12px] text-[var(--app-text-secondary)] hover:bg-[var(--app-bg-secondary)] hover:text-[var(--app-text)] transition-colors text-left w-full"
+                          onClick={(e) => {
+                            setOpenDropdownId(null);
+                            openEditContent(e, profile);
+                          }}
+                        >
+                          <FileText className="w-3.5 h-3.5 mr-2" />
+                          {t('profiles.view')}
+                        </button>
+                        <button
+                          className="flex items-center px-3 py-1.5 text-[12px] text-[var(--app-text-secondary)] hover:bg-[var(--app-bg-secondary)] hover:text-[var(--app-text)] transition-colors text-left w-full"
+                          onClick={() => {
+                            setOpenDropdownId(null);
+                            setEditingGroupProfile(profile);
+                          }}
+                        >
+                          <Layers className="w-3.5 h-3.5 mr-2" />
+                          {t('profiles.customGroups')}
+                        </button>
+                        <div className="mx-2 my-1 border-t border-[var(--app-divider)]" />
+                        <button
+                          className="flex items-center px-3 py-1.5 text-[12px] text-[var(--app-danger)] hover:bg-[rgba(177,79,94,0.08)] transition-colors text-left w-full"
+                          onClick={(e) => {
+                            setOpenDropdownId(null);
+                            handleDelete(e, profile.id);
+                          }}
+                        >
+                          <Trash2 className="w-3.5 h-3.5 mr-2" />
+                          {t('profiles.delete')}
+                        </button>
+                      </motion.div>,
+                      document.body
+                    )}
                   </div>
 
-                  {/* Dropdown Menu */}
-                  {openDropdownId === profile.id && createPortal(
-                    <motion.div
-                      initial={{ opacity: 0, scale: 0.95, y: -5 }}
-                      animate={{ opacity: 1, scale: 1, y: 0 }}
-                      exit={{ opacity: 0, scale: 0.95, y: -5 }}
-                      transition={{ duration: 0.15 }}
-                      className="dropdown-menu fixed bg-[var(--app-panel)] border border-[var(--app-stroke)] rounded-[12px] shadow-[var(--shadow-elevated)] overflow-hidden z-[200] flex flex-col py-1.5 w-36"
-                      style={{ top: dropdownPosition.top, left: dropdownPosition.left }}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <button
-                        className="flex items-center px-3 py-1.5 text-[12px] text-[var(--app-text-secondary)] hover:bg-[var(--app-bg-secondary)] hover:text-[var(--app-text)] transition-colors text-left w-full"
-                        onClick={(e) => {
-                          setOpenDropdownId(null);
-                          openEditDetails(e, profile);
-                        }}
-                      >
-                        <Edit2 className="w-3.5 h-3.5 mr-2" />
-                        {t('profiles.edit')}
-                      </button>
-                      <button
-                        className="flex items-center px-3 py-1.5 text-[12px] text-[var(--app-text-secondary)] hover:bg-[var(--app-bg-secondary)] hover:text-[var(--app-text)] transition-colors text-left w-full"
-                        onClick={(e) => {
-                          setOpenDropdownId(null);
-                          openEditContent(e, profile);
-                        }}
-                      >
-                        <FileText className="w-3.5 h-3.5 mr-2" />
-                        {t('profiles.view')}
-                      </button>
-                      <button
-                        className="flex items-center px-3 py-1.5 text-[12px] text-[var(--app-text-secondary)] hover:bg-[var(--app-bg-secondary)] hover:text-[var(--app-text)] transition-colors text-left w-full"
-                        onClick={() => {
-                          setOpenDropdownId(null);
-                          setEditingGroupProfile(profile);
-                        }}
-                      >
-                        <Layers className="w-3.5 h-3.5 mr-2" />
-                        {t('profiles.customGroups')}
-                      </button>
-                      <div className="mx-2 my-1 border-t border-[var(--app-divider)]" />
-                      <button
-                        className="flex items-center px-3 py-1.5 text-[12px] text-[var(--app-danger)] hover:bg-[rgba(177,79,94,0.08)] transition-colors text-left w-full"
-                        onClick={(e) => {
-                          setOpenDropdownId(null);
-                          handleDelete(e, profile.id);
-                        }}
-                      >
-                        <Trash2 className="w-3.5 h-3.5 mr-2" />
-                        {t('profiles.delete')}
-                      </button>
-                    </motion.div>,
-                    document.body
-                  )}
-                </div>
-
-                <div className="px-4 mt-1 flex-1 flex flex-col justify-center gap-1">
-                  {/* 流量信息 */}
-                  {profile.subscriptionUserinfo ? (
-                    <>
-                      <div className="h-1.5 w-full rounded-full bg-[var(--app-bg-secondary)] overflow-hidden">
-                        <div
-                          className="h-full rounded-full bg-[var(--app-text-tertiary)] transition-all"
-                          style={{ width: `${Math.min(100, profile.subscriptionUserinfo.total > 0 ? ((profile.subscriptionUserinfo.upload + profile.subscriptionUserinfo.download) / profile.subscriptionUserinfo.total) * 100 : 0)}%` }}
-                        />
+                  {/* 卡片信息区域 */}
+                  <div className="profile-card-body">
+                    {/* 节点数 & 更新间隔 */}
+                    <div className="flex items-center gap-4">
+                      <div className="profile-info-row">
+                        <Link className="w-3 h-3" />
+                        <span className="profile-info-value font-medium text-[var(--app-text-secondary)]">{profile.nodes?.length ?? 0}</span>
+                        <span className="text-[10px] text-[var(--app-text-quaternary)]">{t('profiles.nodes')}</span>
                       </div>
-                      <div className="text-[10px] text-[var(--app-text-tertiary)] truncate w-full" title={`${t('profiles.used')} ${formatBytes(profile.subscriptionUserinfo.upload + profile.subscriptionUserinfo.download)} / ${t('profiles.total')} ${formatBytes(profile.subscriptionUserinfo.total)} · ${formatExpire(profile.subscriptionUserinfo.expire, t)}`}>
-                        {t('profiles.used')} {formatBytes(profile.subscriptionUserinfo.upload + profile.subscriptionUserinfo.download)} / {t('profiles.total')} {formatBytes(profile.subscriptionUserinfo.total)} · {formatExpire(profile.subscriptionUserinfo.expire, t)}
-                      </div>
-                    </>
-                  ) : null}
-                </div>
+                      {profile.type === 'remote' && profile.updateInterval ? (
+                        <div className="profile-info-row">
+                          <Clock className="w-3 h-3" />
+                          <span className="profile-info-value">{formatInterval(profile.updateInterval, t)}</span>
+                        </div>
+                      ) : null}
+                    </div>
 
-                <div className="px-4 pb-3 flex items-center justify-between mt-3">
-                  <div className="text-[11px] text-[var(--app-text-quaternary)]">
-                    <span>{t('profiles.lastUpdate')}: {profile.last_update ? formatRelativeTime(profile.last_update) : t('profiles.never')}</span>
+                    {/* 流量信息 */}
+                    {profile.subscriptionUserinfo ? (
+                      <>
+                        <div className="profile-usage-bar">
+                          <div
+                            className="profile-usage-bar-fill"
+                            style={{
+                              width: `${Math.min(100, profile.subscriptionUserinfo.total > 0 ? ((profile.subscriptionUserinfo.upload + profile.subscriptionUserinfo.download) / profile.subscriptionUserinfo.total) * 100 : 0)}%`,
+                              background: 'linear-gradient(90deg, #3b82f6, #6366f1)',
+                            }}
+                          />
+                        </div>
+                        <div className="profile-usage-text" title={`${t('profiles.used')} ${formatBytes(profile.subscriptionUserinfo.upload + profile.subscriptionUserinfo.download)} / ${t('profiles.total')} ${formatBytes(profile.subscriptionUserinfo.total)} · ${formatExpire(profile.subscriptionUserinfo.expire, t)}`}>
+                          {t('profiles.used')} {formatBytes(profile.subscriptionUserinfo.upload + profile.subscriptionUserinfo.download)} / {t('profiles.total')} {formatBytes(profile.subscriptionUserinfo.total)} · {formatExpire(profile.subscriptionUserinfo.expire, t)}
+                        </div>
+                      </>
+                    ) : null}
                   </div>
-                  {profile.url && (
-                    <Button
-                      variant={updatingId === profile.id ? 'tonal' : 'ghost'}
-                      size="icon"
-                      onClick={(e) => handleUpdate(e, profile.id)}
-                      disabled={updatingId !== null}
-                      title={t('profiles.update')}
-                    >
-                      {updatingId === profile.id ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      ) : (
-                        <RefreshCw className="w-3.5 h-3.5" />
-                      )}
-                    </Button>
-                  )}
+
+                  {/* 分隔线 */}
+                  <div className="profile-card-divider mt-auto" />
+
+                  {/* 卡片底部 */}
+                  <div className="profile-card-footer">
+                    <div className="text-[11px] text-[var(--app-text-quaternary)]">
+                      <span>{t('profiles.lastUpdate')}: {profile.last_update ? formatRelativeTime(profile.last_update) : t('profiles.never')}</span>
+                    </div>
+                    {profile.url && (
+                      <Button
+                        variant={updatingId === profile.id ? 'tonal' : 'ghost'}
+                        size="icon"
+                        onClick={(e) => handleUpdate(e, profile.id)}
+                        disabled={updatingId !== null}
+                        title={t('profiles.update')}
+                        className="h-6 w-6"
+                      >
+                        {updatingId === profile.id ? (
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                        ) : (
+                          <RefreshCw className="w-3 h-3" />
+                        )}
+                      </Button>
+                    )}
+                  </div>
                 </div>
-
-
               </Card>
             ))}
           </div>
+          )}
         </div>
       </div>
 
@@ -592,7 +749,9 @@ const [profiles, setProfiles] = useState<Profile[]>([]);
               onClick={e => e.stopPropagation()}
             >
               <div className="flex shrink-0 items-center justify-between px-6 py-4 border-b border-[var(--app-divider)] bg-[var(--app-bg-secondary)]/50">
-                <h2 className="text-[15px] font-semibold text-[var(--app-text)]">{t('profiles.editProfile')}</h2>
+                <h2 className="text-[15px] font-semibold text-[var(--app-text)]">
+                  {editingProfile.id === '__new_remote__' ? t('profiles.addRemote') : t('profiles.editProfile')}
+                </h2>
                 <button
                   type="button"
                   onClick={() => setEditingProfile(null)}
@@ -647,8 +806,8 @@ const [profiles, setProfiles] = useState<Profile[]>([]);
                 <Button variant="ghost" onClick={() => setEditingProfile(null)}>
                   {t('common.cancel')}
                 </Button>
-                <Button variant="primary" onClick={handleSaveDetails} disabled={!editName.trim() || (editingProfile.type === 'remote' && !editUrl.trim())}>
-                  {t('common.save')}
+                <Button variant="primary" onClick={handleSaveDetails} disabled={editingProfile.type === 'remote' && !editUrl.trim()}>
+                  {editingProfile.id === '__new_remote__' ? t('profiles.addRemote') : t('common.save')}
                 </Button>
               </div>
             </motion.div>

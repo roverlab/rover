@@ -36,6 +36,7 @@ const [loading, setLoading] = useState(true);
     const [batchDeleteIds, setBatchDeleteIds] = useState<Set<string>>(new Set());
     const [ruleProviders, setRuleProviders] = useState<RuleProvider[]>([]);
     const [showSettingsModal, setShowSettingsModal] = useState(false);
+    const [refreshKey, setRefreshKey] = useState(0);
 
     const { notifications, addNotification, removeNotification } = useNotificationState();
     const policyFinalOutbound = usePolicyFinalOutbound();
@@ -127,14 +128,20 @@ const [loading, setLoading] = useState(true);
     };
 
     // 拖拽排序回调
-    const handleReorder = useCallback(async (itemId: string, _oldIndex: number, newIndex: number) => {
+    const handleReorder = useCallback(async (itemId: string, _oldIndex: number, newIndex: number, visibleOrderedIds: string[]) => {
         const currentPolicies = [...policies];
         const fromIndex = currentPolicies.findIndex(p => p.id === itemId);
         if (fromIndex === -1 || fromIndex === newIndex) return;
-        const [movedItem] = currentPolicies.splice(fromIndex, 1);
-        currentPolicies.splice(newIndex, 0, movedItem);
-        setPolicies(currentPolicies);
-        const orders = currentPolicies.map((p, index) => ({ id: p.id, order: index }));
+        const visibleIdSet = new Set(visibleOrderedIds);
+        const reorderedVisible = visibleOrderedIds
+            .map(id => currentPolicies.find(p => p.id === id))
+            .filter((p): p is Policy => Boolean(p));
+        let visibleIndex = 0;
+        const reorderedPolicies = currentPolicies.map(policy =>
+            visibleIdSet.has(policy.id) ? reorderedVisible[visibleIndex++] : policy
+        );
+        setPolicies(reorderedPolicies);
+        const orders = reorderedPolicies.map((p, index) => ({ id: p.id, order: index }));
         try {
             await window.ipcRenderer.db.updatePoliciesOrder(orders);
             window.ipcRenderer.core.generateConfig().catch(console.error);
@@ -211,6 +218,11 @@ const [loading, setLoading] = useState(true);
         }
     };
 
+    const handleEditSaved = useCallback(() => {
+        loadPolicies();
+        setRefreshKey(prev => prev + 1);
+    }, [loadPolicies]);
+
     const handlePolicyFinalOutboundChange = async (value: 'direct_out' | 'block_out' | 'selector_out') => {
         try {
             await policyFinalOutbound.onChange(value);
@@ -264,10 +276,8 @@ const [loading, setLoading] = useState(true);
                         onViewDetail={handleViewDetail}
                         onDelete={openDeleteConfirm}
                         onToggleEnabled={handleToggleEnabled}
-                        onBatchEnable={handleBatchEnable}
-                        onBatchDisable={handleBatchDisable}
-                        onBatchDelete={handleBatchDelete}
                         onReorder={handleReorder}
+                        refreshKey={refreshKey}
                     />
                 )}
             </div>
@@ -277,7 +287,7 @@ const [loading, setLoading] = useState(true);
                 editingPolicy={editingPolicy}
                 policiesCount={policies.length}
                 onClose={() => setShowEditModal(false)}
-                onSaved={loadPolicies}
+                onSaved={handleEditSaved}
                 addNotification={addNotification}
             />
 

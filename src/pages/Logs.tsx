@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import { Trash2, Pause, Play, Activity, Search, MoreVertical, FileX2, X, ArrowUp, Loader2, Copy, Check } from 'lucide-react';
+import { Trash2, Pause, Play, Search, MoreVertical, FileX2, X, ArrowUp, Loader2, Copy, Check, ScrollText } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { Button } from '../components/ui/Button';
-import { Input, Select } from '../components/ui/Field';
-import { Badge, Card } from '../components/ui/Surface';
+import { Input } from '../components/ui/Field';
+import { Badge } from '../components/ui/Surface';
 import { useConfirm } from '../components/ui/Notification';
+import './Logs.css';
 
 interface LogEntry {
   id: number;
@@ -117,7 +118,6 @@ export function Logs({ isActive = true }: LogsProps) {
   const { t } = useTranslation();
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [isPaused, setIsPaused] = useState(false);
-  const [levelFilter, setLevelFilter] = useState<string>('all');
   const [searchText, setSearchText] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const idCounter = useRef(0);
@@ -137,19 +137,19 @@ export function Logs({ isActive = true }: LogsProps) {
   const [copied, setCopied] = useState(false);
 
   // 是否处于搜索模式
-  const isInSearchMode = searchText.trim() !== '' || levelFilter !== 'all';
+  const isInSearchMode = searchText.trim() !== '';
+
+  // 统计总条数
+  const totalCount = logs.length;
 
   // 构建搜索文本：级别 + 搜索词，用空格分割
   const buildSearchText = useCallback(() => {
     const parts: string[] = [];
-    if (levelFilter !== 'all') {
-      parts.push(levelFilter.toUpperCase());
-    }
     if (searchText.trim()) {
       parts.push(searchText.trim());
     }
     return parts.join(' ');
-  }, [levelFilter, searchText]);
+  }, [searchText]);
 
   // 从后台获取日志
   const fetchLogs = useCallback(async () => {
@@ -174,11 +174,6 @@ export function Logs({ isActive = true }: LogsProps) {
             configHint: parsed.configHint
           };
         });
-
-      // 前端二次过滤：确保级别筛选准确
-      if (levelFilter !== 'all') {
-        entries = entries.filter((entry) => entry.level === levelFilter);
-      }
 
       // 后端返回的日志已是从新到旧
       setLogs(entries);
@@ -218,7 +213,7 @@ export function Logs({ isActive = true }: LogsProps) {
         clearTimeout(debounceRef.current);
       }
     };
-  }, [isActive, isInSearchMode, searchText, levelFilter, fetchLogs]);
+  }, [isActive, isInSearchMode, searchText, fetchLogs]);
 
   // 清除日志显示
   const clearLogs = () => {
@@ -249,7 +244,6 @@ export function Logs({ isActive = true }: LogsProps) {
       if (res.success) {
         setLogs([]);
         setSearchText('');
-        setLevelFilter('all');
       }
     } catch {
       // ignore
@@ -262,29 +256,6 @@ export function Logs({ isActive = true }: LogsProps) {
     document.addEventListener('click', onOutside);
     return () => document.removeEventListener('click', onOutside);
   }, [moreOpen]);
-
-  const getLevelBadgeClass = (level: string) => {
-    switch (level.toLowerCase()) {
-      case 'info': return 'bg-[var(--app-accent-soft)] text-[var(--app-accent)]';
-      case 'warning': return 'bg-[var(--app-warning-soft)] text-[var(--app-warning)]';
-      case 'error': return 'bg-[var(--app-danger-soft)] text-[var(--app-danger)]';
-      case 'debug': return 'bg-[rgba(100,116,139,0.12)] text-[var(--app-text-quaternary)]';
-      default: return 'bg-[rgba(100,116,139,0.12)] text-[var(--app-text-tertiary)]';
-    }
-  };
-
-  // 状态徽章
-  const getStatusBadge = () => {
-    if (isInSearchMode) return t('logs.searching');
-    if (isPaused) return t('logs.paused');
-    return t('logs.realtime');
-  };
-
-  const getStatusBadgeTone = (): 'warning' | 'success' | 'neutral' => {
-    if (isInSearchMode) return 'neutral';
-    if (isPaused) return 'warning';
-    return 'success';
-  };
 
   // 右键菜单处理
   const handleContextMenu = useCallback((e: React.MouseEvent, log: LogEntry) => {
@@ -335,20 +306,72 @@ export function Logs({ isActive = true }: LogsProps) {
     };
   }, [contextMenu.visible, closeContextMenu]);
 
+  const getLevelBadgeClass = (level: string) => {
+    switch (level.toLowerCase()) {
+      case 'info': return 'log-level-info';
+      case 'warning': return 'log-level-warning';
+      case 'error': return 'log-level-error';
+      case 'debug': return 'log-level-debug';
+      default: return 'log-level-info';
+    }
+  };
+
   return (
-    <div className="page-shell">
+    <div className="page-shell min-w-0">
       <div className="page-header" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
-        <div style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+        <div className="min-w-0" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
           <h1 className="page-title">{t('logs.title')}</h1>
+          <div className="flex items-center gap-2 mt-1.5">
+            {/* 状态 */}
+            <span className={cn(
+              "log-indicator",
+              isPaused ? "log-indicator-paused" : (!isPaused && !isInSearchMode) ? "log-indicator-on" : "log-indicator-off"
+            )} />
+            <span className="text-[12px] text-[var(--app-text-tertiary)]">
+              {isPaused ? t('logs.paused') : isInSearchMode ? t('logs.searching') : t('logs.realtime')}
+            </span>
+
+            <span className="mx-0.5 h-3 w-px bg-[var(--app-stroke)]" />
+
+            {/* 日志条数 */}
+            <span className="text-[12px] text-[var(--app-text-secondary)]">
+              {t('logs.logCount')} <Badge tone="accent" className="h-4 px-1.5 text-[10px] font-mono">{totalCount}</Badge>
+            </span>
+
+            <span className="mx-0.5 h-3 w-px bg-[var(--app-stroke)]" />
+
+            {/* 操作按钮 */}
+            <Button
+              onClick={() => setIsPaused(!isPaused)}
+              variant="ghost"
+              size="sm"
+              title={isPaused ? t('logs.continue') : t('logs.pause')}
+              disabled={isInSearchMode}
+              className="h-6 px-2 text-[10px] gap-1"
+            >
+              {isPaused ? <Play className="w-3 h-3" /> : <Pause className="w-3 h-3" />}
+              {isPaused ? t('logs.continue') : t('logs.pause')}
+            </Button>
+            <Button
+              onClick={clearLogs}
+              variant="ghost"
+              size="sm"
+              title={t('logs.clear')}
+              className="h-6 px-2 text-[10px] gap-1"
+            >
+              <Trash2 className="w-3 h-3" />
+              {t('logs.clear')}
+            </Button>
+          </div>
         </div>
 
-        <div className="flex items-center gap-2.5" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+        <div className="flex items-center gap-2 shrink-0" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
           <div className="relative w-52">
-            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--app-text-quaternary)]" />
+            <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--app-text-quaternary)] shrink-0" />
             <Input
               type="text"
               placeholder={t('logs.searchPlaceholder')}
-              className="pl-9 text-[12px] pr-8"
+              className="pl-8 text-[12px] pr-8 h-8"
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
             />
@@ -368,34 +391,6 @@ export function Logs({ isActive = true }: LogsProps) {
               </div>
             )}
           </div>
-          <Select
-            value={levelFilter}
-            onChange={(e) => setLevelFilter(e.target.value)}
-            className="w-28 text-[12px]"
-          >
-            <option value="all">{t('logs.allLevels')}</option>
-            <option value="info">INFO</option>
-            <option value="warning">WARN</option>
-            <option value="error">ERROR</option>
-            <option value="debug">DEBUG</option>
-          </Select>
-          <Button
-            onClick={() => setIsPaused(!isPaused)}
-            variant="ghost"
-            size="icon"
-            title={isPaused ? t('logs.continue') : t('logs.pause')}
-            disabled={isInSearchMode}
-          >
-            {isPaused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}
-          </Button>
-          <Button
-            onClick={clearLogs}
-            variant="ghost"
-            size="icon"
-            title={t('logs.clear')}
-          >
-            <Trash2 className="w-4 h-4" />
-          </Button>
           <div className="relative">
             <Button
               ref={moreButtonRef}
@@ -403,6 +398,7 @@ export function Logs({ isActive = true }: LogsProps) {
               variant="ghost"
               size="icon"
               title={t('logs.more')}
+              className="h-8 w-8"
             >
               <MoreVertical className="w-4 h-4" />
             </Button>
@@ -427,63 +423,56 @@ export function Logs({ isActive = true }: LogsProps) {
         </div>
       </div>
 
-      <div className="page-content min-w-0 flex flex-col min-h-0 overflow-hidden">
-      <Card className="flex-1 overflow-hidden min-w-0 flex flex-col min-h-0">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--app-divider)]">
-          <div className="text-[13px] font-medium text-[var(--app-text-secondary)]">
-            {isInSearchMode ? `${t('logs.searchResult')} (${logs.length} ${t('logs.entries')})` : `${t('logs.kernelLog')} (${logs.length} ${t('logs.entries')})`}
-          </div>
-          <Badge tone={getStatusBadgeTone()}>{getStatusBadge()}</Badge>
+      <div className="page-content min-w-0 flex flex-col min-h-0 overflow-hidden !px-2 sm:!px-4">
+        {/* 列表头 */}
+        <div className="log-list-header">
+          <div>{t('logs.time')}</div>
+          <div>{t('logs.level')}</div>
+          <div>{t('logs.message')}</div>
         </div>
-        <div ref={scrollContainerRef} className="table-scroll-x flex-1 min-h-0 overflow-y-auto">
-          <table className="data-table text-[12px] min-w-full">
-          <thead className="sticky top-0 z-10 text-[12px] font-semibold text-[var(--app-text-secondary)] !bg-[rgba(255,255,255,0.9)] dark:!bg-[rgba(15,20,32,0.95)]">
-            <tr>
-              <th className="px-5 py-2.5 w-32">{t('logs.time')}</th>
-              <th className="px-5 py-2.5 w-28">{t('logs.level')}</th>
-              <th className="px-5 py-2.5">{t('logs.message')}</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[var(--app-divider)]">
-            {logs.map((log) => (
-              <tr
-                key={log.id}
-                className="group cursor-default select-text"
-                onContextMenu={(e) => handleContextMenu(e, log)}
-              >
-                <td className="px-5 py-2.5 font-mono text-[var(--app-text-quaternary)] text-[11px]">
-                  {log.time}
-                </td>
-                <td className="px-5 py-2.5">
-                  <span className={cn("badge", getLevelBadgeClass(log.level))}>
-                    {log.level.toUpperCase()}
-                  </span>
-                </td>
-                <td className="px-5 py-2.5 text-[var(--app-text-secondary)] break-all font-mono text-[11px]">
-                  <div>
-                    {log.message}
+
+        {/* 日志列表 */}
+        <div ref={scrollContainerRef} className="flex-1 min-h-0 overflow-y-auto log-list-scroll">
+          {logs.length === 0 && !isSearching ? (
+            <div className="log-empty-state">
+              <ScrollText className="w-5 h-5 mb-1.5 text-[var(--app-text-quaternary)]" />
+              <p className="text-[12px] text-[var(--app-text-quaternary)]">{isInSearchMode ? t('logs.noMatchLogs') : t('logs.noLogs')}</p>
+            </div>
+          ) : (
+            <div className="log-list-body">
+              {logs.map((log) => (
+                <div
+                  key={log.id}
+                  className="log-list-row group"
+                  onContextMenu={(e) => handleContextMenu(e, log)}
+                >
+                  {/* 时间 */}
+                  <div className="log-list-col-time">
+                    <span className="log-time">{log.time}</span>
+                  </div>
+
+                  {/* 级别 */}
+                  <div className="log-list-col-level">
+                    <span className={cn("log-level-badge", getLevelBadgeClass(log.level))}>
+                      {log.level.toUpperCase()}
+                    </span>
+                  </div>
+
+                  {/* 消息 */}
+                  <div className="log-list-col-message">
+                    <span className="log-message">{log.message}</span>
                     {log.configHint && (
-                      <p className="mt-1 text-[11px] text-[var(--app-warning)] bg-[var(--app-warning-soft)] px-2 py-1 rounded">
-                        💡 {log.configHint}
-                      </p>
+                      <span className="log-config-hint">💡 {log.configHint}</span>
                     )}
                   </div>
-                </td>
-              </tr>
-            ))}
-            {logs.length === 0 && !isSearching && (
-              <tr>
-                <td colSpan={3} className="px-5 py-10 text-center text-[var(--app-text-quaternary)]">
-                  <Activity className="w-6 h-6 mx-auto mb-2 text-[var(--app-text-quaternary)]" />
-                  <p className="text-[13px]">{isInSearchMode ? t('logs.noMatchLogs') : t('logs.noLogs')}</p>
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
-      </Card>
       </div>
+
+      {/* 回到顶部按钮 */}
       <button
         onClick={() => {
           if (scrollContainerRef.current) {
@@ -495,7 +484,9 @@ export function Logs({ isActive = true }: LogsProps) {
       >
         <ArrowUp className="w-5 h-5" />
       </button>
+
       <ConfirmDialog />
+
       {/* 右键菜单 */}
       {contextMenu.visible && createPortal(
         <div

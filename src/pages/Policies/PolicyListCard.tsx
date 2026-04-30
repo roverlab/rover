@@ -6,7 +6,7 @@ import { Download } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import type { Policy } from '../../types/policy';
 import { PolicyListTable, type ColumnDef } from '../../components/PolicyListTable';
-import { getOutboundLabel, getOutboundTone, getPolicyOutbound, getPolicyRuleSets, getPolicyMatchCount, isOutboundDisplayable } from './utils';
+import { getOutboundLabel, getPolicyOutbound, getPolicyRuleSets, getPolicyMatchCount, isOutboundDisplayable } from './utils';
 import { PolicyRowDropdown } from './PolicyRowDropdown';
 
 interface PolicyListCardProps {
@@ -17,10 +17,9 @@ interface PolicyListCardProps {
     onViewDetail: (policy: Policy) => void;
     onDelete: (id: string, name: string) => void;
     onToggleEnabled: (policy: Policy) => void;
-    onBatchEnable: (selectedIds: Set<string>) => void;
-    onBatchDisable: (selectedIds: Set<string>) => void;
-    onBatchDelete: (selectedIds: Set<string>) => void;
-    onReorder?: (itemId: string, oldIndex: number, newIndex: number) => void;
+    onReorder?: (itemId: string, oldIndex: number, newIndex: number, visibleOrderedIds: string[]) => void;
+    /** 用于触发 profilePolicies 刷新的 key，每次变化会重新加载 */
+    refreshKey?: number;
 }
 
 export function PolicyListCard({
@@ -31,16 +30,16 @@ export function PolicyListCard({
     onViewDetail,
     onDelete,
     onToggleEnabled,
-    onBatchEnable,
-    onBatchDisable,
-    onBatchDelete,
     onReorder,
+    refreshKey,
 }: PolicyListCardProps) {
     const { t } = useTranslation();
     const [profilePolicies, setProfilePolicies] = useState<Record<string, string[]>>({});
 
     // 异步加载每个策略的订阅优先选择节点
     const policyIdsKey = useMemo(() => policies.map(p => p.id).join(','), [policies]);
+    // refreshKey 变化时也需要重新加载 profilePolicies
+    const profilePoliciesDepsKey = `${policyIdsKey}-${refreshKey ?? 0}`;
     useEffect(() => {
         const loadProfilePolicies = async () => {
             try {
@@ -82,32 +81,32 @@ export function PolicyListCard({
         };
 
         loadProfilePolicies();
-    }, [policyIdsKey]);
+    }, [profilePoliciesDepsKey]);
 
     // 列定义
     const columns: ColumnDef<Policy>[] = useMemo(() => [
         {
             id: 'name',
             header: t('policies.tableColName'),
-            width: 'min-w-[140px]',
+            width: 'minmax(100px, 1.5fr)',
         },
         {
             id: 'type',
             header: t('policies.tableColType'),
-            width: 'w-[60px] min-w-[60px]',
-            align: 'text-center',
+            width: '56px',
+            align: 'center',
         },
         {
             id: 'outbound',
             header: t('policies.tableColOutbound'),
-            width: 'w-[100px] min-w-[100px]',
-            align: 'text-center',
+            width: 'minmax(80px, 0.8fr)',
+            align: 'center',
             nowrap: true,
         },
         {
             id: 'preferredOutbound',
             header: t('policies.tableColPreferredOutbound'),
-            width: 'min-w-[120px]',
+            width: 'minmax(90px, 1fr)',
             nowrap: true,
         },
     ], [t]);
@@ -131,18 +130,18 @@ export function PolicyListCard({
             case 'type':
                 return (
                     <div className="flex items-center justify-center h-full">
-                        <Badge tone={policy.type === 'raw' ? 'warning' : 'accent'} className="text-[12px] px-2.5 py-0.5 whitespace-nowrap inline-block truncate max-w-[72px]">
+                        <span className="policy-type-badge">
                             {policy.type === 'raw' ? t('policies.typeRaw') : t('policies.typeStandard')}
-                        </Badge>
+                        </span>
                     </div>
                 );
             case 'outbound':
                 return (
                     <div className="flex items-center justify-center gap-1 flex-wrap">
                         {isOutboundDisplayable(getPolicyOutbound(policy)) ? (
-                            <Badge tone={getOutboundTone(getPolicyOutbound(policy) ?? '')} className="text-[12px] px-2.5 py-0.5 whitespace-nowrap inline-block truncate max-w-[72px]">
+                            <span className="policy-chip" title={getOutboundLabel(getPolicyOutbound(policy), t)}>
                                 {getOutboundLabel(getPolicyOutbound(policy), t)}
-                            </Badge>
+                            </span>
                         ) : null}
                     </div>
                 );
@@ -152,13 +151,13 @@ export function PolicyListCard({
                         {profilePolicies[policy.id] && profilePolicies[policy.id].length > 0 && (
                             <div className="flex flex-wrap gap-1 overflow-hidden" title={profilePolicies[policy.id].join(', ')}>
                                 {profilePolicies[policy.id].map((node, index) => (
-                                    <Badge
+                                    <span
                                         key={index}
-                                        tone="accent"
-                                        className="text-[12px] px-2.5 py-0.5 whitespace-nowrap truncate max-w-[120px]"
+                                        className="policy-chip"
+                                        title={node}
                                     >
                                         {node}
-                                    </Badge>
+                                    </span>
                                 ))}
                             </div>
                         )}
@@ -199,9 +198,6 @@ export function PolicyListCard({
             showIndexColumn={true}
             onAdd={onAdd}
             onToggleEnabled={onToggleEnabled}
-            onBatchEnable={onBatchEnable}
-            onBatchDisable={onBatchDisable}
-            onBatchDelete={onBatchDelete}
             onEdit={onEdit}
             renderDropdown={renderDropdown}
             onReorder={onReorder}
