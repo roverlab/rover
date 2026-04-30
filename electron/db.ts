@@ -465,6 +465,25 @@ export function upsertDnsServerByTag(serverFromTemplate: Record<string, unknown>
     });
 }
 
+export function updateDnsServersOrder(orderedIds: string[]): void {
+    withDb((data) => {
+        const serverMap = new Map(data.dnsServers.map(s => [s.id, s]));
+        const reordered: DnsServer[] = [];
+        for (const id of orderedIds) {
+            const server = serverMap.get(id);
+            if (server) {
+                reordered.push(server);
+            }
+        }
+        for (const s of data.dnsServers) {
+            if (!orderedIds.includes(s.id)) {
+                reordered.push(s);
+            }
+        }
+        data.dnsServers = reordered;
+    });
+}
+
 export function updateProfileDetails(id: string, name: string, url: string, updateInterval?: number) {
     withDb((data) => {
         const p = data.profiles.find((x) => x.id === id);
@@ -619,7 +638,7 @@ export function getAutoUpdateProfiles(): Profile[] {
 // ===== Rule Providers =====
 
 export function getRuleProviders(): RuleProvider[] {
-    return withDb((data) => [...data.ruleProviders].reverse());
+    return withDb((data) => [...data.ruleProviders]);
 }
 
 export function getRuleProviderById(id: string): RuleProvider | undefined {
@@ -646,6 +665,25 @@ export function updateRuleProvider(id: string, updates: Partial<RuleProvider>) {
         if (p) {
             Object.assign(p, updates);
         }
+    });
+}
+
+export function updateRuleProvidersOrder(orderedIds: string[]): void {
+    withDb((data) => {
+        const providerMap = new Map(data.ruleProviders.map(p => [p.id, p]));
+        const reordered: RuleProvider[] = [];
+        for (const id of orderedIds) {
+            const provider = providerMap.get(id);
+            if (provider) {
+                reordered.push(provider);
+            }
+        }
+        for (const p of data.ruleProviders) {
+            if (!orderedIds.includes(p.id)) {
+                reordered.push(p);
+            }
+        }
+        data.ruleProviders = reordered;
     });
 }
 

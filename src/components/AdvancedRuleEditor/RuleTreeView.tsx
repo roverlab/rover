@@ -6,27 +6,27 @@ import type { RuleFieldConfig } from './types';
 
 const THEMES = {
     all: {
-        bg: 'bg-indigo-50/50',
-        border: 'border-indigo-200',
-        text: 'text-indigo-700',
-        badge: 'bg-indigo-600',
+        bg: 'bg-blue-50/50',
+        border: 'border-blue-200',
+        text: 'text-blue-700',
+        badge: 'bg-blue-600',
     },
     any: {
-        bg: 'bg-purple-50/50',
-        border: 'border-purple-200',
-        text: 'text-purple-700',
-        badge: 'bg-purple-600',
+        bg: 'bg-violet-50/50',
+        border: 'border-violet-200',
+        text: 'text-violet-700',
+        badge: 'bg-violet-600',
     },
     not: {
-        bg: 'bg-rose-50/50',
-        border: 'border-rose-200',
-        text: 'text-rose-700',
-        badge: 'bg-rose-600',
+        bg: 'bg-[var(--app-danger-soft)]/50',
+        border: 'border-[var(--app-danger)]/30',
+        text: 'text-[var(--app-danger)]',
+        badge: 'bg-red-600',
     },
     leaf: {
-        bg: 'bg-white',
-        border: 'border-slate-200',
-        text: 'text-slate-700',
+        bg: 'bg-background',
+        border: 'border-border',
+        text: 'text-foreground',
         badge: '',
     },
 } as const;
@@ -66,17 +66,17 @@ function RuleTreeNodeView({
 
     return (
         <div
-            className={`flex items-center justify-between p-3 rounded-xl border shadow-sm ${theme.bg} ${theme.border} cursor-default`}
+            className={`flex items-center justify-between p-3 rounded-lg border shadow-sm ${theme.bg} ${theme.border} cursor-default`}
         >
             <div className="flex items-center">
                 <span className="text-[9px] font-bold uppercase tracking-widest opacity-40 min-w-[5rem] w-auto pr-4 break-keep whitespace-nowrap">
                     {typeLabel}
                 </span>
-                <span className="font-mono text-sm font-semibold tracking-tight text-slate-800 break-all">
+                <span className="font-mono text-sm font-semibold tracking-tight text-foreground break-all">
                     {leafNode.value || '—'}
                 </span>
             </div>
-            <div className="w-2 h-2 rounded-full bg-slate-200 shrink-0 ml-4" />
+            <div className="w-2 h-2 rounded-full bg-muted shrink-0 ml-4" />
         </div>
     );
 }
@@ -94,19 +94,19 @@ function GroupView({
 }) {
     return (
         <div
-            className={`rule-group p-5 rounded-2xl border-2 ${theme.bg} ${theme.border}`}
+            className={`rule-group p-5 rounded-xl border-2 ${theme.bg} ${theme.border}`}
         >
             <div className="flex items-center mb-4">
                 <span
-                    className={`px-2 py-0.5 rounded text-[10px] font-black text-white uppercase tracking-tighter ${theme.badge}`}
+                    className={`px-2 py-0.5 rounded-md text-[10px] font-black text-white uppercase tracking-tighter ${theme.badge}`}
                 >
                     {groupNode.type}
                 </span>
-                <div className="h-[1px] flex-grow ml-3 bg-slate-200/50" />
+                <div className="h-[1px] flex-grow ml-3 bg-border/50" />
             </div>
             <div className="flex gap-3">
                 {/* 竖向线 */}
-                <div className="w-[1px] bg-slate-200/50 shrink-0" />
+                <div className="w-[1px] bg-border/50 shrink-0" />
                 <div className="group-content flex-1">
                     {groupNode.rules.map((child, idx) => (
                         <div key={(child as LogicGroup).id ?? (child as LeafRule).id ?? idx} className={idx < groupNode.rules.length - 1 ? 'mb-3' : ''}>
@@ -131,7 +131,7 @@ export function RuleTreeView({ node, formConfig }: RuleTreeViewProps) {
     const { t } = useTranslation();
     if (!node) {
         return (
-            <div className="flex items-center justify-center py-6 px-4 rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/50 text-[var(--app-text-tertiary)]">
+            <div className="flex items-center justify-center py-6 px-4 rounded-lg border-2 border-dashed border-border bg-muted/50 text-muted-foreground">
                 <span className="text-[13px]">{t('common.noRules')}</span>
             </div>
         );

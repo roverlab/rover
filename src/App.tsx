@@ -9,14 +9,15 @@ import { Logs } from './pages/Logs';
 import { Connections } from './pages/Connections';
 import { Settings } from './pages/Settings';
 import { RuleProviders } from './pages/RuleProviders';
-import { Routes } from './pages/Routes';
 import { ApiProvider } from './contexts/ApiContext';
 import { OverrideRulesProvider } from './contexts/OverrideRulesContext';
 import { OverrideRulesGate } from './components/OverrideRulesGate';
+import { CoreStatusProvider } from './contexts/CoreStatusContext';
+import { ThemeProvider } from './contexts/ThemeContext';
 import { LanguageSelectModal } from './components/LanguageSelectModal';
 import { hasLanguageSelected } from './i18n';
 
-export type Page = 'Dashboard' | 'Proxies' | 'Profiles' | 'Policies' | 'DnsPolicies' | 'RuleProviders' | 'Routes' | 'Logs' | 'Connections' | 'Settings';
+export type Page = 'Dashboard' | 'Proxies' | 'Profiles' | 'Policies' | 'DnsPolicies' | 'RuleProviders' | 'Logs' | 'Connections' | 'Settings';
 
 function LanguageSelectWrapper({ children, onLanguageSelected }: { children: React.ReactNode; onLanguageSelected: () => void }) {
   const [showModal, setShowModal] = useState(false);
@@ -100,7 +101,6 @@ const MemoizedProfiles = React.memo(Profiles);
 const MemoizedPolicies = React.memo(Policies);
 const MemoizedDnsPolicies = React.memo(DnsPolicies);
 const MemoizedRuleProviders = React.memo(RuleProviders);
-const MemoizedRoutes = React.memo(Routes);
 const MemoizedLogs = React.memo(Logs);
 const MemoizedConnections = React.memo(Connections);
 const MemoizedSettings = React.memo(Settings);
@@ -121,6 +121,7 @@ export default function App() {
 
   // 主应用内容
   const appContent = (
+    <CoreStatusProvider>
     <div className="app-shell relative">
       <div className="window-frame text-[var(--app-text)] font-sans relative">
         <Sidebar currentPage={currentPage} onPageChange={setCurrentPage} />
@@ -154,7 +155,6 @@ export default function App() {
                 <MemoizedRuleProviders isActive={true} />
               </OverrideRulesGate>
             )}
-            {isPageActive('Routes') && <MemoizedRoutes isActive={true} />}
             {isPageActive('Logs') && <MemoizedLogs isActive={true} />}
             {isPageActive('Connections') && <MemoizedConnections isActive={true} />}
             {isPageActive('Settings') && (
@@ -164,15 +164,18 @@ export default function App() {
         </main>
       </div>
     </div>
+    </CoreStatusProvider>
   );
 
   return (
-    <ApiProvider>
-      <OverrideRulesProvider>
-        <LanguageSelectWrapper onLanguageSelected={() => {}}>
-          {appContent}
-        </LanguageSelectWrapper>
-      </OverrideRulesProvider>
-    </ApiProvider>
+    <ThemeProvider>
+      <ApiProvider>
+        <OverrideRulesProvider>
+          <LanguageSelectWrapper onLanguageSelected={() => {}}>
+            {appContent}
+          </LanguageSelectWrapper>
+        </OverrideRulesProvider>
+      </ApiProvider>
+    </ThemeProvider>
   );
 }

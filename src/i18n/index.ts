@@ -9,6 +9,7 @@ import ru from './locales/ru.json';
 import ko from './locales/ko.json';
 import fa from './locales/fa.json';
 import es from './locales/es.json';
+import ja from './locales/ja.json';
 
 const resources = {
   en: {
@@ -31,11 +32,14 @@ const resources = {
   },
   es: {
     translation: es
+  },
+  ja: {
+    translation: ja
   }
 };
 
 // 支持的语言列表
-const supportedLanguages = ['en', 'zh-CN', 'zh-TW', 'ru', 'ko', 'fa', 'es'];
+const supportedLanguages = ['en', 'zh-CN', 'zh-TW', 'ru', 'ko', 'fa', 'es', 'ja'];
 
 // 全局标记是否已初始化
 let initialized = false;
@@ -110,6 +114,7 @@ export async function initI18n(): Promise<typeof i18n> {
     lng: savedLang,
     fallbackLng: {
       'zh-TW': ['zh-CN', 'en'],
+      'ja': ['en'],
       default: ['en']
     },
     debug: false,
@@ -164,7 +169,8 @@ export function getAvailableLanguages(): { code: string; name: string }[] {
     { code: 'ru', name: 'Русский' },
     { code: 'ko', name: '한국어' },
     { code: 'fa', name: 'فارسی' },
-    { code: 'es', name: 'Español' }
+    { code: 'es', name: 'Español' },
+    { code: 'ja', name: '日本語' }
   ];
 }
 

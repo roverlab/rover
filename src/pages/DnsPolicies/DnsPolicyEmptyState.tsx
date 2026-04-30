@@ -16,7 +16,7 @@ export function DnsPolicyEmptyState({ onAdd }: DnsPolicyEmptyStateProps) {
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(85,96,111,0.16),transparent_40%),linear-gradient(180deg,rgba(255,255,255,0.98),rgba(246,248,251,0.92))]" />
             <div className="relative px-8 py-10">
                 <div className="mx-auto flex max-w-[560px] flex-col items-center text-center">
-                    <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-[20px] border border-[var(--app-accent-border)] bg-white/80 text-[var(--app-accent-strong)] shadow-[0_18px_40px_rgba(67,76,88,0.12)]">
+                    <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-[20px] border border-[var(--app-accent-border)] bg-[var(--app-panel)]/80 text-[var(--app-accent-strong)] shadow-[0_18px_40px_rgba(67,76,88,0.12)]">
                         <Sparkles className="h-7 w-7" />
                     </div>
                     <h2 className="text-[22px] font-semibold tracking-tight text-[var(--app-text)]">{t('dnsPolicies.emptyState.title')}</h2>

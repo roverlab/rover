@@ -1,12 +1,10 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useDropdownPosition } from '../hooks/useDropdownPosition';
-import { Card, Badge } from '../components/ui/Surface';
+import { Badge } from '../components/ui/Surface';
 import { Button } from '../components/ui/Button';
-import { Switch } from '../components/ui/Switch';
-import { Input, Select } from '../components/ui/Field';
-import { cn } from '../components/Sidebar';
-import { Plus, Trash2, Edit2, X, RefreshCw, Layers, MoreVertical, Eye, Copy, Search, Settings, Code2, Cloud, Box } from 'lucide-react';
+import { Input } from '../components/ui/Field';
+import { cn } from '../lib/utils';
+import { X, RefreshCw, Layers, MoreVertical, Copy, Settings, Cloud, Box } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { RuleProvider, RuleProviderType } from '../types/rule-providers';
@@ -16,6 +14,8 @@ import { useNotificationState, NotificationList, useConfirm } from '../component
 import { Modal } from '../components/ui/Modal';
 import { formatRelativeTime } from '../shared/date-utils';
 import { getDisplayErrorMessage } from '../shared/error-utils';
+import { PolicyListTable, type ColumnDef } from '../components/PolicyListTable';
+import { RuleProviderRowDropdown } from './RuleProviders/RuleProvidersRowDropdown';
 
 interface RuleProvidersProps {
     /** 页面是否处于激活状态，用于进入时重新加载 */
@@ -29,20 +29,12 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
     const [showModal, setShowModal] = useState(false);
     const [editingProvider, setEditingProvider] = useState<RuleProvider | null>(null);
     const [downloadingId, setDownloadingId] = useState<string | null>(null);
-    const [downloadingAll, setDownloadingAll] = useState(false);
     const [saving, setSaving] = useState(false);
-    const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
-    const { position: dropdownPosition, calculatePosition } = useDropdownPosition({ menuWidth: 120, menuHeight: 130 });
-    const dropdownButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
     const [showViewModal, setShowViewModal] = useState(false);
     const [viewProvider, setViewProvider] = useState<RuleProvider | null>(null);
     const [viewContent, setViewContent] = useState<string | null>(null);
     const [viewError, setViewError] = useState<string | null>(null);
     const [viewLoading, setViewLoading] = useState(false);
-    const [searchQuery, setSearchQuery] = useState('');
-    const [statusFilter, setStatusFilter] = useState<'all' | 'enabled' | 'disabled' | 'selected'>('all');
-    const [selectedProviderIds, setSelectedProviderIds] = useState<Set<string>>(new Set());
-    const selectAllCheckboxRef = useRef<HTMLInputElement | null>(null);
     const [showSettingsModal, setShowSettingsModal] = useState(false);
     const [ruleProviderUpdateInterval, setRuleProviderUpdateInterval] = useState(86400);
     const settingsIntervalInputRef = useRef<HTMLInputElement | null>(null);
@@ -50,6 +42,7 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
 
     // Notification state
     const { notifications, addNotification, removeNotification } = useNotificationState();
+
     // Confirm dialog
     const { confirm, ConfirmDialog } = useConfirm();
 
@@ -89,17 +82,6 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
             return () => clearTimeout(timerId);
         }
     }, [showSettingsModal]);
-
-    useEffect(() => {
-        // 点击外部关闭下拉菜单
-        const handleClickOutside = (e: MouseEvent) => {
-            const target = e.target as HTMLElement;
-            if (target.closest('.dropdown-menu')) return;
-            setOpenDropdownId(null);
-        };
-        document.addEventListener('click', handleClickOutside);
-        return () => document.removeEventListener('click', handleClickOutside);
-    }, []);
 
     const loadProviders = async () => {
         try {
@@ -208,10 +190,10 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
     const handleToggleEnabled = async (provider: RuleProvider) => {
         // 转换为批量操作：创建一个包含当前规则集的临时选中集
         const tempSelectedIds = new Set([provider.id]);
-        const newEnabledState = !provider.enabled;
+        const newEnabledState = provider.enabled !== false;
         
         try {
-            if (newEnabledState) {
+            if (!newEnabledState) {
                 await handleBatchEnable(tempSelectedIds);
             } else {
                 await handleBatchDisable(tempSelectedIds);
@@ -238,13 +220,9 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
 
     // 刷新选中的规则集
     const handleRefreshSelected = async (customSelectedIds?: Set<string>) => {
-        const targetIds = customSelectedIds || selectedProviderIds;
-        if (targetIds.size === 0) return;
+        if (!customSelectedIds || customSelectedIds.size === 0) return;
         try {
-            if (!customSelectedIds) {
-                setDownloadingAll(true);
-            }
-            const ids = Array.from(targetIds) as string[];
+            const ids = Array.from(customSelectedIds) as string[];
             let successCount = 0;
             let failCount = 0;
             for (const id of ids) {
@@ -263,24 +241,16 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
                     : t('ruleProviders.updatedCountRuleSets', { count: successCount });
                 addNotification(notificationMessage);
             }
-            if (!customSelectedIds) {
-                setSelectedProviderIds(new Set());
-            }
             loadProviders();
             // 触发配置生成
             window.ipcRenderer.core.generateConfig();
         } catch (err: any) {
             console.error('Failed to refresh selected rule providers:', err);
             addNotification(t('ruleProviders.refreshFailed', { error: err.message }), 'error');
-        } finally {
-            if (!customSelectedIds) {
-                setDownloadingAll(false);
-            }
         }
     };
 
     const handleView = async (provider: RuleProvider) => {
-        setOpenDropdownId(null);
         setViewProvider(provider);
         setViewContent(null);
         setViewError(null);
@@ -313,36 +283,15 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
         }
     };
 
-    const handleOpenDropdown = (e: React.MouseEvent, providerId: string) => {
-        e.stopPropagation();
-        const button = dropdownButtonRefs.current[providerId];
-        if (button) {
-            calculatePosition(button);
-        }
-        setOpenDropdownId(openDropdownId === providerId ? null : providerId);
-    };
-
-    const toggleProviderSelection = (id: string) => {
-        setSelectedProviderIds(prev => {
-            const next = new Set(prev);
-            if (next.has(id)) next.delete(id);
-            else next.add(id);
-            return next;
-        });
-    };
-
     const handleBatchEnable = async (customSelectedIds?: Set<string>) => {
-        const targetIds = customSelectedIds || selectedProviderIds;
-        if (targetIds.size === 0) return;
+        const targetIds = customSelectedIds;
+        if (!targetIds || targetIds.size === 0) return;
         try {
             for (const id of targetIds) {
                 await window.ipcRenderer.db.updateRuleProvider(id, { enabled: true });
             }
             addNotification(t('ruleProviders.enabledCount', { count: targetIds.size }));
 
-            if (!customSelectedIds) {
-                setSelectedProviderIds(new Set());
-            }
             loadProviders();
             // 触发配置生成
             window.ipcRenderer.core.generateConfig();
@@ -352,17 +301,14 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
     };
 
     const handleBatchDisable = async (customSelectedIds?: Set<string>) => {
-        const targetIds = customSelectedIds || selectedProviderIds;
-        if (targetIds.size === 0) return;
+        const targetIds = customSelectedIds;
+        if (!targetIds || targetIds.size === 0) return;
         try {
             for (const id of targetIds) {
                 await window.ipcRenderer.db.updateRuleProvider(id, { enabled: false });
             }
             addNotification(t('ruleProviders.disabledCount', { count: targetIds.size }));
 
-            if (!customSelectedIds) {
-                setSelectedProviderIds(new Set());
-            }
             loadProviders();
             // 触发配置生成
             window.ipcRenderer.core.generateConfig();
@@ -371,23 +317,22 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
         }
     };
 
-    const handleBatchDelete = async () => {
-        if (selectedProviderIds.size === 0) return;
+    const handleBatchDeleteForTable = async (selectedIds: Set<string>) => {
+        if (selectedIds.size === 0) return;
         const confirmed = await confirm({
             title: t('ruleProviders.batchDeleteConfirm'),
-            message: t('ruleProviders.batchDeleteConfirmMessage', { count: selectedProviderIds.size }),
+            message: t('ruleProviders.batchDeleteConfirmMessage', { count: selectedIds.size }),
             confirmText: t('common.delete'),
             cancelText: t('common.cancel'),
             variant: 'danger'
         });
         if (!confirmed) return;
         try {
-            for (const id of selectedProviderIds) {
+            for (const id of selectedIds) {
                 await window.ipcRenderer.db.deleteRuleProvider(id);
             }
-            addNotification(t('ruleProviders.deleted', { count: selectedProviderIds.size }));
+            addNotification(t('ruleProviders.deleted', { count: selectedIds.size }));
 
-            setSelectedProviderIds(new Set());
             loadProviders();
             // 触发配置生成
             window.ipcRenderer.core.generateConfig();
@@ -413,43 +358,131 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
         }
     };
 
-    const filteredProviders = useMemo(() => {
-        const query = searchQuery.trim().toLowerCase();
-        return providers.filter((p) => {
-            if (statusFilter === 'enabled' && p.enabled === false) return false;
-            if (statusFilter === 'disabled' && p.enabled !== false) return false;
-            if (statusFilter === 'selected' && !selectedProviderIds.has(p.id)) return false;
-            if (!query) return true;
-            return p.name.toLowerCase().includes(query) || p.url.toLowerCase().includes(query);
-        });
-        // 保持后端返回的顺序（后添加的在前）
-    }, [providers, searchQuery, statusFilter, selectedProviderIds]);
+    // 拖拽排序回调
+    const handleReorder = useCallback(async (itemId: string, _oldIndex: number, newIndex: number) => {
+        const currentProviders = [...providers];
+        const fromIndex = currentProviders.findIndex(p => p.id === itemId);
+        if (fromIndex === -1 || fromIndex === newIndex) return;
+        const [movedItem] = currentProviders.splice(fromIndex, 1);
+        currentProviders.splice(newIndex, 0, movedItem);
+        setProviders(currentProviders);
+        const orderedIds = currentProviders.map(p => p.id);
+        try {
+            await window.ipcRenderer.db.updateRuleProvidersOrder(orderedIds);
+            window.ipcRenderer.core.generateConfig().catch(console.error);
+        } catch (err: any) {
+            console.error('Failed to update rule providers order:', err);
+            addNotification(t('ruleProviders.reorderFailed'), 'error');
+            loadProviders();
+        }
+    }, [providers, addNotification, t]);
 
-    const providerStats = useMemo(() => ({
-        total: providers.length,
-        enabled: providers.filter(p => p.enabled !== false).length,
-        disabled: providers.filter(p => p.enabled === false).length,
-        selected: selectedProviderIds.size
-    }), [providers, selectedProviderIds]);
+    // ---- PolicyListTable 配置 ----
 
-    useEffect(() => {
-        const el = selectAllCheckboxRef.current;
-        if (!el || filteredProviders.length === 0) return;
-        const selectedInFiltered = filteredProviders.filter(p => selectedProviderIds.has(p.id)).length;
-        el.indeterminate = selectedInFiltered > 0 && selectedInFiltered < filteredProviders.length;
-    }, [filteredProviders, selectedProviderIds]);
+    // 列定义
+    const columns: ColumnDef<RuleProvider>[] = useMemo(() => [
+        {
+            id: 'name',
+            header: t('ruleProviders.ruleSetName'),
+            width: 'min-w-[140px]',
+        },
+        {
+            id: 'type',
+            header: t('ruleProviders.type'),
+            width: 'w-[70px]',
+        },
+        {
+            id: 'lastUpdate',
+            header: t('ruleProviders.lastUpdate'),
+            width: 'w-[110px]',
+        },
+    ], [t]);
+
+    // 搜索字段
+    const searchFields = useMemo(() => (provider: RuleProvider) => [
+        provider.name,
+        provider.url,
+    ], []);
+
+    // 单元格渲染
+    const renderCell = (provider: RuleProvider, columnId: string, _index: number) => {
+        const enabled = provider.enabled !== false;
+        switch (columnId) {
+            case 'name':
+                return (
+                    <span className="text-[13px] font-medium text-[var(--app-text)] truncate block max-w-[160px]" title={provider.name}>
+                        {provider.name}
+                    </span>
+                );
+            case 'type':
+                return (
+                    <Badge tone="accent" className="text-[12px] px-2.5 py-0.5">
+                        {provider.type || 'clash'}
+                    </Badge>
+                );
+            case 'lastUpdate':
+                return (
+                    <span className="text-[var(--app-text-quaternary)] text-[11px]">
+                        {provider.last_update ? 
+                            formatRelativeTime(provider.last_update) : 
+                            '—'
+                        }
+                    </span>
+                );
+            default:
+                return null;
+        }
+    };
+
+    // 下拉菜单渲染
+    const renderDropdown = (provider: RuleProvider, position: { top: number; left: number }, close: () => void) => (
+        <RuleProviderRowDropdown
+            provider={provider}
+            position={position}
+            onView={(p) => { close(); handleView(p); }}
+            onEdit={(p) => { close(); handleEdit(p); }}
+            onDelete={(id) => { close(); handleDelete(id); }}
+        />
+    );
+
+    // 自定义操作列（含刷新按钮）
+    const renderActions = (provider: RuleProvider, _index: number, dropdownButtonRef: (el: HTMLButtonElement | null) => void, onOpenDropdown: (e: React.MouseEvent, itemId: string) => void) => (
+        <div className="flex items-center justify-end gap-0.5">
+            {provider.type !== 'local' && (
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={() => handleRefresh(provider)}
+                    disabled={downloadingId === provider.id}
+                    title={t('common.refresh')}
+                >
+                    <RefreshCw className={cn("w-3.5 h-3.5", downloadingId === provider.id && "animate-spin")} />
+                </Button>
+            )}
+            <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                ref={dropdownButtonRef}
+                onClick={(e) => onOpenDropdown(e, provider.id)}
+            >
+                <MoreVertical className="w-3.5 h-3.5" />
+            </Button>
+        </div>
+    );
+
 
     return (
         <div className="page-shell text-[var(--app-text-secondary)] relative">
-            {/* Notification - 使用 Portal 渲染到 body，避免被弹窗遮挡 */}
+            {/* Notification */}
             <NotificationList notifications={notifications} onRemove={removeNotification} />
 
             <div className="page-header relative" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
                 <div className="min-w-0">
                     <h1 className="page-title">{t('ruleProviders.title')}</h1>
-                    <p className="page-subtitle">{t('ruleProviders.subtitle')}</p>
                 </div>
-                <div className="toolbar relative" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+                <div className="toolbar" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
                     <Button
                         variant="secondary"
                         size="sm"
@@ -467,251 +500,34 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
                 </div>
             </div>
 
-            <div className="page-content space-y-3">
-                {/* 搜索、筛选、操作栏 */}
-                <Card className="overflow-hidden p-0">
-                    <div className="flex flex-col gap-2 border-b border-[var(--app-divider)] bg-[rgba(255,255,255,0.6)] px-3 py-2">
-                        <div className="flex flex-wrap items-center gap-2">
-                            <div className="relative min-w-[180px]">
-                                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--app-text-quaternary)]" />
-                                <input
-                                    value={searchQuery}
-                                    onChange={(e) => setSearchQuery(e.target.value)}
-                                    placeholder={t('ruleProviders.searchPlaceholder')}
-                                    className="input-field h-8 pl-8 pr-2.5 text-[12px]"
-                                />
-                            </div>
-                            {([
-                                { key: 'all' as const, labelKey: 'ruleProviders.filterAll' },
-                                { key: 'enabled' as const, labelKey: 'ruleProviders.filterEnabled' },
-                                { key: 'disabled' as const, labelKey: 'ruleProviders.filterDisabled' },
-                                { key: 'selected' as const, labelKey: 'ruleProviders.filterSelected' }
-                            ]).map((option) => (
-                                <button
-                                    key={option.key}
-                                    type="button"
-                                    onClick={() => setStatusFilter(option.key as typeof statusFilter)}
-                                    className={cn(
-                                        "rounded-full border px-2.5 py-1 text-[11px] font-medium transition-all",
-                                        statusFilter === option.key
-                                            ? "border-[var(--app-accent-border)] bg-[var(--app-accent-soft)] text-[var(--app-accent-strong)]"
-                                            : "border-[var(--app-stroke)] bg-white/75 text-[var(--app-text-tertiary)] hover:text-[var(--app-text-secondary)]"
-                                    )}
-                                >
-                                    {t(option.labelKey)}
-                                </button>
-                            ))}
-                            <span className="text-[11px] text-[var(--app-text-quaternary)]">
-                                {t('ruleProviders.statsLine', { total: providerStats.total, filtered: filteredProviders.length })}
-                            </span>
+            <div className="page-content flex flex-col !overflow-hidden">
+                <PolicyListTable<RuleProvider>
+                    items={providers}
+                    columns={columns}
+                    renderCell={renderCell}
+                    searchFields={searchFields}
+                    searchPlaceholder={t('ruleProviders.searchPlaceholder')}
+                    statsLineKey="ruleProviders.statsLine"
+                    addLabelKey="ruleProviders.add"
+                    getEnabled={(p) => p.enabled !== false}
+                    onAdd={handleAdd}
+                    onToggleEnabled={handleToggleEnabled}
+                    onBatchEnable={handleBatchEnable}
+                    onBatchDisable={handleBatchDisable}
+                    onBatchDelete={handleBatchDeleteForTable}
+                    onEdit={handleEdit}
+                    renderDropdown={renderDropdown}
+                    renderActions={renderActions}
+                    onReorder={handleReorder}
+                    showIndexColumn
+                    noMatchText={t('ruleProviders.noMatchRuleProviders')}
+                    emptyState={
+                        <div className="flex min-h-[180px] flex-col items-center justify-center py-8 text-center">
+                            <Layers className="h-8 w-8 text-[var(--app-text-quaternary)] opacity-40" />
+                            <p className="mt-3 text-[13px] text-[var(--app-text-tertiary)]">{t('ruleProviders.noRuleProviders')}</p>
                         </div>
-                        <div className="flex flex-wrap items-center gap-1.5">
-                            <button
-                                type="button"
-                                onClick={() => !downloadingAll && selectedProviderIds.size > 0 && handleRefreshSelected()}
-                                disabled={downloadingAll || selectedProviderIds.size === 0}
-                                className={cn(
-                                    "text-[11px] transition-colors",
-                                    downloadingAll || selectedProviderIds.size === 0
-                                        ? "text-[var(--app-text-quaternary)] cursor-not-allowed"
-                                        : "text-[var(--app-accent-strong)] hover:text-[var(--app-accent)] cursor-pointer"
-                                )}
-                            >
-                                {downloadingAll ? <><RefreshCw className="w-3 h-3 mr-0.5 inline align-middle animate-spin" />{t('ruleProviders.updating')}</> : t('ruleProviders.update')}
-                            </button>
-                            <div className="mx-1 w-px h-5 bg-[var(--app-divider)]" />
-                            <Button variant="ghost" size="sm" className="h-7 px-2 text-[11px] text-emerald-600 hover:text-emerald-700" onClick={() => handleBatchEnable()} disabled={selectedProviderIds.size === 0}>{t('ruleProviders.enable')}</Button>
-                            <Button variant="ghost" size="sm" className="h-7 px-2 text-[11px] text-amber-600 hover:text-amber-700" onClick={() => handleBatchDisable()} disabled={selectedProviderIds.size === 0}>{t('ruleProviders.disable')}</Button>
-                            <Button variant="ghost" size="sm" className="h-7 px-2 text-[11px] text-red-500 hover:text-red-600" onClick={handleBatchDelete} disabled={selectedProviderIds.size === 0}>{t('ruleProviders.delete')}</Button>
-                            <Button variant="primary" size="sm" className="h-7 px-2 text-[11px]" onClick={handleAdd}>
-                                <Plus className="w-3 h-3 mr-1" />
-                                {t('ruleProviders.add')}
-                            </Button>
-                        </div>
-                    </div>
-
-                    <div className="overflow-x-auto">
-                                <table className="w-full">
-                                    <thead>
-                                        <tr className="sticky top-0 z-10 border-b border-[var(--app-divider)] bg-[rgba(248,249,251,0.95)]">
-                                            <th className="w-8 shrink-0 pl-4 pr-2 py-1.5 text-left">
-                                                {filteredProviders.length > 0 && (
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={filteredProviders.every(p => selectedProviderIds.has(p.id))}
-                                                        ref={selectAllCheckboxRef}
-                                                        onChange={() => {
-                                                            const allSelected = filteredProviders.every(p => selectedProviderIds.has(p.id));
-                                                            if (allSelected) {
-                                                                setSelectedProviderIds(prev => {
-                                                                    const next = new Set(prev);
-                                                                    filteredProviders.forEach(p => next.delete(p.id));
-                                                                    return next;
-                                                                });
-                                                            } else {
-                                                                setSelectedProviderIds(prev => {
-                                                                    const next = new Set(prev);
-                                                                    filteredProviders.forEach(p => next.add(p.id));
-                                                                    return next;
-                                                                });
-                                                            }
-                                                        }}
-                                                        className="h-3.5 w-3.5 rounded border-[rgba(39,44,54,0.2)] text-[var(--app-accent)] focus:ring-[var(--app-accent)]"
-                                                        aria-label={t('ruleProviders.selectAll')}
-                                                    />
-                                                )}
-                                            </th>
-                                            <th className="text-left py-1.5 px-3 text-[11px] font-medium text-[var(--app-text-quaternary)] w-[44px]">#</th>
-                                            <th className="text-left py-1.5 px-3 text-[11px] font-medium text-[var(--app-text-quaternary)] w-[1%]">{t('ruleProviders.columnEnabled')}</th>
-                                            <th className="text-left py-1.5 px-3 text-[11px] font-medium text-[var(--app-text-quaternary)] min-w-[140px]">{t('ruleProviders.ruleSetName')}</th>
-                                            <th className="text-left py-1.5 px-3 text-[11px] font-medium text-[var(--app-text-quaternary)] w-[70px]">{t('ruleProviders.type')}</th>
-                                            <th className="text-left py-1.5 px-3 text-[11px] font-medium text-[var(--app-text-quaternary)] w-[110px]">{t('ruleProviders.lastUpdate')}</th>
-                                            <th className="text-right py-1.5 px-3 text-[11px] font-medium text-[var(--app-text-quaternary)] w-[90px]">{t('ruleProviders.actions')}</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {filteredProviders.length === 0 ? (
-                                            <tr>
-                                                <td colSpan={7} className="py-12 text-center text-[var(--app-text-tertiary)] text-[13px]">
-                                                    {providers.length === 0 ? (
-                                                        <>
-                                                            <Layers className="mx-auto h-8 w-8 opacity-40" />
-                                                            <p className="mt-2">{t('ruleProviders.noRuleProviders')}</p>
-                                                        </>
-                                                    ) : (
-                                                        <>
-                                                            <Search className="mx-auto h-6 w-6 opacity-50" />
-                                                            <p className="mt-2">{t('ruleProviders.noMatchRuleProviders')}</p>
-                                                        </>
-                                                    )}
-                                                </td>
-                                            </tr>
-                                        ) : filteredProviders.map((provider, index) => (
-                                            <tr
-                                                key={provider.id}
-                                                className={cn(
-                                                    "border-b border-[var(--app-divider)] last:border-b-0 transition-colors hover:bg-[var(--app-hover)]/50 cursor-pointer",
-                                                    selectedProviderIds.has(provider.id) && "bg-[var(--app-accent-soft-card)]"
-                                                )}
-                                                onDoubleClick={(e) => {
-                                                    if (!(e.target as HTMLElement).closest('button, input')) {
-                                                        handleEdit(provider);
-                                                    }
-                                                }}
-                                            >
-                                                <td className="w-8 shrink-0 pl-4 pr-2 py-1.5 align-middle" onClick={(e) => e.stopPropagation()}>
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={selectedProviderIds.has(provider.id)}
-                                                        onChange={() => toggleProviderSelection(provider.id)}
-                                                        className="h-3.5 w-3.5 rounded border-[rgba(39,44,54,0.2)] text-[var(--app-accent)] focus:ring-[var(--app-accent)]"
-                                                        aria-label={t('ruleProviders.selectRowAria', { name: provider.name })}
-                                                    />
-                                                </td>
-                                                <td className="py-1.5 px-3 text-[var(--app-text-quaternary)] text-[11px] tabular-nums">
-                                                    {index + 1}
-                                                </td>
-                                                <td className="py-1.5 px-3 align-middle">
-                                                    <Switch
-                                                        checked={provider.enabled !== false}
-                                                        onCheckedChange={() => handleToggleEnabled(provider)}
-                                                        className="scale-90"
-                                                    />
-                                                </td>
-                                                <td className={cn("py-1.5 px-3", provider.enabled === false && "opacity-60")}>
-                                                    <span className="text-[13px] font-medium text-[var(--app-text)] truncate block max-w-[160px]" title={provider.name}>
-                                                        {provider.name}
-                                                    </span>
-                                                </td>
-                                                <td className={cn("py-1.5 px-3", provider.enabled === false && "opacity-60")}>
-                                                    <Badge tone="accent" className="text-[10px] px-1.5 py-0 !bg-[rgba(85,96,111,0.2)]">
-                                                        {provider.type || 'clash'}
-                                                    </Badge>
-                                                </td>
-                                                <td className={cn("py-1.5 px-3 text-[var(--app-text-quaternary)] text-[11px]", provider.enabled === false && "opacity-60")}>
-                                                    {provider.last_update ? 
-                                                        formatRelativeTime(provider.last_update) : 
-                                                        '—'
-                                                    }
-                                                </td>
-                                                <td className="py-1.5 px-3 text-right">
-                                                    <div className="flex items-center justify-end gap-0.5">
-                                                        {provider.type !== 'local' && (
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="icon"
-                                                            className="h-7 w-7"
-                                                            onClick={() => handleRefresh(provider)}
-                                                            disabled={downloadingId === provider.id}
-                                                            title={t('common.refresh')}
-                                                        >
-                                                            <RefreshCw className={cn("w-3.5 h-3.5", downloadingId === provider.id && "animate-spin")} />
-                                                        </Button>
-                                                        )}
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="icon"
-                                                            className="h-7 w-7"
-                                                            ref={(el) => { dropdownButtonRefs.current[provider.id] = el; }}
-                                                            onClick={(e) => handleOpenDropdown(e, provider.id)}
-                                                        >
-                                                            <MoreVertical className="w-3.5 h-3.5" />
-                                                        </Button>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </Card>
-
-                        {/* 下拉菜单 */}
-                        {openDropdownId && (() => {
-                            const provider = providers.find(p => p.id === openDropdownId);
-                            if (!provider) return null;
-                            return createPortal(
-                                <motion.div
-                                    initial={{ opacity: 0, scale: 0.95, y: -5 }}
-                                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                                    exit={{ opacity: 0, scale: 0.95, y: -5 }}
-                                    transition={{ duration: 0.15 }}
-                                    className="dropdown-menu fixed bg-white border border-[rgba(39,44,54,0.08)] rounded-[12px] shadow-[var(--shadow-elevated)] overflow-hidden z-[200] flex flex-col py-1.5 w-30"
-                                    style={{ top: dropdownPosition.top, left: dropdownPosition.left }}
-                                    onClick={(e) => e.stopPropagation()}
-                                >
-                                    <button
-                                        className="flex items-center px-3 py-1.5 text-[12px] text-[var(--app-text-secondary)] hover:bg-[var(--app-bg-secondary)] hover:text-[var(--app-text)] transition-colors text-left w-full"
-                                        onClick={() => handleView(provider)}
-                                    >
-                                        <Eye className="w-3.5 h-3.5 mr-2" />
-                                        {t('ruleProviders.view')}
-                                    </button>
-                                    <button
-                                        className="flex items-center px-3 py-1.5 text-[12px] text-[var(--app-text-secondary)] hover:bg-[var(--app-bg-secondary)] hover:text-[var(--app-text)] transition-colors text-left w-full"
-                                        onClick={() => {
-                                            setOpenDropdownId(null);
-                                            handleEdit(provider);
-                                        }}
-                                    >
-                                        <Edit2 className="w-3.5 h-3.5 mr-2" />
-                                        {t('ruleProviders.edit')}
-                                    </button>
-                                    <div className="mx-2 my-1 border-t border-[rgba(39,44,54,0.06)]" />
-                                    <button
-                                        className="flex items-center px-3 py-1.5 text-[12px] text-red-500 hover:bg-red-50 transition-colors text-left"
-                                        onClick={() => {
-                                            setOpenDropdownId(null);
-                                            handleDelete(provider.id);
-                                        }}
-                                    >
-                                        <Trash2 className="w-3.5 h-3.5 mr-2" />
-                                        {t('ruleProviders.delete')}
-                                    </button>
-                                </motion.div>,
-                                document.body
-                            );
-                        })()}
+                    }
+                />
             </div>
 
             {/* Confirm Dialog */}
@@ -770,11 +586,11 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
                             initial={{ opacity: 0, scale: 0.95, y: 10 }}
                             animate={{ opacity: 1, scale: 1, y: 0 }}
                             exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                            className="relative z-10 my-4 w-full max-w-3xl max-h-[85vh] flex flex-col bg-white border border-[rgba(39,44,54,0.08)] rounded-[20px] shadow-[var(--shadow-elevated)] overflow-hidden"
+                            className="relative z-10 my-4 w-full max-w-3xl max-h-[85vh] flex flex-col bg-[var(--app-panel)] border border-[var(--app-stroke)] rounded-[20px] shadow-[var(--shadow-elevated)] overflow-hidden"
                             style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
                             onClick={e => e.stopPropagation()}
                         >
-                            <div className="flex shrink-0 items-center justify-between px-6 py-4 border-b border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/50">
+                            <div className="flex shrink-0 items-center justify-between px-6 py-4 border-b border-[var(--app-divider)] bg-[var(--app-bg-secondary)]/50">
                                 <h2 className="text-[15px] font-semibold text-[var(--app-text)]">
                                     {viewProvider
                                         ? t('ruleProviders.viewRuleSetTitleWithName', { name: viewProvider.name })
@@ -807,7 +623,7 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
                                         {t('ruleProviders.loadingView')}
                                     </div>
                                 ) : viewError ? (
-                                    <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-[13px] text-red-700">
+                                    <div className="p-4 bg-[var(--app-danger-soft)] border border-[var(--app-danger)]/30 rounded-lg text-[13px] text-[var(--app-danger)]">
                                         {viewError}
                                     </div>
                                 ) : viewContent !== null ? (
@@ -838,11 +654,11 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
                             initial={{ opacity: 0, scale: 0.95, y: 10 }}
                             animate={{ opacity: 1, scale: 1, y: 0 }}
                             exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                            className="relative z-10 w-full max-w-lg max-h-[90vh] flex flex-col bg-white border border-[rgba(39,44,54,0.08)] rounded-[20px] shadow-[var(--shadow-elevated)] overflow-hidden"
+                            className="relative z-10 w-full max-w-lg max-h-[90vh] flex flex-col bg-[var(--app-panel)] border border-[var(--app-stroke)] rounded-[20px] shadow-[var(--shadow-elevated)] overflow-hidden"
                             style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
                             onClick={e => e.stopPropagation()}
                         >
-                            <div className="flex shrink-0 items-center justify-between px-6 py-4 border-b border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/50">
+                            <div className="flex shrink-0 items-center justify-between px-6 py-4 border-b border-[var(--app-divider)] bg-[var(--app-bg-secondary)]/50">
                                 <h2 className="text-[15px] font-semibold text-[var(--app-text)]">
                                     {editingProvider ? t('ruleProviders.editRuleSet') : t('ruleProviders.addRuleSet')}
                                 </h2>
@@ -867,7 +683,7 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
                                                 "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] border transition-all cursor-pointer",
                                                 type === 'clash'
                                                     ? "border-[var(--app-accent-border)] bg-[var(--app-accent-soft)]"
-                                                    : "border-[var(--app-stroke)] bg-white hover:bg-[var(--app-hover)]"
+                                                    : "border-[var(--app-stroke)] bg-[var(--app-panel)] hover:bg-[var(--app-hover)]"
                                             )}
                                         >
                                             <Cloud className={cn(
@@ -888,7 +704,7 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
                                                 "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] border transition-all cursor-pointer",
                                                 type === 'singbox'
                                                     ? "border-[var(--app-accent-border)] bg-[var(--app-accent-soft)]"
-                                                    : "border-[var(--app-stroke)] bg-white hover:bg-[var(--app-hover)]"
+                                                    : "border-[var(--app-stroke)] bg-[var(--app-panel)] hover:bg-[var(--app-hover)]"
                                             )}
                                         >
                                             <Layers className={cn(
@@ -909,7 +725,7 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
                                                 "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] border transition-all cursor-pointer",
                                                 type === 'local'
                                                     ? "border-[var(--app-accent-border)] bg-[var(--app-accent-soft)]"
-                                                    : "border-[var(--app-stroke)] bg-white hover:bg-[var(--app-hover)]"
+                                                    : "border-[var(--app-stroke)] bg-[var(--app-panel)] hover:bg-[var(--app-hover)]"
                                             )}
                                         >
                                             <Box className={cn(
@@ -956,7 +772,7 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
                                 )}
                             </div>
 
-                            <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/30">
+                            <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-[var(--app-divider)] bg-[var(--app-bg-secondary)]/30">
                                 <Button variant="ghost" onClick={() => setShowModal(false)} disabled={saving}>{t('common.cancel')}</Button>
                                 <Button
                                     variant="primary"

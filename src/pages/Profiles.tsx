@@ -2,15 +2,16 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { useDropdownPosition } from '../hooks/useDropdownPosition';
-import { Download, RefreshCw, Plus, MoreVertical, Trash2, Loader2, Edit2, FileText, X, Copy, Layers, GripVertical } from 'lucide-react';
+import { Download, RefreshCw, Plus, MoreVertical, Trash2, Loader2, Edit2, FileText, Layers, GripVertical, X, Link } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { cn } from '../components/Sidebar';
+import { cn } from '../lib/utils';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Field';
 import { Badge, Card } from '../components/ui/Surface';
 import { useNotificationState, NotificationList, useConfirm } from '../components/ui/Notification';
 import { formatRelativeTime } from '../shared/date-utils';
 import { GroupEditor } from './Profiles/components/GroupEditor';
+import { ViewConfigModal } from '../components/ui/ViewConfigModal';
 import Sortable from 'sortablejs';
 
 /** 格式化更新间隔显示 */
@@ -151,7 +152,7 @@ const [profiles, setProfiles] = useState<Profile[]>([]);
     // 检查是否已经在选中状态，如果已选中则不做任何操作
     const currentSelected = profiles.find(p => p.selected === 1);
     if (currentSelected && currentSelected.id === id) {
-      return; // 已经是当前选中的配置，不进行任何操作
+        return; // 已经是当前选中的配置，不进行任何操作
     }
 
     try {
@@ -380,39 +381,50 @@ const [profiles, setProfiles] = useState<Profile[]>([]);
 
   return (
     <div className="page-shell relative overflow-hidden">
-      {/* Notification - 使用 Portal 渲染到 body，避免被弹窗遮挡 */}
+          {/* Notification - 使用 Portal 渲染到 body，避免被弹窗遮挡 */}
       <NotificationList notifications={notifications} onRemove={removeNotification} />
 
       <div className="page-header" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
         <div>
           <h1 className="page-title">{t('profiles.title')}</h1>
-          <p className="page-subtitle">{t('profiles.subtitle')}</p>
         </div>
       </div>
 
       <div className="page-content">
         <div className="pb-5" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-          <div className="flex flex-wrap gap-2.5">
-            <Input
-              type="text"
-              placeholder={t('profiles.subscriptionUrl')}
-              className="flex-1 min-w-[280px]"
-              value={urlInput}
-              onChange={(e) => setUrlInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-            />
-            <Button
-              onClick={handleDownload}
-              disabled={loading}
-              variant="primary"
-            >
-              {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
-              <span>{loading ? t('profiles.adding') : t('profiles.addRemote')}</span>
-            </Button>
-            <Button variant="secondary" onClick={handleImportLocal}>
-              <Plus className="w-3.5 h-3.5" />
-              <span>{t('profiles.importLocal')}</span>
-            </Button>
+          <div className="flex flex-col gap-2 rounded-lg border border-[var(--app-divider)] bg-[var(--app-panel)]/55 px-3 py-3 shadow-[0_8px_22px_rgba(45,86,166,0.045)] sm:flex-row sm:items-center">
+            <div className="relative min-w-0 flex-1">
+              <Link className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--app-text-quaternary)]" />
+              <Input
+                type="text"
+                placeholder={t('profiles.subscriptionUrl')}
+                className="h-9 min-h-9 rounded-md border-[var(--app-stroke)] bg-[var(--app-bg-secondary)]/70 pl-8 pr-3 text-[12px] shadow-none"
+                value={urlInput}
+                onChange={(e) => setUrlInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+              />
+            </div>
+            <div className="grid shrink-0 grid-cols-2 gap-2 sm:flex sm:items-center">
+              <Button
+                onClick={handleDownload}
+                disabled={loading || !urlInput.trim()}
+                variant="primary"
+                size="sm"
+                className="h-9 min-w-[112px] rounded-md px-3 text-[12px] shadow-[0_8px_18px_rgba(31,119,255,0.15)]"
+              >
+                {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                <span>{loading ? t('profiles.adding') : t('profiles.addRemote')}</span>
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleImportLocal}
+                className="h-9 min-w-[104px] rounded-md border-[var(--app-stroke)] bg-[var(--app-panel)]/75 px-3 text-[12px] shadow-none"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>{t('profiles.importLocal')}</span>
+              </Button>
+            </div>
           </div>
         </div>
 
@@ -423,19 +435,23 @@ const [profiles, setProfiles] = useState<Profile[]>([]);
                 key={profile.id}
                 onClick={() => handleSelect(profile.id)}
                 className={cn(
-                  "relative p-4 cursor-pointer transition-all flex flex-col h-40 group shadow-none",
+                  "panel-soft transition-all duration-200 flex flex-col relative overflow-hidden h-40",
                   profile.selected
-                    ? "border-[var(--app-accent-border)] bg-[var(--app-accent-soft-card)]"
-                    : "hover:border-[rgba(39,44,54,0.14)] hover:bg-white/80"
+                    ? "profile-card-selected"
+                    : "hover:border-[var(--app-stroke-strong)] hover:bg-[var(--app-panel)]/80"
                 )}
               >
-                <div className="relative flex justify-between items-start mb-1.5 z-10">
+                {/* 选中指示器 */}
+                <div className="relative flex justify-between items-start mb-1.5 z-10 px-4 pt-3">
                   <div className="flex items-center gap-2 min-w-0 pr-3">
                     {/* 拖拽手柄 */}
                     <div className="drag-handle sortable-handle flex-shrink-0 cursor-grab active:cursor-grabbing text-[var(--app-text-quaternary)] hover:text-[var(--app-text-secondary)] transition-colors">
                       <GripVertical className="w-4 h-4" />
                     </div>
-                    <h3 className="font-medium text-[14px] text-[var(--app-text)] truncate max-w-[160px]">{profile.name}</h3>
+                    <h3 className={cn(
+                      "font-medium text-[14px] truncate max-w-[160px] transition-colors",
+                      profile.selected === 1 ? "text-[var(--app-text)]" : "text-[var(--app-text)]"
+                    )}>{profile.name}</h3>
                     <span className="shrink-0 text-[11px] text-[var(--app-text-tertiary)]">{profile.nodes?.length ?? 0} {t('profiles.nodes')}</span>
                   </div>
                   <div className={cn("flex space-x-0.5 transition-opacity", openDropdownId === profile.id ? "opacity-100 relative z-50" : "opacity-100")}>
@@ -457,7 +473,7 @@ const [profiles, setProfiles] = useState<Profile[]>([]);
                       animate={{ opacity: 1, scale: 1, y: 0 }}
                       exit={{ opacity: 0, scale: 0.95, y: -5 }}
                       transition={{ duration: 0.15 }}
-                      className="dropdown-menu fixed bg-white border border-[rgba(39,44,54,0.08)] rounded-[12px] shadow-[var(--shadow-elevated)] overflow-hidden z-[200] flex flex-col py-1.5 w-36"
+                      className="dropdown-menu fixed bg-[var(--app-panel)] border border-[var(--app-stroke)] rounded-[12px] shadow-[var(--shadow-elevated)] overflow-hidden z-[200] flex flex-col py-1.5 w-36"
                       style={{ top: dropdownPosition.top, left: dropdownPosition.left }}
                       onClick={(e) => e.stopPropagation()}
                     >
@@ -491,7 +507,7 @@ const [profiles, setProfiles] = useState<Profile[]>([]);
                         <Layers className="w-3.5 h-3.5 mr-2" />
                         {t('profiles.customGroups')}
                       </button>
-                      <div className="mx-2 my-1 border-t border-[rgba(39,44,54,0.06)]" />
+                      <div className="mx-2 my-1 border-t border-[var(--app-divider)]" />
                       <button
                         className="flex items-center px-3 py-1.5 text-[12px] text-[var(--app-danger)] hover:bg-[rgba(177,79,94,0.08)] transition-colors text-left w-full"
                         onClick={(e) => {
@@ -507,13 +523,13 @@ const [profiles, setProfiles] = useState<Profile[]>([]);
                   )}
                 </div>
 
-                <div className="mt-1 flex-1 flex flex-col justify-center gap-1">
+                <div className="px-4 mt-1 flex-1 flex flex-col justify-center gap-1">
                   {/* 流量信息 */}
                   {profile.subscriptionUserinfo ? (
                     <>
                       <div className="h-1.5 w-full rounded-full bg-[var(--app-bg-secondary)] overflow-hidden">
                         <div
-                          className="h-full rounded-full bg-[var(--app-accent)] transition-all"
+                          className="h-full rounded-full bg-[var(--app-text-tertiary)] transition-all"
                           style={{ width: `${Math.min(100, profile.subscriptionUserinfo.total > 0 ? ((profile.subscriptionUserinfo.upload + profile.subscriptionUserinfo.download) / profile.subscriptionUserinfo.total) * 100 : 0)}%` }}
                         />
                       </div>
@@ -524,7 +540,7 @@ const [profiles, setProfiles] = useState<Profile[]>([]);
                   ) : null}
                 </div>
 
-                <div className="flex items-center justify-between mt-3">
+                <div className="px-4 pb-3 flex items-center justify-between mt-3">
                   <div className="text-[11px] text-[var(--app-text-quaternary)]">
                     <span>{t('profiles.lastUpdate')}: {profile.last_update ? formatRelativeTime(profile.last_update) : t('profiles.never')}</span>
                   </div>
@@ -571,11 +587,11 @@ const [profiles, setProfiles] = useState<Profile[]>([]);
               initial={{ opacity: 0, scale: 0.95, y: 10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              className="relative z-10 w-full max-w-md bg-white border border-[rgba(39,44,54,0.08)] rounded-[20px] shadow-[var(--shadow-elevated)] overflow-hidden"
+              className="relative z-10 w-full max-w-md bg-[var(--app-panel)] border border-[var(--app-stroke)] rounded-[20px] shadow-[var(--shadow-elevated)] overflow-hidden"
               style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
               onClick={e => e.stopPropagation()}
             >
-              <div className="flex shrink-0 items-center justify-between px-6 py-4 border-b border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/50">
+              <div className="flex shrink-0 items-center justify-between px-6 py-4 border-b border-[var(--app-divider)] bg-[var(--app-bg-secondary)]/50">
                 <h2 className="text-[15px] font-semibold text-[var(--app-text)]">{t('profiles.editProfile')}</h2>
                 <button
                   type="button"
@@ -627,7 +643,7 @@ const [profiles, setProfiles] = useState<Profile[]>([]);
                 )}
               </div>
 
-              <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/30">
+              <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-[var(--app-divider)] bg-[var(--app-bg-secondary)]/30">
                 <Button variant="ghost" onClick={() => setEditingProfile(null)}>
                   {t('common.cancel')}
                 </Button>
@@ -643,73 +659,13 @@ const [profiles, setProfiles] = useState<Profile[]>([]);
       )}
 
       {/* Edit Content Modal */}
-      {createPortal(
-        <AnimatePresence>
-          {editingContentProfile && (
-          <div className="fixed inset-0 z-[200] flex items-center justify-center p-6">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="absolute inset-0 z-0 bg-black/40 backdrop-blur-sm"
-              onClick={closeContentModal}
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              className="relative z-10 w-full max-w-3xl h-[80vh] flex flex-col bg-white border border-[rgba(39,44,54,0.08)] rounded-[20px] shadow-[var(--shadow-elevated)] overflow-hidden"
-              style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-              onClick={e => e.stopPropagation()}
-            >
-              <div className="flex shrink-0 items-center justify-between px-6 py-4 border-b border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/50">
-                <div className="flex flex-col">
-                  <h2 className="text-[15px] font-semibold text-[var(--app-text)]">{t('profiles.viewConfig')}</h2>
-                  <span className="text-[12px] text-[var(--app-text-tertiary)]">{editingContentProfile.name}</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={handleCopyContent}
-                    disabled={contentLoading || !editContent}
-                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[var(--app-text-tertiary)] hover:bg-[var(--app-hover)] hover:text-[var(--app-text)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    title={t('common.copy')}
-                  >
-                    <Copy className="w-4 h-4" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={closeContentModal}
-                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[var(--app-text-tertiary)] hover:bg-[var(--app-hover)] hover:text-[var(--app-text)] transition-colors -mr-2"
-                    aria-label={t('common.close')}
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex-1 p-0 relative bg-[var(--app-bg-secondary)]/20">
-                {contentLoading ? (
-                  <div className="flex items-center justify-center h-full text-[var(--app-text-tertiary)]">
-                    <Loader2 className="w-6 h-6 animate-spin mr-2" />
-                    {t('common.loading')}
-                  </div>
-                ) : (
-                  <textarea
-                    value={editContent}
-                    readOnly
-                    className="w-full h-full p-4 font-mono text-[13px] text-[var(--app-text)] bg-transparent resize-none focus:outline-none cursor-default"
-                    spellCheck={false}
-                    placeholder=""
-                  />
-                )}
-              </div>
-            </motion.div>
-          </div>
-          )}
-        </AnimatePresence>,
-        document.body
-      )}
+      <ViewConfigModal
+        open={!!editingContentProfile}
+        onClose={closeContentModal}
+        title={editingContentProfile ? `${t('profiles.viewConfig')} - ${editingContentProfile.name}` : t('profiles.viewConfig')}
+        content={editContent}
+        loading={contentLoading}
+      />
 
       {/* Group Editor Modal */}
       {editingGroupProfile && (

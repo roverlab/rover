@@ -1,7 +1,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from './ui/Button';
-import { Sliders, GitBranch, List } from 'lucide-react';
+import { Sliders, GitBranch } from 'lucide-react';
 import { useOverrideRules } from '../contexts/OverrideRulesContext';
 
 interface OverrideRulesGateProps {
@@ -31,27 +31,25 @@ export function OverrideRulesGate({ pageName, onGoToAdvancedSettings, children }
   const { title, icon: Icon } = pageInfo[pageName];
 
   return (
-    <div className="page-shell text-[var(--app-text-secondary)] flex-1 min-h-0">
+    <div className="page-shell text-muted-foreground flex-1 min-h-0">
       <div className="page-header" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
         <div>
           <h1 className="page-title">{title}</h1>
-          <p className="page-subtitle">{t('overrideRulesGate.pageSubtitle')}</p>
         </div>
       </div>
       <div className="page-content flex-1 flex items-center justify-center min-h-0">
         <div className="empty-state">
-          <div className="w-16 h-16 rounded-2xl bg-[var(--app-accent-soft)] flex items-center justify-center mb-4">
-            <Icon className="w-8 h-8 text-[var(--app-accent-strong)]" />
+          <div className="w-16 h-16 rounded-xl bg-accent flex items-center justify-center mb-4">
+            <Icon className="w-8 h-8 text-primary" />
           </div>
-          <p className="text-[14px] font-medium text-[var(--app-text)]">
+          <p className="text-[14px] font-medium text-foreground">
             {t('overrideRulesGate.hintPrimary')}
           </p>
-          <p className="mt-1 text-[12px] text-[var(--app-text-tertiary)] max-w-sm text-center">
+          <p className="mt-1 text-[12px] text-muted-foreground max-w-sm text-center">
             {t('overrideRulesGate.hintSecondary')}
           </p>
           <Button
             variant="primary"
-            size="md"
             className="mt-6"
             onClick={onGoToAdvancedSettings}
           >

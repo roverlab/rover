@@ -1,133 +1,66 @@
 <div align="center">
-  <img src="./public/icon.png" alt="Rover" width="120" height="120">
+  <img src="./public/icon.png" alt="Rover Logo" width="100">
 
   <h1>Rover</h1>
+  <p><strong>Cross-platform sing-box GUI client · A truly visual configuration experience</strong></p>
 
-  <p>
-    <strong>A cross-platform sing-box GUI client with full visual configuration for Windows, macOS, and Linux</strong>
-  </p>
+<p>
+  <img src="https://img.shields.io/github/v/release/roverlab/rover?style=for-the-badge&logo=github" alt="Release">
+  <img src="https://img.shields.io/github/downloads/roverlab/rover/total?style=for-the-badge&color=orange" alt="Downloads">
+  <img src="https://img.shields.io/github/stars/roverlab/rover?style=for-the-badge" alt="Stars">
+  <img src="https://img.shields.io/badge/Platform-Win%20%7C%20Mac%20%7C%20Linux-blue?style=for-the-badge&logo=electron" alt="Platform">
 
-  <p>
-    <a href="#features">✨ Features</a> •
-    <a href="#screenshots">📸 Screenshots</a> •
-    <a href="#installation">⚡ Installation</a> •
-    <a href="#quick-start">🚀 Quick Start</a> •
-    <a href="#development">🛠️ Development</a>
-  </p>
+  <a href="./README.md">English</a> | <a href="./README_zh-CN.md">简体中文</a> | <a href="./README_zh-TW.md">繁體中文</a> | <a href="./README_ja.md">日本語</a> | <a href="./README_ko.md">한국어</a> | <a href="./README_ru.md">Русский</a> | <a href="./README_es.md">Español</a> | <a href="./README_fa.md">فارسی</a>
+</p>
 
-  <p>
-    <a href="./README_zh-CN.md">🇨🇳 中文</a> •
-    <a href="./README.md">🇺🇸 English</a>
-  </p>
-
-  <p>
-    <a href="https://github.com/roverlab/rover/releases">
-      <img src="https://img.shields.io/github/v/release/roverlab/rover?style=for-the-badge&logo=github" alt="GitHub release">
-    </a>
-    <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-blue?style=for-the-badge&logo=electron" alt="Platform">
-    <img src="https://img.shields.io/badge/stack-Electron%20%2B%20React%2019%20%2B%20TypeScript-purple?style=for-the-badge" alt="Stack">
-    <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  </p>
 </div>
 
----
+**Rover** is a modern desktop client for sing-box, избавing you from tedious handwritten JSON configurations and delivering a true **what-you-see-is-what-you-get** proxy experience.
 
-## Overview
+## ✨ Key Features
 
-Rover is a modern sing-box desktop client that provides **full visual (WYSIWYG) configuration** — no more manual JSON editing. It features a graphical route rule editor, visual DNS policy management, built-in traffic splitting templates, and seamless Clash subscription migration.
+- 🎨 **Fully Visualized**: Graphical editing of **routing rules** and **custom DNS**, with support for multiple protocols and ad blocking.
+- 🛡️ **TUN Mode**: Native support for TUN virtual network interfaces, enabling one-click takeover of system-wide traffic.
+- 🔄 **Seamless Clash Compatibility**: Fully compatible with Clash / Mihomo subscriptions and rule sets, allowing zero-cost migration for existing users.
+- 📦 **Out-of-the-box**: Built-in classic routing templates (e.g., domestic whitelist / global mode), eliminating complex setup.
+- 📊 **Real-time Monitoring**: View upload/download speeds, node latency, and active connections in real time.
 
-## Features
+## 🌐 Supported Protocols
+`Shadowsocks` / `VMess` / `VLESS (Reality)` / `Trojan` / `Hysteria2` / `TUIC` / `AnyTLS` / `HTTP/SOCKS5`
 
-- **Visual Route Rule Editor** — Graphical editing with full type support (domain, IP CIDR, port, process name, etc.), AND/OR logic combination, real-time preview
-- **Visual DNS Policy Management** — Independent DNS policy per domain, multi-protocol support (UDP/TCP/DoT/DoH/DoQ), ad & tracking domain blocking
-- **One-click Rule Set Management** — Built-in geosite, geoip, ACL4SSR, Clash rule sets; remote subscription with auto-update; local editing with smart format conversion
-- **Built-in Templates** — China Whitelist + Global Proxy (Clash/ACL4SSR), Balanced Traffic Splitting; one-click apply, no manual config needed
-- **Subscription Management** — Remote subscription URL and local file import (Clash YAML / sing-box JSON), auto-update, traffic usage display
-- **Connection Monitor** — Real-time connection list with detail tracking, one-click close connections
-- **Runtime Dashboard** — Real-time up/down traffic charts, node status and latency display
-- **Clash Migration** — Compatible with Mihomo (Clash Meta) rule sets and subscription format, zero learning curve for Clash users
-- **Desktop Integration** — System tray, auto-start on boot, LAN proxy access, IPv6 toggle, hosts override
-- **Localization** — Built-in `zh-CN`, `zh-TW`, `en`, `ko`, `ja`, `ru`, `es`, `fa`
-
-## Supported Protocols & Formats
-
-- **Protocols**: Shadowsocks, VMess/VLESS (with Reality), Trojan, Hysteria2/TUIC, AnyTLS, HTTP/SOCKS5
-- **Subscription Formats**: Clash/Mihomo YAML, sing-box JSON
-
-## Screenshots
+## 📸 Screenshots
 
 <div align="center">
-  <img src="./assets/screenshot11.png" alt="Rover Interface" width="880">
-  <p><em>Main interface with visual policy editor, connection monitor, and navigation views</em></p>
+  <img src="./assets/screenshot11.png" alt="Rover Main Interface" width="800" style="border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
 </div>
 
----
+## ⚡ Quick Start
 
-## Installation
+1. **Download**: Visit [Releases](https://github.com/roverlab/rover/releases) to get the Windows / macOS / Linux versions.
+2. **Import**: Paste your subscription link or import a local file in the "Profiles" page.
+3. **Connect**: Apply a built-in template in the "Policies" page, then enable the proxy (or TUN mode) to get started.
 
-Download from [GitHub Releases](https://github.com/roverlab/rover/releases):
-
-| OS | Format |
-| --- | --- |
-| Windows | `.exe`  |
-| macOS | `.dmg` (Apple Silicon & Intel) |
-| Linux | `.AppImage` |
-
-## Quick Start
-
-1. Download and run the installer for your platform from [Releases](https://github.com/roverlab/rover/releases).
-2. Import a subscription on the **Profiles** page — paste a URL or import a local file.
-3. Go to **Policy**, select a built-in template and click apply to configure traffic splitting.
-4. Pick a node and start the proxy — ready to go!
-
-## Development
+## 🛠️ Development & Build
 
 ```bash
-# Install dependencies
 npm install
+npm run dev        # Start development
+npm run pack:win   # Build Windows version
+````
 
-# Start development
-npm run dev
+## 🤝 Contributing
 
-# Type check
-npm run lint
+We warmly welcome your contributions!
 
-# Build for Windows
-npm run pack:win
+* 🐛 Found a bug? Submit an [Issue](https://github.com/roverlab/rover/issues)
+* 💡 Have ideas? Start a [Discussion](https://github.com/roverlab/rover/discussions)
+* 🛠️ Before submitting a PR, please ensure your code style aligns with the existing architecture.
 
-# Download built-in rulesets
-npm run download:rulesets
-```
-
-## Architecture
-
-- **Frontend**: React 19 + TypeScript + Tailwind CSS v4 + i18next + Framer Motion
-- **Bridge layer**: Electron IPC (`contextBridge`) for main ↔ renderer communication
-- **Backend**: Electron Main Process (Node.js), with modules split into config, db, subscription, route-policy
-- **Build tooling**: Rspack for fast bundling, electron-builder for packaging
-- **Storage**: JSON file-based local persistence for app settings, profiles, and policies
-
-## Contributing
-
-Issues and pull requests are welcome.
-
-1. Report bugs in [Issues](https://github.com/roverlab/rover/issues)
-2. Propose ideas in [Discussions](https://github.com/roverlab/rover/discussions)
-3. Keep changes aligned with existing architecture and code style
-
-## Acknowledgments
-
-- [Sing-Box](https://github.com/SagerNet/sing-box)
-- [Electron](https://www.electronjs.org/)
-- [React](https://react.dev/)
-- [Tailwind CSS](https://tailwindcss.com/)
-- [Rspack](https://rspack.dev/)
+**Special Thanks**: [Sing-Box](https://github.com/SagerNet/sing-box) | [Electron](https://www.electronjs.org/) | [React](https://react.dev/) | [Tailwind CSS](https://tailwindcss.com/) | [Rspack](https://rspack.dev/)
 
 ---
 
 <div align="center">
-  <p><strong>Built with ❤️ by <a href="https://github.com/roverlab">RoverLab</a></strong></p>
-  <p>
-    <strong>Disclaimer:</strong> This project is for learning and communication purposes only. Please comply with local laws and regulations.
-  </p>
+  <p>Built with ❤️ by <strong><a href="https://github.com/roverlab">RoverLab</a></strong></p>
+  <p><em>This project is for learning and communication purposes only. Please comply with local laws and regulations.</em></p>
 </div>

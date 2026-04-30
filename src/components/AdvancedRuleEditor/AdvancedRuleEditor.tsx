@@ -1,5 +1,5 @@
 /**
- * 高级规则编辑器组件
+  * 高级规则编辑器组件
  * 从策略编辑中提取，供策略和规则集共用
  * 统一使用 RuleTreeNode 格式，保存为 RouteLogicRule
  */
@@ -126,11 +126,11 @@ export function AdvancedRuleEditor({
                             initial={{ opacity: 0, scale: 0.95, y: 10 }}
                             animate={{ opacity: 1, scale: 1, y: 0 }}
                             exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                            className="relative z-10 my-4 w-full max-w-4xl max-h-[90vh] flex flex-col bg-white border border-[rgba(39,44,54,0.08)] rounded-[20px] shadow-[var(--shadow-elevated)] overflow-hidden"
+                            className="relative z-10 my-4 w-full max-w-4xl max-h-[90vh] flex flex-col bg-[var(--app-panel)] border border-[var(--app-stroke)] rounded-[20px] shadow-[var(--shadow-elevated)] overflow-hidden"
                             onClick={e => e.stopPropagation()}
                         >
                             {/* Header */}
-                            <div className="flex shrink-0 items-center justify-between px-6 py-4 border-b border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/50">
+                            <div className="flex shrink-0 items-center justify-between px-6 py-4 border-b border-[var(--app-divider)] bg-[var(--app-bg-secondary)]/50">
                                 <h2 className="text-[15px] font-semibold text-[var(--app-text)]">
                                     {defaultTitle}
                                 </h2>

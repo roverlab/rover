@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useCallback, ReactNode, use
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CheckCircle, AlertCircle, X, AlertTriangle } from 'lucide-react';
-import { cn } from '../Sidebar';
+import { cn } from '../../lib/utils';
 
 export interface NotificationItem {
     id: number;
@@ -78,18 +78,18 @@ function NotificationContainer({ notifications, removeNotification }: Notificati
                         animate={{ opacity: 1, x: 0, scale: 1 }}
                         exit={{ opacity: 0, x: 20, scale: 0.95 }}
                         className={cn(
-                            "px-3.5 py-2.5 rounded-[16px] shadow-[var(--shadow-soft)] flex items-center space-x-2.5 text-[13px] font-medium min-w-[180px] max-w-[360px] border backdrop-blur-md",
-                            n.type === 'success' && "bg-white/90 border-[rgba(46,125,91,0.16)] text-[var(--app-text-secondary)]",
-                            n.type === 'error' && "bg-white/90 border-[rgba(177,79,94,0.16)] text-[var(--app-text-secondary)]",
-                            n.type === 'info' && "bg-white/90 border-[rgba(59,130,246,0.16)] text-[var(--app-text-secondary)]",
-                            n.type === 'warning' && "bg-white/90 border-[rgba(234,179,8,0.16)] text-[var(--app-text-secondary)]"
+                            "px-3.5 py-2.5 rounded-lg shadow-sm flex items-center space-x-2.5 text-[13px] font-medium min-w-[180px] max-w-[360px] border bg-background",
+                            n.type === 'success' && "border-green-200 text-foreground",
+                            n.type === 'error' && "border-destructive/30 text-foreground",
+                            n.type === 'info' && "border-blue-200 text-foreground",
+                            n.type === 'warning' && "border-yellow-200 text-foreground"
                         )}
                     >
                         {n.type === 'success' && (
                             <CheckCircle className="w-4 h-4 text-[var(--app-success)] shrink-0" />
                         )}
                         {n.type === 'error' && (
-                            <AlertCircle className="w-4 h-4 text-[var(--app-danger)] shrink-0" />
+                            <AlertCircle className="w-4 h-4 text-destructive shrink-0" />
                         )}
                         {n.type === 'info' && (
                             <AlertCircle className="w-4 h-4 text-blue-500 shrink-0" />
@@ -100,9 +100,9 @@ function NotificationContainer({ notifications, removeNotification }: Notificati
                         <span className="flex-1 break-words">{n.message}</span>
                         <button 
                             onClick={() => removeNotification(n.id)}
-                            className="shrink-0 p-0.5 hover:bg-black/5 rounded transition-colors"
+                            className="shrink-0 p-0.5 hover:bg-accent rounded transition-colors"
                         >
-                            <X className="w-3.5 h-3.5 text-[var(--app-text-quaternary)]" />
+                            <X className="w-3.5 h-3.5 text-muted-foreground" />
                         </button>
                     </motion.div>
                 ))}
@@ -151,18 +151,18 @@ export function NotificationList({
                         animate={{ opacity: 1, x: 0, scale: 1 }}
                         exit={{ opacity: 0, x: 20, scale: 0.95 }}
                         className={cn(
-                            "px-3.5 py-2.5 rounded-[16px] shadow-[var(--shadow-soft)] flex items-center space-x-2.5 text-[13px] font-medium min-w-[180px] max-w-[360px] border backdrop-blur-md",
-                            n.type === 'success' && "bg-white/90 border-[rgba(46,125,91,0.16)] text-[var(--app-text-secondary)]",
-                            n.type === 'error' && "bg-white/90 border-[rgba(177,79,94,0.16)] text-[var(--app-text-secondary)]",
-                            n.type === 'info' && "bg-white/90 border-[rgba(59,130,246,0.16)] text-[var(--app-text-secondary)]",
-                            n.type === 'warning' && "bg-white/90 border-[rgba(234,179,8,0.16)] text-[var(--app-text-secondary)]"
+                            "px-3.5 py-2.5 rounded-lg shadow-sm flex items-center space-x-2.5 text-[13px] font-medium min-w-[180px] max-w-[360px] border bg-background",
+                            n.type === 'success' && "border-green-200 text-foreground",
+                            n.type === 'error' && "border-destructive/30 text-foreground",
+                            n.type === 'info' && "border-blue-200 text-foreground",
+                            n.type === 'warning' && "border-yellow-200 text-foreground"
                         )}
                     >
                         {n.type === 'success' && (
                             <CheckCircle className="w-4 h-4 text-[var(--app-success)] shrink-0" />
                         )}
                         {n.type === 'error' && (
-                            <AlertCircle className="w-4 h-4 text-[var(--app-danger)] shrink-0" />
+                            <AlertCircle className="w-4 h-4 text-destructive shrink-0" />
                         )}
                         {n.type === 'info' && (
                             <AlertCircle className="w-4 h-4 text-blue-500 shrink-0" />
@@ -174,9 +174,9 @@ export function NotificationList({
                         {onRemove && (
                             <button 
                                 onClick={() => onRemove(n.id)}
-                                className="shrink-0 p-0.5 hover:bg-black/5 rounded transition-colors"
+                                className="shrink-0 p-0.5 hover:bg-accent rounded transition-colors"
                             >
-                                <X className="w-3.5 h-3.5 text-[var(--app-text-quaternary)]" />
+                                <X className="w-3.5 h-3.5 text-muted-foreground" />
                             </button>
                         )}
                     </motion.div>
@@ -242,7 +242,7 @@ function ConfirmDialog({
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.95, y: 10 }}
                     transition={{ duration: 0.15 }}
-                    className="relative z-10 w-full max-w-sm bg-white border border-[rgba(39,44,54,0.08)] rounded-[20px] shadow-[var(--shadow-elevated)] overflow-hidden"
+                    className="relative z-10 w-full max-w-sm bg-background border border-border rounded-lg shadow-lg overflow-hidden"
                     style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
                     onClick={e => e.stopPropagation()}
                 >
@@ -250,39 +250,39 @@ function ConfirmDialog({
                         <div className="flex items-center gap-3 mb-3">
                             <div className={cn(
                                 "w-10 h-10 rounded-full flex items-center justify-center",
-                                variant === 'danger' && "bg-red-100",
-                                variant === 'warning' && "bg-amber-100",
-                                variant === 'info' && "bg-blue-100"
+                                variant === 'danger' && "bg-destructive/10",
+                                variant === 'warning' && "bg-[var(--app-warning-soft)]",
+                                variant === 'info' && "bg-[var(--app-info-soft)]"
                             )}>
                                 <AlertTriangle className={cn(
                                     "w-5 h-5",
-                                    variant === 'danger' && "text-red-500",
-                                    variant === 'warning' && "text-amber-500",
+                                    variant === 'danger' && "text-destructive",
+                                    variant === 'warning' && "text-[var(--app-warning)]",
                                     variant === 'info' && "text-blue-500"
                                 )} />
                             </div>
-                            <h3 className="text-[15px] font-semibold text-[var(--app-text)]">
+                            <h3 className="text-[15px] font-semibold text-foreground">
                                 {title || '确认操作'}
                             </h3>
                         </div>
-                        <p className="text-[13px] text-[var(--app-text-secondary)] leading-relaxed pl-[52px]">
+                        <p className="text-[13px] text-muted-foreground leading-relaxed pl-[52px]">
                             {message}
                         </p>
                     </div>
-                    <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/30">
+                    <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-border bg-muted/30">
                         <button
                             onClick={onCancel}
-                            className="px-4 py-2 text-[13px] font-medium text-[var(--app-text-secondary)] hover:text-[var(--app-text)] hover:bg-[var(--app-hover)] rounded-[10px] transition-colors"
+                            className="px-4 py-2 text-[13px] font-medium text-muted-foreground hover:text-foreground hover:bg-accent rounded-md transition-colors"
                         >
                             {cancelText}
                         </button>
                         <button
                             onClick={onConfirm}
                             className={cn(
-                                "px-4 py-2 text-[13px] font-medium text-white rounded-[10px] transition-colors",
-                                variant === 'danger' && "bg-red-500 hover:bg-red-600",
-                                variant === 'warning' && "bg-amber-500 hover:bg-amber-600",
-                                variant === 'info' && "bg-blue-500 hover:bg-blue-600"
+                                "px-4 py-2 text-[13px] font-medium text-primary-foreground rounded-md transition-colors",
+                                variant === 'danger' && "bg-destructive hover:bg-destructive/90",
+                                variant === 'warning' && "bg-yellow-500 hover:bg-yellow-600",
+                                variant === 'info' && "bg-primary hover:bg-primary/90"
                             )}
                         >
                             {confirmText}

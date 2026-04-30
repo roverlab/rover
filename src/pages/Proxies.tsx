@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import { cn } from '../components/Sidebar';
-import { Zap, Search, MoreVertical, RefreshCw, Activity, X, LayoutGrid, List, ArrowUpDown, AlignLeft, Monitor, ArrowLeft, Settings } from 'lucide-react';
-import { Button } from '../components/ui/Button';
+import { cn } from '../lib/utils';
+import { Zap, Search, MoreVertical, RefreshCw, X, ListOrdered, Gauge, ArrowDownAZ } from 'lucide-react';
+import { Input } from '../components/ui/input';
 import { useApi } from '../contexts/ApiContext';
 import { selectProxy, getProxyDelay, fetchProxies } from '../services/api';
 import { useNotificationState, NotificationList } from '../components/ui/Notification';
@@ -78,15 +78,15 @@ const NodeCard = memo(function NodeCard({
   // Selector 和 URLTest 类型显示当前选择的节点
   const showCurrentNode = type === 'selector' || type === 'Selector' || type === 'urltest' || type === 'URLTest';
   return (
-    <div
+      <div
       onClick={onSelect}
       className={cn(
         "panel-soft px-4 py-3 transition-colors flex flex-col relative overflow-hidden",
         sizeClasses,
+        isSelectable ? "cursor-pointer" : "cursor-default",
         isSelected
-          ? "bg-[var(--app-accent-soft-card)] border-[var(--app-accent-border)]"
-          : "hover:border-[rgba(39,44,54,0.14)] hover:bg-white/80",
-        isSelectable ? "cursor-pointer" : "cursor-default"
+          ? "proxy-node-selected"
+          : "hover:border-[var(--app-stroke-strong)] hover:bg-[var(--app-panel)]/80"
       )}
     >
       <div className="flex items-start justify-between">
@@ -96,25 +96,27 @@ const NodeCard = memo(function NodeCard({
         )}>
           {name}
         </div>
-      </div>
 
-      {/* 延迟显示 - 测速状态或延迟数据存在时显示 */}
-      {(testState || delay !== undefined) ? (
-        <div className={cn("text-[12px] font-mono mt-0 absolute right-3.5 top-3",
+        {/* 延迟显示 */}
+        {(testState || delay !== undefined) ? (
+          <div className={cn(
+            "text-[12px] font-mono shrink-0",
             testState === 'testing' ? "text-[var(--app-accent)]" :
               testState === 'queued' ? "text-[var(--app-text-quaternary)]" :
-                getDelayClass(delay))}>
-          {testState === 'testing' ? (
-            <RefreshCw className="w-3.5 h-3.5 animate-spin text-[var(--app-accent)]" />
-          ) : testState === 'queued' ? (
-            '...'
-          ) : delay && delay > 0 ? (
-            `${delay} ms`
-          ) : (
-            timeoutLabel
-          )}
-        </div>
-      ) : null}
+                getDelayClass(delay)
+          )}>
+            {testState === 'testing' ? (
+              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+            ) : testState === 'queued' ? (
+              '...'
+            ) : delay && delay > 0 ? (
+              `${delay} ms`
+            ) : (
+              timeoutLabel
+            )}
+          </div>
+        ) : null}
+      </div>
 
       <div className="mt-auto flex items-center text-[var(--app-text-quaternary)]">
         <span className="text-[11px] font-medium flex-1">
@@ -145,7 +147,7 @@ const { apiUrl, apiSecret } = useApi();
   const [initialLoading, setInitialLoading] = useState(true); // 仅用于首次加载
   const [nodeTestState, setNodeTestState] = useState<Record<string, 'queued' | 'testing'>>({});
   const [nodeDelays, setNodeDelays] = useState<Record<string, number>>({});
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  
   const [settings, setSettings] = useState<ProxySettings>(DEFAULT_SETTINGS);
 
   const [showTabsPopup, setShowTabsPopup] = useState(false);
@@ -153,8 +155,6 @@ const { apiUrl, apiSecret } = useApi();
   // 搜索相关状态
   const [isSearchMode, setIsSearchMode] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchInputFocused, setSearchInputFocused] = useState(false);
-  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const testQueueRef = useRef<Node[]>([]);
   const testingCountRef = useRef(0);
@@ -515,11 +515,11 @@ const { apiUrl, apiSecret } = useApi();
   }, [groups, activeTab, searchActiveGroup, isSearchMode, searchQuery, displayedSearchNodes, nodeTestState, apiUrl, apiSecret, addNotification]);
 
   const getDelayClass = useCallback((delay?: number) => {
-    if (delay === undefined) return 'text-red-500';
-    if (!delay || delay === 0) return 'text-red-500';
-    if (delay < 200) return 'text-green-500';
-    if (delay < 500) return 'text-yellow-600';
-    return 'text-red-500';
+    if (delay === undefined) return 'text-[var(--app-danger)]';
+    if (!delay || delay === 0) return 'text-[var(--app-danger)]';
+    if (delay < 200) return 'text-[#22c55e] dark:text-[#4ade80]';
+    if (delay < 500) return 'text-[var(--app-warning)]';
+    return 'text-[var(--app-danger)]';
   }, []);
 
   // 进入搜索模式时，默认选中第一个组
@@ -529,19 +529,6 @@ const { apiUrl, apiSecret } = useApi();
     }
   }, [isSearchMode, groups, searchActiveGroup]);
 
-  // 退出搜索模式时清空搜索状态
-  const exitSearchMode = useCallback(() => {
-    setIsSearchMode(false);
-    setSearchQuery('');
-    setSearchActiveGroup('');
-  }, []);
-
-  // 进入搜索模式时聚焦输入框
-  useEffect(() => {
-    if (isSearchMode && searchInputRef.current) {
-      searchInputRef.current.focus();
-    }
-  }, [isSearchMode]);
 
   // 使用 useMemo 缓存布局样式
   const layoutClasses = useMemo(() => {
@@ -649,83 +636,85 @@ const { apiUrl, apiSecret } = useApi();
     handleSelectNode(groupName, nodeName, isSelectable);
   }, [handleSelectNode]);
 
+  // 排序选项的标签和图标
+  const sortOptions: Array<{ value: SortBy; icon: React.ElementType; label: string }> = [
+    { value: 'default', icon: ListOrdered, label: t('proxies.sortDefault') },
+    { value: 'delay', icon: Gauge, label: t('proxies.sortDelay') },
+    { value: 'name', icon: ArrowDownAZ, label: t('proxies.sortName') },
+  ];
+
   return (
     <div className="page-shell text-[var(--app-text-secondary)]">
 
-      {isSearchMode ? (
-        /* 搜索模式头部 - 左侧显示标题，与普通模式同结构 */
-          <div className="page-header shrink-0 z-20" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
-            <div className="shrink-0">
-              <h1 className="page-title">{t('proxies.title')}</h1>
-              <p className="page-subtitle">{t('proxies.subtitle')}</p>
-            </div>
-          <div className="toolbar flex-1 min-w-0 flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-            {/* 返回按钮 - 与搜索栏同高 (38px) */}
-            <button
-              onClick={exitSearchMode}
-              className="w-[38px] h-[38px] flex items-center justify-center rounded-[14px] hover:bg-[var(--app-hover)] text-[var(--app-text-secondary)] transition-colors shrink-0"
-            >
-              <ArrowLeft className="w-4 h-4" />
-            </button>
+      <div className="page-header shrink-0 z-20" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
+        <div>
+          <h1 className="page-title">{t('proxies.title')}</h1>
+        </div>
+        {/* 操作栏放在标题右侧 */}
+        <div className="flex items-center gap-3 flex-wrap justify-end" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+          <button
+            onClick={testLatency}
+            className="inline-flex items-center gap-2 px-4 py-2 text-[13px] font-semibold rounded-[13px] bg-primary text-primary-foreground shadow-[0_12px_28px_rgba(31,119,255,0.20)] hover:bg-primary/90 transition-all"
+          >
+            <Zap className="w-4 h-4" />
+            {t('proxies.testLatencyGroup')}
+          </button>
 
-            {/* 搜索输入框 - 与 input-field 同高 (38px)，占满剩余空间 */}
-            <div className={cn(
-              "flex items-center flex-1 min-h-[38px] h-[38px] min-w-0 px-3 rounded-[14px] transition-all bg-[var(--app-panel-soft)] ring-1",
-              searchInputFocused
-                ? "bg-white ring-[var(--app-accent)]"
-                : "ring-[var(--app-stroke)]"
-            )}>
-              <Search className="w-4 h-4 text-[var(--app-text-tertiary)] shrink-0 mr-2" />
-              <input
-                ref={searchInputRef}
+          <div className="flex items-center bg-[var(--app-panel-soft)] border border-[var(--app-divider)] rounded-[13px] p-1">
+            {sortOptions.map(opt => {
+              const Icon = opt.icon;
+              return (
+                <button
+                  key={opt.value}
+                  onClick={() => setSettings(s => ({ ...s, sortBy: opt.value }))}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium rounded-[8px] transition-all",
+                    settings.sortBy === opt.value
+                      ? "bg-[var(--app-panel)] text-[var(--app-text)] shadow-[var(--shadow-soft)]"
+                      : "text-[var(--app-text-quaternary)] hover:text-[var(--app-text-secondary)]"
+                  )}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* 搜索框 - 原地展开 */}
+          {isSearchMode ? (
+            <div className="relative w-[200px] shrink-0">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--app-text-quaternary)] pointer-events-none" />
+              <Input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                onFocus={() => setSearchInputFocused(true)}
-                onBlur={() => setSearchInputFocused(false)}
                 placeholder={t('proxies.searchNodes')}
-                className="flex-1 bg-transparent text-[14px] text-[var(--app-text)] placeholder:text-[var(--app-text-quaternary)] outline-none border-none appearance-none focus:ring-0 focus:shadow-none focus-visible:ring-0 focus-visible:shadow-none"
+                className="pl-9 pr-8 h-9 text-[13px] w-full"
+                autoFocus
+                onKeyDown={(e) => { if (e.key === 'Escape') { setIsSearchMode(false); setSearchQuery(''); setSearchActiveGroup(''); } }}
+                onBlur={() => { if (!searchQuery) { setIsSearchMode(false); setSearchActiveGroup(''); } }}
               />
               {searchQuery && (
                 <button
                   onClick={() => setSearchQuery('')}
-                  className="ml-1 p-1 rounded-full hover:bg-[var(--app-hover)] text-[var(--app-text-tertiary)]"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded-full hover:bg-[var(--app-hover)] text-[var(--app-text-quaternary)]"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
               )}
             </div>
-          </div>
-        </div>
-      ) : (
-        /* 普通模式头部 */
-        <div className="page-header shrink-0 z-20" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
-          <div>
-            <h1 className="page-title">{t('proxies.title')}</h1>
-            <p className="page-subtitle">{t('proxies.subtitle')}</p>
-          </div>
-          <div className="toolbar" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-            {/* 搜索按钮 */}
-            <Button
-              variant="ghost"
-              size="icon"
+          ) : (
+            <button
               onClick={() => setIsSearchMode(true)}
-              className="w-9 h-9"
+              className="w-9 h-9 flex items-center justify-center rounded-[11px] border border-[var(--app-divider)] bg-[var(--app-panel)]/70 hover:bg-[var(--app-hover)] transition-colors shrink-0"
+              title={t('proxies.searchNodes')}
             >
-              <Search className="w-4 h-4" />
-            </Button>
-
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setSettingsOpen(true)}
-              className={cn(settingsOpen && "text-[var(--app-accent-strong)] bg-[var(--app-accent-soft)]")}
-            >
-              <Settings className="w-4 h-4" />
-            </Button>
-          </div>
+              <Search className="w-[18px] h-[18px] text-[var(--app-text-secondary)]" />
+            </button>
+          )}
         </div>
-      )}
+      </div>
 
       <div className="page-content">
         {groups.length === 0 && !initialLoading ? (
@@ -733,39 +722,41 @@ const { apiUrl, apiSecret } = useApi();
         ) : (
           <>
             {/* 组标签栏 */}
-            <div className="px-4 py-2 mb-4 shrink-0 relative flex items-center gap-1">
-              <div className={cn(
-                "flex space-x-1 overflow-x-auto flex-1",
-                "[&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none']"
-              )}>
-                {groups.map(g => (
+            <div className="mb-4 shrink-0">
+              <div className="relative flex items-center gap-2">
+                <div className={cn(
+                  "flex gap-2 overflow-x-auto flex-1",
+                  "[&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none']"
+                )}>
+                  {groups.map(g => {
+                    const isActiveGroup = (isSearchMode ? searchActiveGroup : activeTab) === g.name;
+                    return (
+                      <button
+                        key={g.name}
+                        onClick={() => isSearchMode ? setSearchActiveGroup(g.name) : setActiveTab(g.name)}
+                        className={cn(
+                          "h-8 px-3.5 text-[12px] font-semibold whitespace-nowrap transition-all rounded-full border",
+                          isActiveGroup
+                            ? "border-primary bg-primary text-primary-foreground shadow-[0_8px_18px_rgba(31,119,255,0.22)]"
+                            : "border-[var(--app-divider)] bg-[var(--app-panel)]/55 text-[var(--app-text-tertiary)] hover:border-[var(--app-accent-border)] hover:text-[var(--app-text-secondary)] hover:bg-[var(--app-hover)]"
+                        )}
+                      >
+                        {g.name}
+                      </button>
+                    );
+                  })}
+                </div>
+                {/* 更多组按钮 - 仅普通模式显示 */}
+                {!isSearchMode && (
                   <button
-                    key={g.name}
-                    onClick={() => isSearchMode ? setSearchActiveGroup(g.name) : setActiveTab(g.name)}
-                    className={cn(
-                      "px-3 py-2 text-[13px] font-medium whitespace-nowrap transition-colors relative rounded-[6px]",
-                      (isSearchMode ? searchActiveGroup : activeTab) === g.name
-                        ? "text-[var(--app-text)]"
-                        : "text-[var(--app-text-quaternary)] hover:text-[var(--app-text-secondary)] hover:bg-[var(--app-hover)]"
-                    )}
+                    onClick={() => setShowTabsPopup(true)}
+                    className="w-8 h-8 flex items-center justify-center rounded-full border border-[var(--app-divider)] bg-[var(--app-panel)]/55 hover:border-[var(--app-accent-border)] hover:bg-[var(--app-hover)] transition-colors shrink-0 z-10 text-[var(--app-text-secondary)]"
+                    title={t('proxies.viewAllGroups')}
                   >
-                    {g.name}
-                    {(isSearchMode ? searchActiveGroup : activeTab) === g.name && (
-                      <div className="absolute bottom-0.5 left-3 right-3 h-0.5 bg-[var(--app-accent)] rounded-full" />
-                    )}
+                    <MoreVertical className="w-4 h-4" />
                   </button>
-                ))}
+                )}
               </div>
-              {/* 更多按钮 - 仅普通模式显示 */}
-              {!isSearchMode && (
-                <button
-                  onClick={() => setShowTabsPopup(true)}
-                  className="w-7 h-7 flex items-center justify-center rounded-[6px] bg-white shadow-sm border border-[var(--app-divider)] hover:bg-[var(--app-hover)] transition-colors shrink-0 z-10"
-                  title={t('proxies.viewAllGroups')}
-                >
-                  <MoreVertical className="w-4 h-4 text-[var(--app-text-secondary)]" />
-                </button>
-              )}
             </div>
 
             {/* 节点网格 - 搜索模式和普通模式共用 */}
@@ -807,7 +798,7 @@ const { apiUrl, apiSecret } = useApi();
             onClick={() => setShowTabsPopup(false)}
           />
           <div
-            className="fixed right-4 top-[130px] bg-white z-[201] shadow-lg rounded-[12px] border border-[var(--app-divider)] max-w-[280px] p-3"
+            className="fixed right-4 top-[130px] bg-[var(--app-panel)] z-[201] shadow-lg rounded-[12px] border border-[var(--app-divider)] max-w-[280px] p-3"
             style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
           >
             <div className="flex flex-wrap gap-2">
@@ -819,7 +810,7 @@ const { apiUrl, apiSecret } = useApi();
                     setShowTabsPopup(false);
                   }}
                   className={cn(
-                    "px-3 py-1.5 text-[13px] font-medium rounded-[6px] transition-colors whitespace-nowrap",
+                    "px-3 py-1.5 text-[13px] font-medium rounded-[8px] transition-colors whitespace-nowrap",
                     activeTab === g.name
                       ? "text-[var(--app-accent-strong)] bg-[var(--app-accent-soft)]"
                       : "text-[var(--app-text-secondary)] hover:bg-[var(--app-hover)]"
@@ -834,208 +825,7 @@ const { apiUrl, apiSecret } = useApi();
         document.body
       )}
 
-      {/* 右下角一键测速：搜索模式且搜索不为空时只测当前页显示的节点，否则测本组全部节点 */}
-      {Object.keys(nodeTestState).length === 0 && !initialLoading && (
-        isSearchMode && searchQuery.trim()
-          ? displayedSearchNodes.length > 0
-          : (isSearchMode ? groups.find(g => g.name === searchActiveGroup)?.nodes?.length : activeGroupData?.nodes?.length)
-      ) ? (
-        <button
-          onClick={testLatency}
-          className="floating-action w-[52px] h-[52px]"
-          title={isSearchMode && searchQuery.trim() ? t('proxies.testLatencyCurrentPage') : t('proxies.testLatencyGroup')}
-        >
-          <Activity className="w-5 h-5 fill-current animate-pulse opacity-70" />
-        </button>
-      ) : null}
 
-      {/* Settings Panel - 使用 createPortal 渲染到 body，确保 Electron 下关闭按钮和点击外部可关闭 */}
-      {settingsOpen && createPortal(
-        <>
-          {/* Backdrop - no-drag 使顶部区域点击也能关闭，否则 Electron 拖拽区域会拦截 */}
-          <div
-            className="fixed inset-0 bg-black/20 z-[200]"
-            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-            onClick={() => setSettingsOpen(false)}
-          />
-          {/* Panel */}
-          <div
-            className="fixed right-0 top-12 bottom-0 w-[280px] bg-white z-[201] shadow-[-4px_0_24px_rgba(0,0,0,0.08)] flex flex-col rounded-tl-[18px]"
-            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-          >
-            {/* Header */}
-            <div className="flex shrink-0 items-center justify-between px-4 py-4 border-b border-[var(--app-divider)]">
-              <span className="text-[15px] font-semibold text-[var(--app-text)]">{t('proxies.settings')}</span>
-              <button
-                type="button"
-                onClick={() => setSettingsOpen(false)}
-                className="w-8 h-8 flex items-center justify-center rounded-[10px] hover:bg-[var(--app-hover)] text-[var(--app-text-tertiary)] transition-colors"
-                aria-label="关闭"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Content */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-6">
-              {/* 风格 */}
-              <div>
-                <div className="text-[12px] font-medium text-[var(--app-text-tertiary)] mb-3">{t('proxies.style')}</div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setSettings(s => ({ ...s, viewStyle: 'tabs' }))}
-                    className={cn(
-                      "flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-[12px] text-[13px] font-medium transition-all border",
-                      settings.viewStyle === 'tabs'
-                        ? "bg-[var(--app-accent-soft)] border-[var(--app-accent-border)] text-[var(--app-accent-strong)]"
-                        : "bg-[var(--app-panel-soft)] border-transparent text-[var(--app-text-tertiary)] hover:text-[var(--app-text-secondary)]"
-                    )}
-                  >
-                    <LayoutGrid className="w-4 h-4" />
-                    {t('proxies.viewTabs')}
-                  </button>
-                  <button
-                    onClick={() => setSettings(s => ({ ...s, viewStyle: 'list' }))}
-                    className={cn(
-                      "flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-[12px] text-[13px] font-medium transition-all border",
-                      settings.viewStyle === 'list'
-                        ? "bg-[var(--app-accent-soft)] border-[var(--app-accent-border)] text-[var(--app-accent-strong)]"
-                        : "bg-[var(--app-panel-soft)] border-transparent text-[var(--app-text-tertiary)] hover:text-[var(--app-text-secondary)]"
-                    )}
-                  >
-                    <List className="w-4 h-4" />
-                    {t('proxies.viewList')}
-                  </button>
-                </div>
-              </div>
-
-              {/* 排序 */}
-              <div>
-                <div className="text-[12px] font-medium text-[var(--app-text-tertiary)] mb-3">{t('proxies.sort')}</div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setSettings(s => ({ ...s, sortBy: 'default' }))}
-                    className={cn(
-                      "flex-1 flex items-center justify-center gap-1.5 py-2 px-2 rounded-[12px] text-[12px] font-medium transition-all border",
-                      settings.sortBy === 'default'
-                        ? "bg-[var(--app-accent-soft)] border-[var(--app-accent-border)] text-[var(--app-accent-strong)]"
-                        : "bg-[var(--app-panel-soft)] border-transparent text-[var(--app-text-tertiary)] hover:text-[var(--app-text-secondary)]"
-                    )}
-                  >
-                    <AlignLeft className="w-3.5 h-3.5" />
-                    {t('proxies.sortDefault')}
-                  </button>
-                  <button
-                    onClick={() => setSettings(s => ({ ...s, sortBy: 'delay' }))}
-                    className={cn(
-                      "flex-1 flex items-center justify-center gap-1.5 py-2 px-2 rounded-[12px] text-[12px] font-medium transition-all border",
-                      settings.sortBy === 'delay'
-                        ? "bg-[var(--app-accent-soft)] border-[var(--app-accent-border)] text-[var(--app-accent-strong)]"
-                        : "bg-[var(--app-panel-soft)] border-transparent text-[var(--app-text-tertiary)] hover:text-[var(--app-text-secondary)]"
-                    )}
-                  >
-                    <Zap className="w-3.5 h-3.5" />
-                    {t('proxies.sortDelay')}
-                  </button>
-                  <button
-                    onClick={() => setSettings(s => ({ ...s, sortBy: 'name' }))}
-                    className={cn(
-                      "flex-1 flex items-center justify-center gap-1.5 py-2 px-2 rounded-[12px] text-[12px] font-medium transition-all border",
-                      settings.sortBy === 'name'
-                        ? "bg-[var(--app-accent-soft)] border-[var(--app-accent-border)] text-[var(--app-accent-strong)]"
-                        : "bg-[var(--app-panel-soft)] border-transparent text-[var(--app-text-tertiary)] hover:text-[var(--app-text-secondary)]"
-                    )}
-                  >
-                    <ArrowUpDown className="w-3.5 h-3.5" />
-                    {t('proxies.sortName')}
-                  </button>
-                </div>
-              </div>
-
-              {/* 布局 */}
-              <div>
-                <div className="text-[12px] font-medium text-[var(--app-text-tertiary)] mb-3">{t('proxies.layout')}</div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setSettings(s => ({ ...s, layoutDensity: 'loose' }))}
-                    className={cn(
-                      "flex-1 py-2 px-2 rounded-[12px] text-[12px] font-medium transition-all border",
-                      settings.layoutDensity === 'loose'
-                        ? "bg-[var(--app-accent-soft)] border-[var(--app-accent-border)] text-[var(--app-accent-strong)]"
-                        : "bg-[var(--app-panel-soft)] border-transparent text-[var(--app-text-tertiary)] hover:text-[var(--app-text-secondary)]"
-                    )}
-                  >
-                    {t('proxies.densityLoose')}
-                  </button>
-                  <button
-                    onClick={() => setSettings(s => ({ ...s, layoutDensity: 'normal' }))}
-                    className={cn(
-                      "flex-1 py-2 px-2 rounded-[12px] text-[12px] font-medium transition-all border",
-                      settings.layoutDensity === 'normal'
-                        ? "bg-[var(--app-accent-soft)] border-[var(--app-accent-border)] text-[var(--app-accent-strong)]"
-                        : "bg-[var(--app-panel-soft)] border-transparent text-[var(--app-text-tertiary)] hover:text-[var(--app-text-secondary)]"
-                    )}
-                  >
-                    {t('proxies.densityNormal')}
-                  </button>
-                  <button
-                    onClick={() => setSettings(s => ({ ...s, layoutDensity: 'compact' }))}
-                    className={cn(
-                      "flex-1 py-2 px-2 rounded-[12px] text-[12px] font-medium transition-all border",
-                      settings.layoutDensity === 'compact'
-                        ? "bg-[var(--app-accent-soft)] border-[var(--app-accent-border)] text-[var(--app-accent-strong)]"
-                        : "bg-[var(--app-panel-soft)] border-transparent text-[var(--app-text-tertiary)] hover:text-[var(--app-text-secondary)]"
-                    )}
-                  >
-                    {t('proxies.densityCompact')}
-                  </button>
-                </div>
-              </div>
-
-              {/* 尺寸 */}
-              <div>
-                <div className="text-[12px] font-medium text-[var(--app-text-tertiary)] mb-3">{t('proxies.size')}</div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setSettings(s => ({ ...s, sizeOption: 'normal' }))}
-                    className={cn(
-                      "flex-1 py-2 px-2 rounded-[12px] text-[12px] font-medium transition-all border",
-                      settings.sizeOption === 'normal'
-                        ? "bg-[var(--app-accent-soft)] border-[var(--app-accent-border)] text-[var(--app-accent-strong)]"
-                        : "bg-[var(--app-panel-soft)] border-transparent text-[var(--app-text-tertiary)] hover:text-[var(--app-text-secondary)]"
-                    )}
-                  >
-                    {t('proxies.sizeNormal')}
-                  </button>
-                  <button
-                    onClick={() => setSettings(s => ({ ...s, sizeOption: 'compact' }))}
-                    className={cn(
-                      "flex-1 py-2 px-2 rounded-[12px] text-[12px] font-medium transition-all border",
-                      settings.sizeOption === 'compact'
-                        ? "bg-[var(--app-accent-soft)] border-[var(--app-accent-border)] text-[var(--app-accent-strong)]"
-                        : "bg-[var(--app-panel-soft)] border-transparent text-[var(--app-text-tertiary)] hover:text-[var(--app-text-secondary)]"
-                    )}
-                  >
-                    {t('proxies.sizeCompact')}
-                  </button>
-                  <button
-                    onClick={() => setSettings(s => ({ ...s, sizeOption: 'minimal' }))}
-                    className={cn(
-                      "flex-1 py-2 px-2 rounded-[12px] text-[12px] font-medium transition-all border",
-                      settings.sizeOption === 'minimal'
-                        ? "bg-[var(--app-accent-soft)] border-[var(--app-accent-border)] text-[var(--app-accent-strong)]"
-                        : "bg-[var(--app-panel-soft)] border-transparent text-[var(--app-text-tertiary)] hover:text-[var(--app-text-secondary)]"
-                    )}
-                  >
-                    {t('proxies.sizeMinimal')}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </>,
-        document.body
-      )}
 
       <NotificationList notifications={notifications} onRemove={removeNotification} />
     </div>

@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Field';
 import { X, Check, Search } from 'lucide-react';
-import { cn } from '../../components/Sidebar';
+import { cn } from '../../lib/utils';
 import type { RuleProvider } from '../../types/rule-providers';
 
 interface PolicyBuiltinRuleSetModalProps {
@@ -123,11 +123,11 @@ export function PolicyBuiltinRuleSetModal({
                     initial={{ opacity: 0, scale: 0.95, y: 10 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                    className="relative z-10 w-full max-w-3xl flex flex-col bg-white border border-[rgba(39,44,54,0.08)] rounded-[20px] shadow-[var(--shadow-elevated)] overflow-hidden"
+                    className="relative z-10 w-full max-w-3xl flex flex-col bg-[var(--app-panel)] border border-[var(--app-stroke)] rounded-[20px] shadow-[var(--shadow-elevated)] overflow-hidden"
                     style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
                     onClick={e => e.stopPropagation()}
                 >
-                    <div className="flex shrink-0 items-center justify-between px-6 py-4 border-b border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/50">
+                    <div className="flex shrink-0 items-center justify-between px-6 py-4 border-b border-[var(--app-divider)] bg-[var(--app-bg-secondary)]/50">
                         <h2 className="text-[15px] font-semibold text-[var(--app-text)]">{t('policies.builtinRuleSetTitle')}</h2>
                         <button
                             type="button"
@@ -140,7 +140,7 @@ export function PolicyBuiltinRuleSetModal({
                     </div>
 
                     {/* 搜索框 */}
-                    <div className="shrink-0 px-6 py-3 border-b border-[rgba(39,44,54,0.06)]">
+                    <div className="shrink-0 px-6 py-3 border-b border-[var(--app-divider)]">
                         <div className="relative">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--app-text-quaternary)]" />
                             <Input
@@ -154,7 +154,7 @@ export function PolicyBuiltinRuleSetModal({
 
                     {/* Tab 分类 */}
                     {filteredGroupedRulesets.length > 0 && (
-                        <div className="shrink-0 flex gap-1 px-6 pt-3 overflow-x-auto no-scrollbar border-b border-[rgba(39,44,54,0.06)]">
+                        <div className="shrink-0 flex gap-1 px-6 pt-3 overflow-x-auto no-scrollbar border-b border-[var(--app-divider)]">
                             {filteredGroupedRulesets.map(([groupKey, providers]) => (
                                 <button
                                     key={groupKey}
@@ -190,7 +190,7 @@ export function PolicyBuiltinRuleSetModal({
                                             "inline-flex items-center gap-1.5 px-3 py-2 rounded-[10px] cursor-pointer hover:bg-[var(--app-hover)] transition-colors border shrink-0",
                                             selectedIds.has(provider.id)
                                                 ? "border-[var(--app-accent-border)] bg-[var(--app-accent-soft-card)]"
-                                                : "border-[var(--app-stroke)] bg-white"
+                                                : "border-[var(--app-stroke)] bg-[var(--app-panel)]"
                                         )}
                                     >
                                         <div className={cn(
@@ -209,7 +209,7 @@ export function PolicyBuiltinRuleSetModal({
                                         {provider.name}
                                     </span>
                                         {!provider.enabled && (
-                                            <span className="text-[10px] text-[var(--app-text-quaternary)]">{t('policies.ruleSetDisabledBadge')}</span>
+                                            <span className="text-[11px] text-[var(--app-text-quaternary)]">{t('policies.ruleSetDisabledBadge')}</span>
                                         )}
                                         <input
                                             type="checkbox"
@@ -223,7 +223,7 @@ export function PolicyBuiltinRuleSetModal({
                         )}
                     </div>
 
-                    <div className="flex items-center justify-between px-6 py-4 border-t border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/30">
+                    <div className="flex items-center justify-between px-6 py-4 border-t border-[var(--app-divider)] bg-[var(--app-bg-secondary)]/30">
                         <span className="text-[12px] text-[var(--app-text-quaternary)]">
                             {t('policies.builtinSelectedCount', { count: selectedIds.size })}
                         </span>

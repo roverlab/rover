@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Surface';
 import { X, Copy, Edit2 } from 'lucide-react';
-import { cn } from '../../components/Sidebar';
+import { cn } from '../../lib/utils';
 import type { Policy } from '../../types/policy';
 import { getPolicyRuleSet, getPolicyMatchableFields } from '../../services/policy';
 import type { RuleProvider } from '../../types/rule-providers';
@@ -49,11 +49,11 @@ export function PolicyDetailModal({
                     initial={{ opacity: 0, scale: 0.95, y: 10 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                    className="relative z-10 w-full max-w-2xl flex flex-col bg-white border border-[rgba(39,44,54,0.08)] rounded-[20px] shadow-[var(--shadow-elevated)] overflow-hidden"
+                    className="relative z-10 w-full max-w-2xl flex flex-col bg-[var(--app-panel)] border border-[var(--app-stroke)] rounded-[20px] shadow-[var(--shadow-elevated)] overflow-hidden"
                     style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
                     onClick={e => e.stopPropagation()}
                 >
-                    <div className="flex shrink-0 items-center justify-between px-6 py-4 border-b border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/50">
+                    <div className="flex shrink-0 items-center justify-between px-6 py-4 border-b border-[var(--app-divider)] bg-[var(--app-bg-secondary)]/50">
                         <h2 className="text-[15px] font-semibold text-[var(--app-text)]">{t('policies.policyDetailTitle')}</h2>
                         <div className="flex items-center gap-2">
                             <button
@@ -115,7 +115,7 @@ export function PolicyDetailModal({
                                         {t('common.copy')}
                                     </Button>
                                 </div>
-                                <pre className="bg-[var(--app-bg-secondary)] rounded-[10px] p-4 overflow-x-auto border border-[rgba(39,44,54,0.08)]">
+                                <pre className="bg-[var(--app-bg-secondary)] rounded-[10px] p-4 overflow-x-auto border border-[var(--app-stroke)]">
                                     <code className="text-[12px] font-mono text-[var(--app-text-secondary)]">
                                         {JSON.stringify(detailPolicy.raw_data || {}, null, 2)}
                                     </code>
@@ -165,7 +165,7 @@ export function PolicyDetailModal({
                                                         <p className="text-[11px] text-blue-600 mb-2">{t('policies.domainCount', { count: domain.length })}</p>
                                                         <div className="flex flex-wrap gap-1">
                                                             {domain.map((d, idx) => (
-                                                                <span key={idx} className="text-[11px] px-2 py-0.5 bg-white rounded text-blue-700">{d}</span>
+                                                                <span key={idx} className="text-[11px] px-2 py-0.5 bg-[var(--app-panel)] rounded text-blue-700">{d}</span>
                                                             ))}
                                                         </div>
                                                     </div>
@@ -175,7 +175,7 @@ export function PolicyDetailModal({
                                                         <p className="text-[11px] text-purple-600 mb-2">{t('policies.domainKeywordCount', { count: domainKeyword.length })}</p>
                                                         <div className="flex flex-wrap gap-1">
                                                             {domainKeyword.map((d, idx) => (
-                                                                <span key={idx} className="text-[11px] px-2 py-0.5 bg-white rounded text-purple-700">{d}</span>
+                                                                <span key={idx} className="text-[11px] px-2 py-0.5 bg-[var(--app-panel)] rounded text-purple-700">{d}</span>
                                                             ))}
                                                         </div>
                                                     </div>
@@ -185,7 +185,7 @@ export function PolicyDetailModal({
                                                         <p className="text-[11px] text-indigo-600 mb-2">{t('policies.domainSuffixCount', { count: domainSuffix.length })}</p>
                                                         <div className="flex flex-wrap gap-1">
                                                             {domainSuffix.map((d, idx) => (
-                                                                <span key={idx} className="text-[11px] px-2 py-0.5 bg-white rounded text-indigo-700">{d}</span>
+                                                                <span key={idx} className="text-[11px] px-2 py-0.5 bg-[var(--app-panel)] rounded text-indigo-700">{d}</span>
                                                             ))}
                                                         </div>
                                                     </div>
@@ -213,17 +213,17 @@ export function PolicyDetailModal({
                                                         <p className="text-[11px] text-orange-600 mb-2">{t('policies.ipCidrCount', { count: ipCidr.length })}</p>
                                                         <div className="flex flex-wrap gap-1">
                                                             {ipCidr.map((ip, idx) => (
-                                                                <span key={idx} className="text-[11px] px-2 py-0.5 bg-white rounded text-orange-700 font-mono">{ip}</span>
+                                                                <span key={idx} className="text-[11px] px-2 py-0.5 bg-[var(--app-panel)] rounded text-orange-700 font-mono">{ip}</span>
                                                             ))}
                                                         </div>
                                                     </div>
                                                 )}
                                                 {sourceIpCidr.length > 0 && (
                                                     <div className="bg-amber-50 rounded-[10px] p-3">
-                                                        <p className="text-[11px] text-amber-600 mb-2">{t('policies.sourceIpCidrCount', { count: sourceIpCidr.length })}</p>
+                                                        <p className="text-[11px] text-[var(--app-warning)] mb-2">{t('policies.sourceIpCidrCount', { count: sourceIpCidr.length })}</p>
                                                         <div className="flex flex-wrap gap-1">
                                                             {sourceIpCidr.map((ip, idx) => (
-                                                                <span key={idx} className="text-[11px] px-2 py-0.5 bg-white rounded text-amber-700 font-mono">{ip}</span>
+                                                                <span key={idx} className="text-[11px] px-2 py-0.5 bg-[var(--app-panel)] rounded text-amber-700 font-mono">{ip}</span>
                                                             ))}
                                                         </div>
                                                     </div>
@@ -246,7 +246,7 @@ export function PolicyDetailModal({
                                             <div className="bg-cyan-50 rounded-[10px] p-3">
                                                 <div className="flex flex-wrap gap-1">
                                                     {port.map((p, idx) => (
-                                                        <span key={idx} className="text-[11px] px-2 py-0.5 bg-white rounded text-cyan-700 font-mono">{String(p)}</span>
+                                                        <span key={idx} className="text-[11px] px-2 py-0.5 bg-[var(--app-panel)] rounded text-cyan-700 font-mono">{String(p)}</span>
                                                     ))}
                                                 </div>
                                             </div>
@@ -263,16 +263,16 @@ export function PolicyDetailModal({
                                     return (
                                         <div className="space-y-3">
                                             <h3 className="text-[13px] font-semibold text-[var(--app-text)] flex items-center gap-2">
-                                                <span className="w-1 h-4 bg-green-500 rounded-full" />
+                                                <span className="w-1 h-4 bg-[var(--app-success-soft)]0 rounded-full" />
                                                 {t('policies.processAndApp')}
                                             </h3>
                                             <div className="space-y-2">
                                                 {processName.length > 0 && (
-                                                    <div className="bg-green-50 rounded-[10px] p-3">
-                                                        <p className="text-[11px] text-green-600 mb-2">{t('policies.processNameCount', { count: processName.length })}</p>
+                                                    <div className="bg-[var(--app-success-soft)] rounded-[10px] p-3">
+                                                        <p className="text-[11px] text-[var(--app-success)] mb-2">{t('policies.processNameCount', { count: processName.length })}</p>
                                                         <div className="flex flex-wrap gap-1">
                                                             {processName.map((p, idx) => (
-                                                                <span key={idx} className="text-[11px] px-2 py-0.5 bg-white rounded text-green-700">{p}</span>
+                                                                <span key={idx} className="text-[11px] px-2 py-0.5 bg-[var(--app-panel)] rounded text-green-700">{p}</span>
                                                             ))}
                                                         </div>
                                                     </div>
@@ -282,7 +282,7 @@ export function PolicyDetailModal({
                                                         <p className="text-[11px] text-teal-600 mb-2">{t('policies.packageNameAndroidCount', { count: packageName.length })}</p>
                                                         <div className="flex flex-wrap gap-1">
                                                             {packageName.map((p, idx) => (
-                                                                <span key={idx} className="text-[11px] px-2 py-0.5 bg-white rounded text-teal-700 font-mono">{p}</span>
+                                                                <span key={idx} className="text-[11px] px-2 py-0.5 bg-[var(--app-panel)] rounded text-teal-700 font-mono">{p}</span>
                                                             ))}
                                                         </div>
                                                     </div>
@@ -326,7 +326,7 @@ export function PolicyDetailModal({
                             </div>
                     </div>
 
-                    <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/30">
+                    <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-[var(--app-divider)] bg-[var(--app-bg-secondary)]/30">
                         <Button variant="ghost" onClick={onClose}>{t('common.close')}</Button>
                         <Button variant="primary" onClick={() => { onClose(); onEdit(detailPolicy); }}>
                             <Edit2 className="w-3.5 h-3.5 mr-1" />

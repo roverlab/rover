@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Surface';
 import { X, Check } from 'lucide-react';
-import { cn } from '../../components/Sidebar';
+import { cn } from '../../lib/utils';
 import type { SingboxRouteRuleWithOutbound } from '../../types/policy';
 import type { RuleProvider } from '../../types/rule-providers';
 import { formatRuleSetDisplay, getRuleSetBadgeClass, getOutboundLabel, getOutboundTone } from './utils';
@@ -60,11 +60,11 @@ export function PolicyImportModal({
                     initial={{ opacity: 0, scale: 0.95, y: 10 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                    className="relative z-10 w-full max-w-3xl flex flex-col bg-white border border-[rgba(39,44,54,0.08)] rounded-[20px] shadow-[var(--shadow-elevated)] overflow-hidden"
+                    className="relative z-10 w-full max-w-3xl flex flex-col bg-[var(--app-panel)] border border-[var(--app-stroke)] rounded-[20px] shadow-[var(--shadow-elevated)] overflow-hidden"
                     style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
                     onClick={e => e.stopPropagation()}
                 >
-                    <div className="flex shrink-0 items-center justify-between px-6 py-4 border-b border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/50">
+                    <div className="flex shrink-0 items-center justify-between px-6 py-4 border-b border-[var(--app-divider)] bg-[var(--app-bg-secondary)]/50">
                         <h2 className="text-[15px] font-semibold text-[var(--app-text)]">
                             {importSource === 'template' ? t('policies.importModalTitleTemplate') : t('policies.importModalTitleConfig')}
                         </h2>
@@ -91,14 +91,14 @@ export function PolicyImportModal({
                                             <div
                                                 key={index}
                                                 className={cn(
-                                                    "relative flex flex-col gap-1 p-4 rounded-[12px] border bg-white cursor-pointer transition-all",
+                                                    "relative flex flex-col gap-1 p-4 rounded-[12px] border bg-[var(--app-panel)] cursor-pointer transition-all",
                                                     importing && !isImportingThis ? "opacity-50 cursor-not-allowed" : "",
                                                     isImportingThis ? "border-[var(--app-accent-border)] bg-[var(--app-accent-soft-card)] cursor-wait" : "border-[var(--app-stroke)] hover:bg-[var(--app-hover)] hover:border-[var(--app-accent-border)]"
                                                 )}
                                                 onClick={() => !importing && onSelectTemplate(template.path)}
                                             >
                                                 {isImportingThis && (
-                                                    <div className="absolute inset-0 flex items-center justify-center bg-white/60 rounded-[12px]">
+                                                    <div className="absolute inset-0 flex items-center justify-center bg-[var(--app-panel)]/60 rounded-[12px]">
                                                         <div className="flex items-center gap-3">
                                                             <div className="animate-spin rounded-full h-5 w-5 border-2 border-[var(--app-accent)] border-t-transparent"></div>
                                                             <span className="text-[13px] text-[var(--app-text-secondary)]">{t('policies.importingEllipsis')}</span>
@@ -133,7 +133,7 @@ export function PolicyImportModal({
                                                 "flex items-start gap-3 p-3 rounded-[12px] border cursor-pointer transition-all",
                                                 selectedRules.has(index)
                                                     ? "border-[var(--app-accent-border)] bg-[var(--app-accent-soft-card)]"
-                                                    : "border-[var(--app-stroke)] bg-white hover:bg-[var(--app-hover)]"
+                                                    : "border-[var(--app-stroke)] bg-[var(--app-panel)] hover:bg-[var(--app-hover)]"
                                             )}
                                             onClick={() => onToggleRuleSelection(index)}
                                         >
@@ -150,36 +150,36 @@ export function PolicyImportModal({
                                             <div className="flex-1 min-w-0">
                                                 <div className="flex items-center gap-2 mb-1">
                                                     <span className="text-[13px] font-medium text-[var(--app-text)]">{t('policies.ruleIndex', { index: index + 1 })}</span>
-                                                    <Badge tone={getOutboundTone(rule.outbound)} className="text-[10px]">
+                                                    <Badge tone={getOutboundTone(rule.outbound)} className="text-[12px] px-2.5 py-0.5">
                                                         {getOutboundLabel(rule.outbound, t)}
                                                     </Badge>
                                                 </div>
                                                 <div className="flex flex-wrap gap-1">
                                                     {rule.rule_set?.slice(0, 3).map((r, idx) => (
                                                         <span key={idx} className={cn(
-                                                            "text-[11px] pl-2 pr-1.5 py-0.5 rounded border-l-2 border",
+                                                            "text-[12px] pl-2.5 pr-2 py-1 rounded-[6px] border-l-2 border font-medium",
                                                             getRuleSetBadgeClass(r)
                                                         )}>
                                                             {formatRuleSetDisplay(r, ruleProviders, t)}
                                                         </span>
                                                     ))}
                                                     {rule.domain && rule.domain.length > 0 && (
-                                                        <span className="text-[11px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600">
+                                                        <span className="text-[12px] px-2 py-0.5 rounded bg-blue-50 text-blue-600">
                                                             {t('policies.badgeDomain', { count: rule.domain.length })}
                                                         </span>
                                                     )}
                                                     {rule.domain_keyword && rule.domain_keyword.length > 0 && (
-                                                        <span className="text-[11px] px-1.5 py-0.5 rounded bg-purple-50 text-purple-600">
+                                                        <span className="text-[12px] px-2 py-0.5 rounded bg-purple-50 text-purple-600">
                                                             {t('policies.badgeKeyword', { count: rule.domain_keyword.length })}
                                                         </span>
                                                     )}
                                                     {rule.ip_cidr && rule.ip_cidr.length > 0 && (
-                                                        <span className="text-[11px] px-1.5 py-0.5 rounded bg-orange-50 text-orange-600">
+                                                        <span className="text-[12px] px-2 py-0.5 rounded bg-orange-50 text-orange-600">
                                                             {t('policies.badgeIp', { count: rule.ip_cidr.length })}
                                                         </span>
                                                     )}
                                                     {rule.process_name && rule.process_name.length > 0 && (
-                                                        <span className="text-[11px] px-1.5 py-0.5 rounded bg-green-50 text-green-600">
+                                                        <span className="text-[12px] px-2 py-0.5 rounded bg-[var(--app-success-soft)] text-[var(--app-success)]">
                                                             {t('policies.badgeProcess', { count: rule.process_name.length })}
                                                         </span>
                                                     )}
@@ -211,7 +211,7 @@ export function PolicyImportModal({
                         
                     </div>
 
-                    <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/30">
+                    <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-[var(--app-divider)] bg-[var(--app-bg-secondary)]/30">
                         {importSource === 'config' && !importResult && (
                             <>
                                 <Button variant="ghost" onClick={onClose}>{t('common.close')}</Button>

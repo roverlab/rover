@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { X, Search, Activity, Plus, Check } from 'lucide-react';
+import { X, Search, Activity, Plus, Check, ArrowDown, ArrowUp, Link2, Zap } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { cn } from '../components/Sidebar';
+import { cn } from '../lib/utils';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Field';
 import { Badge, Card } from '../components/ui/Surface';
@@ -13,6 +13,7 @@ import { getWsUrl, closeConnection, closeAllConnections } from '../services/api'
 import type { RuleProvider } from '../types/rule-providers';
 import type { RouteLogicRule } from '../types/singbox';
 import type { LeafRule } from '../components/AdvancedRuleEditor/types';
+import './Connections.css';
 
 interface Connection {
   id: string;
@@ -69,17 +70,14 @@ export function Connections({ isActive = true }: ConnectionsProps) {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    // 用于追踪当前 effect 是否仍然有效
     let isMounted = true;
     let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
 
-    // 页面不激活时不建立连接
     if (!isActive) {
       return;
     }
 
     const connectWs = () => {
-      // 检查组件是否仍然挂载且页面激活
       if (!isMounted) {
         return;
       }
@@ -100,7 +98,6 @@ export function Connections({ isActive = true }: ConnectionsProps) {
             const data = JSON.parse(event.data);
             if (data.connections) {
               const mapped = data.connections.map((c: any) => {
-                // 提取进程名
                 const processPath = c.metadata.processPath || '';
                 const processName = processPath ? processPath.split(/[\\/]/).pop() : '';
                 
@@ -138,7 +135,6 @@ export function Connections({ isActive = true }: ConnectionsProps) {
         ws.onclose = () => {
           if (isMounted) {
             setIsConnected(false);
-            // 只有组件仍然挂载时才尝试重连
             reconnectTimeout = setTimeout(connectWs, 5000);
           }
         };
@@ -155,12 +151,10 @@ export function Connections({ isActive = true }: ConnectionsProps) {
 
     return () => {
       isMounted = false;
-      // 清除待执行的重连定时器
       if (reconnectTimeout) {
         clearTimeout(reconnectTimeout);
         reconnectTimeout = null;
       }
-      // 关闭 WebSocket 连接
       if (wsRef.current) {
         wsRef.current.close();
         wsRef.current = null;
@@ -190,6 +184,8 @@ export function Connections({ isActive = true }: ConnectionsProps) {
     c.host.toLowerCase().includes(search.toLowerCase()) || 
     (c.process && c.process.toLowerCase().includes(search.toLowerCase()))
   );
+  const totalDownload = connections.reduce((sum, c) => sum + c.download, 0);
+  const totalUpload = connections.reduce((sum, c) => sum + c.upload, 0);
 
   // ========== 添加到规则集功能 ==========
 
@@ -207,7 +203,7 @@ export function Connections({ isActive = true }: ConnectionsProps) {
   /** 规则提取类型 */
   type RuleExtractType = 'process' | 'domain' | 'ip';
 
-  /** 打开添加到规则集弹窗（不指定类型则显示全部可选项供选择） */
+  /** 打开添加到规则集弹窗 */
   const handleAddToRuleSet = (conn: Connection) => {
     const rules = buildRulesFromConnection(conn, null);
     setTargetConn(conn);
@@ -222,31 +218,21 @@ export function Connections({ isActive = true }: ConnectionsProps) {
     loadLocalRuleProviders();
   };
 
-  /** 当前要提取的规则类型（null 表示全部，即显示选项列表） */
   const [currentExtractType, setCurrentExtractType] = useState<RuleExtractType | null>(null);
-  /** 弹窗中选中的规则 ID（单选） */
   const [selectedRuleId, setSelectedRuleId] = useState<string>('');
-  /** 缓存的可提取规则列表（避免每次 render 重新生成 UUID 导致选中失效） */
   const [cachedRules, setCachedRules] = useState<LeafRule[]>([]);
-  /** 规则集搜索关键词 */
   const [ruleSetSearchKeyword, setRuleSetSearchKeyword] = useState('');
 
-  /** 根据连接信息构建规则条目
-   * @param extractType 只提取指定类型，不传则提取所有可用规则
-   */
+  /** 根据连接信息构建规则条目 */
   const buildRulesFromConnection = (conn: Connection, extractType?: RuleExtractType | null): LeafRule[] => {
     const rules: LeafRule[] = [];
 
-    // 进程名 -> processNames
     if ((!extractType || extractType === 'process') && conn.process && conn.process.trim() && conn.process !== '-') {
       rules.push({ id: crypto.randomUUID(), type: 'processNames', value: conn.process.trim() });
     }
 
-    // 判断是否为 IP 地址（支持 IPv4 和 IPv6）
     const isIpAddress = (str: string) => {
-      // IPv4 格式
       if (/^\d+\.\d+\.\d+\.\d+$/.test(str)) return true;
-      // IPv6 格式（包含冒号）
       if (str.includes(':')) return true;
       return false;
     };
@@ -254,20 +240,16 @@ export function Connections({ isActive = true }: ConnectionsProps) {
     const host = conn.host?.trim();
     const destinationIP = conn.destinationIP?.trim();
 
-    // 域名 -> domain (host 不是 IP 时)
     if ((!extractType || extractType === 'domain') && host && host !== 'unknown') {
       if (!isIpAddress(host) && host !== destinationIP) {
         rules.push({ id: crypto.randomUUID(), type: 'domain', value: host });
       }
     }
 
-    // IP -> ipCidr
     if (!extractType || extractType === 'ip') {
-      // 优先使用 destinationIP（域名解析后的 IP）
       if (destinationIP) {
         rules.push({ id: crypto.randomUUID(), type: 'ipCidr', value: destinationIP });
       }
-      // 如果 host 本身就是 IP（直接访问 IP，没有域名），则使用 host
       else if (host && host !== 'unknown' && isIpAddress(host)) {
         rules.push({ id: crypto.randomUUID(), type: 'ipCidr', value: host });
       }
@@ -276,16 +258,12 @@ export function Connections({ isActive = true }: ConnectionsProps) {
     return rules;
   };
 
-  /** 将新规则合并到已有 RouteLogicRule 中
-   *  - 如果原规则集是 any（mode: 'or'），直接追加新规则
-   *  - 如果原规则集不是 any（如 and），则在外层包一个 any（mode: 'or'），将原规则和新规则作为同级项
-   */
+  /** 将新规则合并到已有 RouteLogicRule 中 */
   const mergeRulesIntoLogicRule = (existingRule: RouteLogicRule | null | undefined, newRules: LeafRule[]): RouteLogicRule => {
     if (newRules.length === 0) {
       return existingRule || { type: 'logical' as const, mode: 'and' as const, rules: [] };
     }
 
-    // 构建 sing-box headless rule 格式
     const newHeadlessRules: Record<string, unknown>[] = [];
     for (const r of newRules) {
       const vals = r.value.split(',').map(s => s.trim()).filter(Boolean);
@@ -302,7 +280,6 @@ export function Connections({ isActive = true }: ConnectionsProps) {
       newHeadlessRules.push({ [key]: vals });
     }
 
-    // 无现有规则：直接返回新的 logical 规则（新建默认 any/or 模式）
     if (!existingRule || !existingRule.rules || existingRule.rules.length === 0) {
       return {
         type: 'logical',
@@ -314,13 +291,11 @@ export function Connections({ isActive = true }: ConnectionsProps) {
     const isAnyMode = existingRule.mode === 'or';
 
     if (isAnyMode) {
-      // 原规则集是 any 模式：直接追加
       return {
         ...existingRule,
         rules: [...existingRule.rules, ...newHeadlessRules],
       };
     } else {
-      // 原规则集不是 any 模式：在外层包一个 any（or），原规则和新规则作为同级子规则
       return {
         type: 'logical',
         mode: 'or',
@@ -335,7 +310,6 @@ export function Connections({ isActive = true }: ConnectionsProps) {
 
     try {
       setSaving(true);
-      // 使用选中的单条规则，如果没有选中则使用全部
       const newRules = selectedRule ? [selectedRule] : buildRulesFromConnection(targetConn, currentExtractType);
 
       if (newRules.length === 0) {
@@ -344,7 +318,6 @@ export function Connections({ isActive = true }: ConnectionsProps) {
       }
 
       if (isCreatingNew) {
-        // 新建规则集
         if (!newRuleSetName.trim()) {
           addNotification(t('connections.ruleSetNameRequired'), 'error');
           return;
@@ -362,7 +335,6 @@ export function Connections({ isActive = true }: ConnectionsProps) {
 
         addNotification(t('connections.ruleSetCreated'), 'success');
       } else {
-        // 添加到已有规则集
         if (!selectedProviderId) {
           addNotification(t('connections.selectRuleSetRequired'), 'error');
           return;
@@ -386,7 +358,6 @@ export function Connections({ isActive = true }: ConnectionsProps) {
 
       setShowAddToRuleSetModal(false);
       setTargetConn(null);
-      // 触发配置生成
       window.ipcRenderer.core.generateConfig().catch(console.error);
     } catch (err: any) {
       console.error('Failed to add to rule set:', err);
@@ -396,11 +367,8 @@ export function Connections({ isActive = true }: ConnectionsProps) {
     }
   };
 
-  // 使用缓存的规则列表（打开弹窗时一次性生成，ID 不会因 render 变化）
   const allExtractableRules = cachedRules;
-  // 当前选中的规则（用于确认提交）
   const selectedRule = selectedRuleId ? cachedRules.find(r => r.id === selectedRuleId) : null;
-  // 预览项：如果有选中则只显示选中的，否则显示全部作为选择列表
   const previewItems = currentExtractType ? buildRulesFromConnection(targetConn, currentExtractType) : allExtractableRules;
 
   return (
@@ -410,25 +378,53 @@ export function Connections({ isActive = true }: ConnectionsProps) {
       <div className="page-header flex-wrap gap-3" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
         <div className="min-w-0 shrink-0" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
           <h1 className="page-title">{t('connections.title')}</h1>
-          <div className="flex items-center gap-2 mt-2">
-            <Badge tone="accent">{connections.length} {t('connections.active')}</Badge>
+          <div className="flex items-center gap-3 mt-1.5">
+            <span className={cn("conn-indicator", isConnected ? "conn-indicator-on" : "conn-indicator-off")} />
+            <span className="text-[12px] text-[var(--app-text-tertiary)]">
+              {isConnected ? t('connections.realtimeConnectionList') : t('connections.noActiveConnections')}
+            </span>
+            <Badge tone="accent" className="h-5 px-1.5 text-[10px]">{connections.length}</Badge>
+            {filteredConnections.length !== connections.length && (
+              <span className="text-[11px] text-[var(--app-text-quaternary)]">
+                {filteredConnections.length} / {connections.length}
+              </span>
+            )}
+            <span className="mx-0.5 h-3 w-px bg-[var(--app-stroke)]" />
+            <div className="conn-stat-pill">
+              <ArrowDown className="h-3 w-3 text-[var(--app-success)]" />
+              <span>{formatBytes(totalDownload)}</span>
+            </div>
+            <div className="conn-stat-pill">
+              <ArrowUp className="h-3 w-3 text-[var(--app-accent)]" />
+              <span>{formatBytes(totalUpload)}</span>
+            </div>
+            <Button
+              onClick={handleCloseAll}
+              variant="ghost"
+              size="sm"
+              title={t('connections.closeAllTitle')}
+              className="h-6 px-2 text-[10px] gap-1"
+            >
+              <X className="w-3 h-3" />
+              {t('connections.closeAll')}
+            </Button>
           </div>
         </div>
 
-        <div className="flex items-center gap-2.5 min-w-0 flex-1 sm:flex-initial" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-          <div className="relative w-full min-w-0 max-w-52">
-            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--app-text-quaternary)] shrink-0" />
+        <div className="flex items-center gap-2 flex-wrap" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+          <div className="relative w-full min-w-0 max-w-52 sm:w-auto">
+            <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--app-text-quaternary)] shrink-0" />
             <Input
               type="text"
               placeholder={t('connections.searchPlaceholder')}
-              className="pl-9 text-[12px] w-full min-w-0 pr-8"
+              className="pl-8 text-[12px] w-full min-w-0 pr-7 h-8"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
             {search && (
               <button
                 onClick={() => setSearch('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded-full hover:bg-[var(--app-hover)] text-[var(--app-text-quaternary)] hover:text-[var(--app-text-secondary)] transition-colors"
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 rounded-full hover:bg-[var(--app-hover)] text-[var(--app-text-quaternary)] hover:text-[var(--app-text-secondary)] transition-colors"
               >
                 <X className="w-3 h-3" />
               </button>
@@ -437,119 +433,110 @@ export function Connections({ isActive = true }: ConnectionsProps) {
         </div>
       </div>
 
-      <div className="page-content min-w-0 px-4 sm:px-6 flex flex-col min-h-0 overflow-hidden">
-      <Card className="flex-1 overflow-hidden min-w-0 flex flex-col min-h-0">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--app-divider)] shrink-0">
-          <div className="text-[13px] font-medium text-[var(--app-text-secondary)]">{t('connections.realtimeConnectionList')}</div>
-          <div className="flex items-center gap-2">
-            <Button
-              onClick={handleCloseAll}
-              variant="secondary"
-              size="sm"
-              title={t('connections.closeAllTitle')}
-              className="h-7 px-2.5 text-[11px] gap-1"
-            >
-              <X className="w-3 h-3" />
-              {t('connections.closeAll')}
-            </Button>
-          </div>
+      <div className="page-content min-w-0 flex flex-col min-h-0 overflow-hidden !px-2 sm:!px-4">
+        {/* 列表头 */}
+        <div className="conn-list-header">
+          <div className="conn-list-col-host">{t('connections.address')}</div>
+          <div className="conn-list-col-process">{t('connections.process')}</div>
+          <div className="conn-list-col-chain">{t('connections.chain')}</div>
+          <div className="conn-list-col-rule">{t('connections.rule')}</div>
+          <div className="conn-list-col-traffic">{t('connections.traffic')}</div>
+          <div className="conn-list-col-time">{t('connections.time')}</div>
+          <div className="conn-list-col-actions">{t('connections.action')}</div>
         </div>
-        <div className="table-scroll-x flex-1 min-w-0 min-h-0">
-          <table className="data-table text-[12px] min-w-[700px]">
-          <thead className="sticky top-0 z-10 text-[12px] font-semibold text-[var(--app-text-secondary)] !bg-[rgba(255,255,255,0.9)]">
-            <tr>
-              <th className="px-3 py-2.5 text-center w-16"></th>
-              <th className="px-5 py-2.5">{t('connections.process')}</th>
-              <th className="px-5 py-2.5">{t('connections.address')}</th>
-              <th className="px-5 py-2.5">{t('connections.network')}</th>
-              <th className="px-5 py-2.5">{t('connections.chain')}</th>
-              <th className="px-5 py-2.5">{t('connections.rule')}</th>
-              <th className="px-5 py-2.5 text-right min-w-[140px]">{t('connections.traffic')}</th>
-              <th className="px-5 py-2.5 text-right">{t('connections.time')}</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[var(--app-divider)]">
-            {filteredConnections.map((conn) => (
-              <tr key={conn.id} className="group">
-                <td className="px-3 py-2.5 text-center">
-                  <div className="flex items-center justify-center">
-                    <Button
-                      onClick={() => handleAddToRuleSet(conn)}
-                      variant="ghost"
-                      size="icon"
-                      className="text-[var(--app-text-quaternary)] hover:text-[var(--accent-strong)]"
-                      title={t('connections.addToRuleSetTitle')}
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                    </Button>
-                    <Button
-                      onClick={() => handleCloseConnection(conn.id)}
-                      variant="ghost"
-                      size="icon"
-                      className="text-[var(--app-text-quaternary)] hover:text-[var(--app-danger)]"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </Button>
-                  </div>
-                </td>
-                <td className="px-5 py-2.5">
-                  <span className="text-[11px] text-[var(--app-text-secondary)] truncate max-w-[120px] block" title={conn.process}>
-                    {conn.process || '-'}
-                  </span>
-                </td>
-                <td className="px-5 py-2.5 font-medium text-[var(--app-text)] truncate max-w-[200px]" title={`${conn.host}:${conn.port}${conn.destinationIP ? ' (' + conn.destinationIP + ')' : ''}`}>
-                  <div className="flex flex-col">
-                    <span>{conn.host}:{conn.port}</span>
+
+        {/* 连接列表 */}
+        <div className="flex-1 min-h-0 overflow-y-auto conn-list-scroll">
+          {filteredConnections.length === 0 ? (
+            <div className="conn-empty-state">
+              <Activity className="w-5 h-5 mb-1.5 text-[var(--app-text-quaternary)]" />
+              <p className="text-[12px] text-[var(--app-text-quaternary)]">{t('connections.noActiveConnections')}</p>
+            </div>
+          ) : (
+            <div className="conn-list-body">
+              {filteredConnections.map((conn) => (
+                <div key={conn.id} className="conn-list-row group">
+                  {/* 地址 */}
+                  <div className="conn-list-col-host">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="conn-host truncate">{conn.host}:{conn.port}</span>
+                      <span className={cn(
+                        "conn-network-badge",
+                        conn.network === 'tcp' ? "conn-network-tcp" : "conn-network-udp"
+                      )}>
+                        {conn.network}
+                      </span>
+                    </div>
                     {conn.destinationIP && (
-                      <span className="text-[10px] text-[var(--app-text-quaternary)] font-mono">({conn.destinationIP})</span>
+                      <span className="conn-subtle truncate">{conn.destinationIP}</span>
                     )}
                   </div>
-                </td>
-                <td className="px-5 py-2.5">
-                  <div className="flex flex-col gap-1 items-center">
-                    <span className={cn(
-                      "badge",
-                      conn.network === 'tcp' ? "bg-[rgba(100,116,139,0.12)] text-[var(--app-info)]" : "bg-[var(--app-warning-soft)] text-[var(--app-warning)]"
-                    )}>
-                      {conn.network}
+
+                  {/* 进程 */}
+                  <div className="conn-list-col-process">
+                    <span className="conn-process truncate" title={conn.process}>{conn.process || '-'}</span>
+                    <span className="conn-subtle truncate">{conn.type || ''}</span>
+                  </div>
+
+                  {/* 链路 */}
+                  <div className="conn-list-col-chain">
+                    <div className="flex items-center gap-1 min-w-0 flex-wrap">
+                      {conn.chains.length > 0 ? conn.chains.map((chain) => (
+                        <span key={chain} className="conn-chain-chip" title={chain}>{chain}</span>
+                      )) : <span className="conn-subtle">-</span>}
+                    </div>
+                  </div>
+
+                  {/* 规则 */}
+                  <div className="conn-list-col-rule">
+                    <span className="conn-rule truncate" title={conn.rule}>{conn.rule || '-'}</span>
+                  </div>
+
+                  {/* 流量 */}
+                  <div className="conn-list-col-traffic">
+                    <span className="conn-traffic-down">
+                      <ArrowDown className="h-2.5 w-2.5" />
+                      {formatBytes(conn.download)}
                     </span>
-                    <span className="text-[10px] text-[var(--app-text-quaternary)] font-mono truncate max-w-[80px]" title={conn.type}>
-                      {conn.type}
+                    <span className="conn-traffic-up">
+                      <ArrowUp className="h-2.5 w-2.5" />
+                      {formatBytes(conn.upload)}
                     </span>
                   </div>
-                </td>
-                <td className="px-5 py-2.5">
-                  <div className="flex items-center space-x-1 text-[11px] text-[var(--app-text-tertiary)]">
-                    {conn.chains.map((chain, i) => (
-                      <span key={i} className="flex items-center">
-                        {i > 0 && <span className="mx-0.5 text-[var(--app-text-quaternary)]">›</span>}
-                        <span className="truncate max-w-[80px]" title={chain}>{chain}</span>
-                      </span>
-                    ))}
+
+                  {/* 时间 */}
+                  <div className="conn-list-col-time">
+                    <span className="conn-time">{conn.time}</span>
                   </div>
-                </td>
-                <td className="px-5 py-2.5 text-[var(--app-text-quaternary)] text-[11px] truncate max-w-[200px]" title={conn.rule}>{conn.rule}</td>
-                <td className="px-5 py-2.5 text-right min-w-[140px] whitespace-nowrap">
-                  <div className="flex flex-col text-[11px] font-mono">
-                    <span className="text-[var(--app-success)]">↓ {formatBytes(conn.download)}</span>
-                    <span className="text-[var(--app-accent)]">↑ {formatBytes(conn.upload)}</span>
+
+                  {/* 操作 */}
+                  <div className="conn-list-col-actions">
+                    <div className="conn-actions-group">
+                      <Button
+                        onClick={() => handleAddToRuleSet(conn)}
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-[var(--app-text-quaternary)] hover:text-[var(--app-accent-strong)]"
+                        title={t('connections.addToRuleSetTitle')}
+                      >
+                        <Plus className="w-3 h-3" />
+                      </Button>
+                      <Button
+                        onClick={() => handleCloseConnection(conn.id)}
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-[var(--app-text-quaternary)] hover:text-[var(--app-danger)]"
+                        title={t('connections.closeAll')}
+                      >
+                        <X className="w-3 h-3" />
+                      </Button>
+                    </div>
                   </div>
-                </td>
-                <td className="px-5 py-2.5 text-right text-[var(--app-text-quaternary)] font-mono text-[11px]">{conn.time}</td>
-              </tr>
-            ))}
-            {connections.length === 0 && !isConnected && (
-              <tr>
-                <td colSpan={7} className="px-5 py-10 text-center text-[var(--app-text-quaternary)]">
-                  <Activity className="w-6 h-6 mx-auto mb-2 text-[var(--app-text-quaternary)]" />
-                  <p className="text-[13px]">{t('connections.noActiveConnections')}</p>
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
-      </Card>
       </div>
 
       {/* 添加到规则集弹窗 */}
@@ -568,7 +555,7 @@ export function Connections({ isActive = true }: ConnectionsProps) {
                 initial={{ opacity: 0, scale: 0.95, y: 10 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                className="relative z-10 w-full max-w-md flex flex-col bg-white border border-[var(--app-stroke)] rounded-[20px] shadow-[var(--shadow-window)] overflow-hidden"
+                className="relative z-10 w-full max-w-md flex flex-col bg-[var(--app-panel)] border border-[var(--app-stroke)] rounded-[20px] shadow-[var(--shadow-window)] overflow-hidden"
                 style={{
                   maxHeight: '85vh',
                   WebkitAppRegion: 'no-drag'
@@ -606,7 +593,7 @@ export function Connections({ isActive = true }: ConnectionsProps) {
                                   "w-full text-left flex items-center gap-2 px-3 py-2 rounded-[8px] text-[12px] transition-all border",
                                   isSelected
                                     ? "border-[var(--app-accent)] bg-[var(--app-accent-soft-card)] text-[var(--app-accent-strong)]"
-                                    : "border-[var(--app-stroke)] bg-white text-[var(--app-text-secondary)] hover:bg-[var(--app-hover)]"
+                                    : "border-[var(--app-stroke)] bg-[var(--app-panel)] text-[var(--app-text-secondary)] hover:bg-[var(--app-hover)]"
                                 )}
                               >
                                 <span className={cn(
@@ -643,7 +630,7 @@ export function Connections({ isActive = true }: ConnectionsProps) {
                             "flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-[8px] text-[12px] font-medium transition-all border",
                             !isCreatingNew
                               ? "border-[var(--app-accent)] bg-[var(--app-accent-soft)] text-[var(--app-accent-strong)]"
-                              : "border-[var(--app-stroke)] bg-white text-[var(--app-text-secondary)] hover:bg-[var(--app-hover)]"
+                              : "border-[var(--app-stroke)] bg-[var(--app-panel)] text-[var(--app-text-secondary)] hover:bg-[var(--app-hover)]"
                           )}
                         >
                           {t('connections.selectExisting')}
@@ -655,7 +642,7 @@ export function Connections({ isActive = true }: ConnectionsProps) {
                             "flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-[8px] text-[12px] font-medium transition-all border",
                             isCreatingNew
                               ? "border-[var(--app-accent)] bg-[var(--app-accent-soft)] text-[var(--app-accent-strong)]"
-                              : "border-[var(--app-stroke)] bg-white text-[var(--app-text-secondary)] hover:bg-[var(--app-hover)]"
+                              : "border-[var(--app-stroke)] bg-[var(--app-panel)] text-[var(--app-text-secondary)] hover:bg-[var(--app-hover)]"
                           )}
                         >
                           {t('connections.createNew')}
@@ -690,7 +677,7 @@ export function Connections({ isActive = true }: ConnectionsProps) {
                                     "w-full text-left px-3 py-2 rounded-[8px] text-[12px] transition-colors border",
                                     selectedProviderId === p.id
                                       ? "border-[var(--app-accent)] bg-[var(--app-accent-soft-card)] text-[var(--app-accent-strong)] font-medium"
-                                      : "border-[var(--app-stroke)] bg-white text-[var(--app-text-secondary)] hover:bg-[var(--app-hover)]"
+                                      : "border-[var(--app-stroke)] bg-[var(--app-panel)] text-[var(--app-text-secondary)] hover:bg-[var(--app-hover)]"
                                   )}
                                 >
                                   {p.name}

@@ -140,7 +140,7 @@ export function JsonEditor({
                 rows={rows}
                 disabled={disabled}
                 spellCheck={false}
-                className={`w-full px-3 py-2 text-[13px] font-mono border rounded-[10px] resize-y focus:outline-none focus:border-[var(--app-accent-border)] bg-white text-[var(--app-text)] placeholder:text-[var(--app-text-quaternary)] border-[rgba(39,44,54,0.12)] hover:border-[rgba(39,44,54,0.18)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${textareaClassName}`}
+                className={`w-full px-3 py-2 text-[13px] font-mono border rounded-[10px] resize-y focus:outline-none focus:border-[var(--app-accent-border)] bg-[var(--app-panel)] text-[var(--app-text)] placeholder:text-[var(--app-text-quaternary)] border-[var(--app-stroke)] hover:border-[var(--app-stroke-strong)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${textareaClassName}`}
             />
             {(hint || docLink) && (
                 <p className="text-[11px] text-[var(--app-text-quaternary)] pl-1">

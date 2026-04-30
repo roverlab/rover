@@ -38,6 +38,7 @@ contextBridge.exposeInMainWorld('ipcRenderer', {
         getRuleProviders: () => ipcRenderer.invoke('db:getRuleProviders'),
         updateRuleProvider: (id: string, updates: any) => ipcRenderer.invoke('db:updateRuleProvider', id, updates),
         deleteRuleProvider: (id: string) => ipcRenderer.invoke('db:deleteRuleProvider', id),
+        updateRuleProvidersOrder: (orderedIds: string[]) => ipcRenderer.invoke('db:updateRuleProvidersOrder', orderedIds),
         // Policies
         getPolicies: () => ipcRenderer.invoke('db:getPolicies'),
         addPolicy: (policy: any) => ipcRenderer.invoke('db:addPolicy', policy),
@@ -61,6 +62,7 @@ contextBridge.exposeInMainWorld('ipcRenderer', {
         deleteDnsServer: (id: string) => ipcRenderer.invoke('db:deleteDnsServer', id),
         toggleDnsServerEnabled: (id: string, enabled: boolean) => ipcRenderer.invoke('db:toggleDnsServerEnabled', id, enabled),
         setDefaultDnsServer: (id: string) => ipcRenderer.invoke('db:setDefaultDnsServer', id),
+        updateDnsServersOrder: (orderedIds: string[]) => ipcRenderer.invoke('db:updateDnsServersOrder', orderedIds),
         // Profile DNS Policies
         getProfileDnsPolicyByPolicyId: (profileId: string, dnsPolicyId: string) => ipcRenderer.invoke('db:getProfileDnsPolicyByPolicyId', profileId, dnsPolicyId),
         setProfileDnsPolicy: (profileId: string, dnsPolicyId: string, dnsServerId: string | null) => ipcRenderer.invoke('db:setProfileDnsPolicy', profileId, dnsPolicyId, dnsServerId),

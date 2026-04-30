@@ -10,7 +10,6 @@ export function DnsPolicyHeader({}: DnsPolicyHeaderProps) {
         <div className="page-header" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
             <div>
                 <h1 className="page-title">{t('dnsPolicies.title')}</h1>
-                <p className="page-subtitle">{t('dnsPolicies.subtitle')}</p>
             </div>
         </div>
     );

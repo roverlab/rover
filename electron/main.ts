@@ -222,6 +222,9 @@ ipcMain.handle('db:deleteRuleProvider', async (_, id) => {
     dbUtils.deleteRuleProvider(id);
     scheduler.initSchedulers();
 });
+ipcMain.handle('db:updateRuleProvidersOrder', (_, orderedIds) => {
+    dbUtils.updateRuleProvidersOrder(orderedIds);
+});
 
 // IPC Handlers for Policies
 ipcMain.handle('db:getPolicies', () => dbUtils.getPolicies());
@@ -263,6 +266,9 @@ ipcMain.handle('db:updateDnsServer', (_, id: string, updates: any) => dbUtils.up
 ipcMain.handle('db:deleteDnsServer', (_, id: string) => dbUtils.deleteDnsServer(id));
 ipcMain.handle('db:toggleDnsServerEnabled', (_, id: string, enabled: boolean) => dbUtils.toggleDnsServerEnabled(id, enabled));
 ipcMain.handle('db:setDefaultDnsServer', (_, id: string) => dbUtils.setDefaultDnsServer(id));
+ipcMain.handle('db:updateDnsServersOrder', (_, orderedIds) => {
+    dbUtils.updateDnsServersOrder(orderedIds);
+});
 
 // Custom Proxy Groups
 ipcMain.handle('db:getProfileCustomGroups', (_, profileId: string) => dbUtils.getProfileCustomGroups(profileId));

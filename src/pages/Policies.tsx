@@ -126,19 +126,24 @@ const [loading, setLoading] = useState(true);
         }
     };
 
-    const persistPolicyOrder = async (nextPolicies: Policy[]) => {
-        setPolicies(nextPolicies);
-        const orders = nextPolicies.map((p, index) => ({ id: p.id, order: index }));
+    // 拖拽排序回调
+    const handleReorder = useCallback(async (itemId: string, _oldIndex: number, newIndex: number) => {
+        const currentPolicies = [...policies];
+        const fromIndex = currentPolicies.findIndex(p => p.id === itemId);
+        if (fromIndex === -1 || fromIndex === newIndex) return;
+        const [movedItem] = currentPolicies.splice(fromIndex, 1);
+        currentPolicies.splice(newIndex, 0, movedItem);
+        setPolicies(currentPolicies);
+        const orders = currentPolicies.map((p, index) => ({ id: p.id, order: index }));
         try {
             await window.ipcRenderer.db.updatePoliciesOrder(orders);
-            // 异步生成配置，不阻塞UI
             window.ipcRenderer.core.generateConfig().catch(console.error);
         } catch (err: unknown) {
             console.error('Failed to update order:', err);
             addNotification(t('policies.reorderFailed'), 'error');
             loadPolicies();
         }
-    };
+    }, [policies, addNotification, t]);
 
     const handleBatchEnable = async (selectedIds: Set<string>) => {
         if (selectedIds.size === 0) return;
@@ -206,39 +211,6 @@ const [loading, setLoading] = useState(true);
         }
     };
 
-    const reorderSelectedPolicies = async (mode: 'top' | 'up' | 'down' | 'bottom', selectedIds: Set<string>) => {
-        if (selectedIds.size === 0 || policies.length <= 1) return;
-        const next = [...policies];
-        const isSelected = (id: string) => selectedIds.has(id);
-        if (mode === 'top') {
-            const selected = next.filter(p => isSelected(p.id));
-            const unselected = next.filter(p => !isSelected(p.id));
-            await persistPolicyOrder([...selected, ...unselected]);
-            return;
-        }
-        if (mode === 'bottom') {
-            const selected = next.filter(p => isSelected(p.id));
-            const unselected = next.filter(p => !isSelected(p.id));
-            await persistPolicyOrder([...unselected, ...selected]);
-            return;
-        }
-        if (mode === 'up') {
-            for (let i = 1; i < next.length; i++) {
-                if (isSelected(next[i].id) && !isSelected(next[i - 1].id)) {
-                    [next[i - 1], next[i]] = [next[i], next[i - 1]];
-                }
-            }
-            await persistPolicyOrder(next);
-            return;
-        }
-        for (let i = next.length - 2; i >= 0; i--) {
-            if (isSelected(next[i].id) && !isSelected(next[i + 1].id)) {
-                [next[i], next[i + 1]] = [next[i + 1], next[i]];
-            }
-        }
-        await persistPolicyOrder(next);
-    };
-
     const handlePolicyFinalOutboundChange = async (value: 'direct_out' | 'block_out' | 'selector_out') => {
         try {
             await policyFinalOutbound.onChange(value);
@@ -280,7 +252,7 @@ const [loading, setLoading] = useState(true);
                 onOpenSettings={() => setShowSettingsModal(true)}
             />
 
-            <div className="page-content space-y-3">
+            <div className="page-content flex flex-col !overflow-hidden">
                 {policies.length === 0 ? (
                     <PolicyEmptyState onAdd={handleAdd} onImportTemplate={() => handleOpenImport('template')} />
                 ) : (
@@ -292,10 +264,10 @@ const [loading, setLoading] = useState(true);
                         onViewDetail={handleViewDetail}
                         onDelete={openDeleteConfirm}
                         onToggleEnabled={handleToggleEnabled}
-                        onReorder={reorderSelectedPolicies}
                         onBatchEnable={handleBatchEnable}
                         onBatchDisable={handleBatchDisable}
                         onBatchDelete={handleBatchDelete}
+                        onReorder={handleReorder}
                     />
                 )}
             </div>

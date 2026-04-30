@@ -4,6 +4,19 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Rover</title>
+    <script>
+      (function() {
+        try {
+          var dark = localStorage.getItem('rover-theme') === 'dark' || (!localStorage.getItem('rover-theme') && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          if (dark) {
+            document.documentElement.classList.add('dark');
+            document.documentElement.style.background = '#0b0f19';
+          } else {
+            document.documentElement.style.background = '#f7faff';
+          }
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

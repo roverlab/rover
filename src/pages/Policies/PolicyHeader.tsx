@@ -16,7 +16,6 @@ export function PolicyHeader({
         <div className="page-header" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
             <div>
                 <h1 className="page-title">{t('policies.title')}</h1>
-                <p className="page-subtitle">{t('policies.subtitle')}</p>
             </div>
             <div className="toolbar" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
                 <Button

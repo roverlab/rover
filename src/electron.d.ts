@@ -42,6 +42,7 @@ export interface ElectronAPI {
             getRuleProviders(): Promise<any[]>;
             updateRuleProvider(id: string, updates: any): Promise<void>;
             deleteRuleProvider(id: string): Promise<void>;
+            updateRuleProvidersOrder(orderedIds: string[]): Promise<void>;
             // Policies
             getPolicies(): Promise<any[]>;
             addPolicy(policy: any): Promise<string>;
@@ -65,6 +66,7 @@ export interface ElectronAPI {
             deleteDnsServer(id: string): Promise<void>;
             toggleDnsServerEnabled(id: string, enabled: boolean): Promise<boolean>;
             setDefaultDnsServer(id: string): Promise<boolean>;
+            updateDnsServersOrder(orderedIds: string[]): Promise<void>;
             // Profile DNS Policies
             getProfileDnsPolicyByPolicyId(profileId: string, dnsPolicyId: string): Promise<any>;
             setProfileDnsPolicy(profileId: string, dnsPolicyId: string, dnsServerId: string | null): Promise<void>;

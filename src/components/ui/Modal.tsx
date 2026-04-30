@@ -1,59 +1,58 @@
-import * as React from 'react';
-import { createPortal } from 'react-dom';
-import { motion, AnimatePresence } from 'framer-motion';
-import { X } from 'lucide-react';
-import { useTranslation } from 'react-i18next';
-import { cn } from '../Sidebar';
+import * as React from "react"
+import { createPortal } from "react-dom"
+import { motion, AnimatePresence } from "framer-motion"
+import { X } from "lucide-react"
+import { useTranslation } from "react-i18next"
+import { cn } from "../../lib/utils"
 
 export interface ModalProps {
   /** 是否显示 */
-  open: boolean;
+  open: boolean
   /** 关闭回调 */
-  onClose: () => void;
+  onClose: () => void
   /** 标题 */
-  title: React.ReactNode;
+  title: React.ReactNode
   /** 子内容 */
-  children: React.ReactNode;
+  children: React.ReactNode
   /** 最大宽度类名，如 max-w-lg, max-w-2xl */
-  maxWidth?: string;
+  maxWidth?: string
   /** 内容区额外类名 */
-  contentClassName?: string;
+  contentClassName?: string
   /** 是否显示头部（含标题和关闭按钮） */
-  showHeader?: boolean;
+  showHeader?: boolean
   /** 底部操作区 */
-  footer?: React.ReactNode;
+  footer?: React.ReactNode
   /** z-index，默认 200 */
-  zIndex?: number;
+  zIndex?: number
 }
 
 /**
- * 通用弹窗组件
- * 确保关闭按钮可用：z-index 分层、WebkitAppRegion、原生 button
+ * 通用弹窗组件 - Shadcn UI 风格
  */
 export function Modal({
   open,
   onClose,
   title,
   children,
-  maxWidth = 'max-w-lg',
+  maxWidth = "max-w-lg",
   contentClassName,
   showHeader = true,
   footer,
   zIndex = 200,
 }: ModalProps) {
-  const { t } = useTranslation();
+  const { t } = useTranslation()
   return createPortal(
     <AnimatePresence>
       {open && (
         <div
           className="flex items-center justify-center p-4"
-          style={{ position: 'fixed', inset: 0, zIndex }}
+          style={{ position: "fixed", inset: 0, zIndex }}
         >
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 z-0 bg-black/40 backdrop-blur-sm"
+            className="absolute inset-0 z-0 bg-black/50"
             onClick={onClose}
           />
           <motion.div
@@ -61,28 +60,28 @@ export function Modal({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 10 }}
             className={cn(
-              'relative z-10 w-full flex flex-col bg-white border border-[rgba(39,44,54,0.08)] rounded-[20px] shadow-[var(--shadow-elevated)] overflow-hidden',
+              "relative z-10 w-full flex flex-col bg-background border border-border rounded-lg shadow-lg overflow-hidden",
               maxWidth
             )}
-            style={{ maxHeight: 'calc(100vh - 2rem)', WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+            style={{ maxHeight: "calc(100vh - 2rem)", WebkitAppRegion: "no-drag" } as React.CSSProperties}
             onClick={(e) => e.stopPropagation()}
           >
             {showHeader && (
-              <div className="flex shrink-0 items-center justify-between px-6 py-4 border-b border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/50">
-                <h2 className="text-[15px] font-semibold text-[var(--app-text)]">{title}</h2>
+              <div className="flex shrink-0 items-center justify-between px-6 py-4 border-b border-border">
+                <h2 className="text-lg font-semibold text-foreground">{title}</h2>
                 <button
                   type="button"
                   onClick={onClose}
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[var(--app-text-tertiary)] hover:bg-[var(--app-hover)] hover:text-[var(--app-text)] transition-colors -mr-2"
-                  aria-label={t('common.close')}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors -mr-2"
+                  aria-label={t("common.close")}
                 >
                   <X className="w-4 h-4" />
                 </button>
               </div>
             )}
-            <div className={cn('flex-1 overflow-y-auto', contentClassName)}>{children}</div>
+            <div className={cn("flex-1 overflow-y-auto", contentClassName)}>{children}</div>
             {footer && (
-              <div className="flex shrink-0 items-center justify-end gap-2 px-6 py-4 border-t border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/30">
+              <div className="flex shrink-0 items-center justify-end gap-2 px-6 py-4 border-t border-border bg-muted/30">
                 {footer}
               </div>
             )}
@@ -91,5 +90,5 @@ export function Modal({
       )}
     </AnimatePresence>,
     document.body
-  );
+  )
 }

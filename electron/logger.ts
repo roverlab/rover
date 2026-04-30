@@ -31,21 +31,37 @@ let currentLogFile: string = '';
 let currentLogSize: number = 0;
 
 /**
+ * 移除字符串中的非 ASCII 字符
+ * 避免 Windows 终端因编码问题显示乱码（如 em dash — 变成 鈥?）
+ * 保留基本拉丁字符、数字、常见标点
+ */
+function stripNonAscii(str: string): string {
+    // 保留 ASCII 范围 (0x00-0x7F) 的字符，移除所有非 ASCII 字符
+    // 包括：emoji、中文、日韩文、特殊标点（em dash、smart quotes 等）
+    return str.replace(/[^\x00-\x7F]/g, '');
+}
+
+/**
  * 在 Windows 上将 UTF-8 字符串输出
  */
-function consoleLogWithEncoding(method: 'log' | 'warn' | 'error', message: string): void {
+function consoleLogWithEncoding(method: 'log' | 'info' | 'warn' | 'error', message: string): void {
+    // 在 Windows 上移除非 ASCII 字符，避免终端编码乱码（如 em dash — 变成 鈥?）
+    const safeMessage = process.platform === 'win32' ? stripNonAscii(message) : message;
+
     // 使用保存的原始 console 方法，避免与 redirectConsole 产生递归
-    const extendedConsole = console as Console & { _originalLog?: typeof console.log; _originalError?: typeof console.error; _originalWarn?: typeof console.warn };
+    const extendedConsole = console as Console & { _originalLog?: typeof console.log; _originalInfo?: typeof console.info; _originalError?: typeof console.error; _originalWarn?: typeof console.warn };
     const originalMethod = method === 'error'
         ? extendedConsole._originalError
         : method === 'warn'
             ? extendedConsole._originalWarn
-            : extendedConsole._originalLog;
+            : method === 'info'
+                ? extendedConsole._originalInfo
+                : extendedConsole._originalLog;
 
     if (originalMethod) {
-        originalMethod(message);
+        originalMethod(safeMessage);
     } else {
-        console[method](message);
+        console[method](safeMessage);
     }
 }
 
@@ -219,9 +235,9 @@ function writeLog(level: LogLevel, module: string, message: string): void {
         // 检查日志轮转
         checkRotation();
 
-        // 追加写入日志
-        fs.appendFileSync(currentLogFile, formattedMessage);
-        currentLogSize += Buffer.byteLength(formattedMessage);
+        // 追加写入日志（显式指定 UTF-8 编码，避免 Windows 上使用系统默认编码导致乱码）
+        fs.appendFileSync(currentLogFile, formattedMessage, 'utf8');
+        currentLogSize += Buffer.byteLength(formattedMessage, 'utf8');
     } catch (err) {
         console.error('Failed to write log file:', err);
     }
@@ -306,10 +322,10 @@ export function logBatch(entries: LogEntry[]): void {
         // 检查日志轮转
         checkRotation();
 
-        // 批量写入（一次 I/O 操作）
+        // 批量写入（一次 I/O 操作，显式指定 UTF-8 编码）
         const allMessages = formattedMessages.join('');
-        fs.appendFileSync(currentLogFile, allMessages);
-        currentLogSize += Buffer.byteLength(allMessages);
+        fs.appendFileSync(currentLogFile, allMessages, 'utf8');
+        currentLogSize += Buffer.byteLength(allMessages, 'utf8');
     } catch (err) {
         console.error('Failed to batch write log file:', err);
     }
@@ -378,11 +394,12 @@ export function clearAllLogs(): void {
 
 /**
  * 重定向控制台输出到日志系统
- * 将 console.log 和 console.error 重定向到 logger
+ * 将 console.log、console.info 和 console.error 重定向到 logger
  */
 export function redirectConsole(): void {
     // 保存原始的 console 方法
     const originalConsoleLog = console.log;
+    const originalConsoleInfo = console.info;
     const originalConsoleError = console.error;
     const originalConsoleWarn = console.warn;
 
@@ -434,19 +451,39 @@ export function redirectConsole(): void {
         warn('Console', message);
     };
 
+    // 重写 console.info
+    console.info = (...args: unknown[]) => {
+        const message = args.map(arg => {
+            if (typeof arg === 'object') {
+                try {
+                    return JSON.stringify(arg, null, 2);
+                } catch {
+                    return String(arg);
+                }
+            }
+            return String(arg);
+        }).join(' ');
+
+        info('Console', message);
+    };
+
     // 保存原始方法以便需要时恢复
-    (console as Console & { _originalLog?: typeof console.log; _originalError?: typeof console.error; _originalWarn?: typeof console.warn })._originalLog = originalConsoleLog;
-    (console as Console & { _originalLog?: typeof console.log; _originalError?: typeof console.error; _originalWarn?: typeof console.warn })._originalError = originalConsoleError;
-    (console as Console & { _originalLog?: typeof console.log; _originalError?: typeof console.error; _originalWarn?: typeof console.warn })._originalWarn = originalConsoleWarn;
+    (console as Console & { _originalLog?: typeof console.log; _originalInfo?: typeof console.info; _originalError?: typeof console.error; _originalWarn?: typeof console.warn })._originalLog = originalConsoleLog;
+    (console as Console & { _originalLog?: typeof console.log; _originalInfo?: typeof console.info; _originalError?: typeof console.error; _originalWarn?: typeof console.warn })._originalInfo = originalConsoleInfo;
+    (console as Console & { _originalLog?: typeof console.log; _originalInfo?: typeof console.info; _originalError?: typeof console.error; _originalWarn?: typeof console.warn })._originalError = originalConsoleError;
+    (console as Console & { _originalLog?: typeof console.log; _originalInfo?: typeof console.info; _originalError?: typeof console.error; _originalWarn?: typeof console.warn })._originalWarn = originalConsoleWarn;
 }
 
 /**
  * 恢复原始的 console 方法
  */
 export function restoreConsole(): void {
-    const extendedConsole = console as Console & { _originalLog?: typeof console.log; _originalError?: typeof console.error; _originalWarn?: typeof console.warn };
+    const extendedConsole = console as Console & { _originalLog?: typeof console.log; _originalInfo?: typeof console.info; _originalError?: typeof console.error; _originalWarn?: typeof console.warn };
     if (extendedConsole._originalLog) {
         console.log = extendedConsole._originalLog;
+    }
+    if (extendedConsole._originalInfo) {
+        console.info = extendedConsole._originalInfo;
     }
     if (extendedConsole._originalError) {
         console.error = extendedConsole._originalError;

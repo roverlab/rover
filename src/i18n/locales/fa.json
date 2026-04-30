@@ -70,18 +70,15 @@
   },
   "languageModal": {
     "title": "انتخاب زبان",
-    "subtitle": "زبان خود را انتخاب کنید",
     "changeLater": "می‌توانید بعداً در تنظیمات تغییر دهید"
   },
   "overrideRulesGate": {
-    "pageSubtitle": "قوانین مسیریابی سفارشی را فعال کنید تا از این صفحه استفاده کنید",
     "hintPrimary": "ابتدا \"قوانین مسیریابی سفارشی\" را در تنظیمات پیشرفته روشن کنید",
     "hintSecondary": "سیاست‌ها و ارائه‌دهندگان قوانین فقط هنگام فعال بودن مسیریابی سفارشی در دسترس هستند.",
     "goToAdvanced": "باز کردن تنظیمات پیشرفته"
   },
   "dashboard": {
     "title": "داشبورد",
-    "subtitle": "کنترل هسته، تغییر حالت خروجی، نظارت بر ترافیک و تشخیص شبکه.",
     "realTimeTraffic": "ترافیک زنده",
     "systemProxy": "پروکسی سیستم",
     "systemProxyDesc": "تغییر خروجی سیستم به هسته فعلی.",
@@ -99,10 +96,12 @@
     "trafficStats": "آمار ترافیک",
     "upload": "آپلود",
     "download": "دانلود",
+    "totalUpload": "آپلود کل",
+    "totalDownload": "دانلود کل",
     "peak": "اوج",
     "last60Seconds": "۶۰ ثانیه گذشته",
-    "coreConnected": "هسته متصل",
-    "coreOffline": "هسته آفلاین",
+    "coreConnected": "Running",
+    "coreOffline": "Stopped",
     "starting": "در حال شروع",
     "stopping": "در حال توقف",
     "restarting": "در حال راه‌اندازی مجدد",
@@ -119,6 +118,8 @@
     "switchedToRuleMode": "به حالت قانون تغییر کرد",
     "switchedToGlobalMode": "به حالت جهانی تغییر کرد",
     "switchedToDirectMode": "به حالت مستقیم تغییر کرد",
+    "startCore": "شروع",
+    "stopCore": "توقف",
     "restartCore": "راه‌اندازی مجدد",
     "startCoreFailed": "شروع هسته ناموفق",
     "stopCoreFailed": "توقف هسته ناموفق",
@@ -144,7 +145,6 @@
   },
   "settings": {
     "title": "تنظیمات",
-    "subtitle": "پیکربندی آدرس API، پورت‌ها، DNS و سیاست‌های مسیریابی پیشرفته.",
     "language": "زبان",
     "theme": "تم",
     "basic": "پایه",
@@ -172,7 +172,7 @@
     "themeLabel": "تم",
     "themeDesc": "حالت روشن / تاریک",
     "themeLight": "روشن",
-    "themeDark": "تاریک (پشتیبانی نمی‌شود)",
+    "themeDark": "تاریک",
     "languageLabel": "زبان",
     "languageDesc": "زبان رابط کاربری",
     "advancedSettings": "تنظیمات پیشرفته",
@@ -235,7 +235,6 @@
   },
   "proxies": {
     "title": "پروکسی‌ها",
-    "subtitle": "تغییر نودهای گروه پروکسی، تست سرعت با یک کلیک، جستجو و فیلتر.",
     "allGroups": "همه گروه‌ها",
     "testLatencyCurrentPage": "تست نودهای صفحه فعلی",
     "testLatencyGroup": "تست نودهای گروه",
@@ -270,7 +269,6 @@
   },
   "profiles": {
     "title": "پروفایل‌ها",
-    "subtitle": "افزودن اشتراک‌ها، وارد کردن پیکربندی‌های محلی، تغییر و به‌روزرسانی فایل‌های پروفایل.",
     "addRemote": "افزودن از راه دور",
     "importLocal": "ورودی محلی",
     "subscriptionUrl": "URL اشتراک (Clash YAML / Sing-box JSON)",
@@ -384,7 +382,6 @@
   },
   "routes": {
     "title": "مسیرها",
-    "subtitle": "مشاهده قوانین مسیریابی فعلی و جزئیات مجموعه قوانین.",
     "viewConfig": "مشاهده پیکربندی",
     "loadingConfig": "در حال بارگذاری پیکربندی...",
     "noRouteConfig": "بدون پیکربندی مسیریابی",
@@ -478,7 +475,6 @@
     "title": "سیاست‌ها",
     "settingsTitle": "تنظیمات سیاست",
     "policyEntity": "سیاست",
-    "subtitle": "پیکربندی قوانین سیاست مسیریابی و تنظیم خروجی پیش‌فرض برای ترافیک نامطابق.",
     "finalOutbound": {
       "label": "خروجی نهایی",
       "description": "خروجی پیش‌فرض زمانی که هیچ قانونی مطابقت ندارد"
@@ -637,7 +633,6 @@
   },
   "dnsPolicies": {
     "title": "سیاست‌های DNS",
-    "subtitle": "پیکربندی قوانین مسیریابی DNS و مشخص کردن سرورهای DNS مختلف برای هر دامنه.",
     "emptyTitle": "بدون سیاست DNS",
     "emptyDesc": "سیاست‌های DNS را برای پیکربندی قوانین مسیریابی دامنه و مشخص کردن سرورهای DNS مختلف برای دامنه‌های مختلف اضافه کنید.",
     "createPolicy": "ایجاد سیاست DNS",
@@ -670,7 +665,6 @@
   },
   "ruleProviders": {
     "title": "ارائه‌دهندگان قوانین",
-    "subtitle": "مدیریت اشتراک‌های مجموعه قوانین خارجی، پشتیبانی از به‌روزرسانی دسته‌ای، فعال و غیرفعال کردن.",
     "settings": "تنظیمات",
     "searchPlaceholder": "جستجوی نام، URL...",
     "filterAll": "همه",
@@ -809,7 +803,6 @@
   },
   "dnsServersTab": {
     "title": "سرورهای DNS",
-    "subtitle": "مدیریت سرورهای DNS sing-box. مشاهده ",
     "docLink": "مستندات sing-box",
     "saved": "ذخیره شد",
     "addServer": "افزودن سرور",
@@ -826,6 +819,7 @@
     "enable": "فعال کردن",
     "disable": "غیرفعال کردن",
     "setDefault": "تنظیم به عنوان پیش‌فرض",
+    "isDefault": "پیش‌فرض فعلی",
     "edit": "ویرایش",
     "delete": "حذف",
     "modalAddTitle": "افزودن سرور DNS",
@@ -870,8 +864,11 @@
     "refTypeDns": "سیاست DNS",
     "refTypeRoute": "سیاست مسیریابی",
     "refTypeDnsServer": "تفکیک‌کننده دامنه سرور DNS",
-    "rawEditorPlaceholder": "JSON سرور DNS sing-box را وارد کنید، مثال:\n{\n  \"type\": \"udp\",\n  \"tag\": \"my-dns\",\n  \"server\": \"8.8.8.8\",\n  \"server_port\": 53,\n  \"detour\": \"proxy\"\n}"
-  },
+"rawEditorPlaceholder": "JSON سرور DNS sing-box را وارد کنید، مثال:\n{\n  \"type\": \"udp\",\n  \"tag\": \"my-dns\",\n  \"server\": \"8.8.8.8\",\n  \"server_port\": 53,\n  \"detour\": \"proxy\"\n}",
+"searchPlaceholder": "جستجوی نام، آدرس...",
+"statsLine": "{{total}} سرور · {{enabled}} فعال",
+"noMatch": "سرور DNS یافت نشد"
+},
   "tooltips": {
     "restartCoreAfterConfig": "برای اعمال تغییرات پیکربندی، هسته را مجدداً راه‌اندازی کنید",
     "serviceNotInstalled": "سرویس نصب نشده است، برای نصب مجدداً فعال کنید",

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { Trash2, Pause, Play, Activity, Search, MoreVertical, FileX2, X, ArrowUp, Loader2, Copy, Check } from 'lucide-react';
-import { cn } from '../components/Sidebar';
+import { cn } from '../lib/utils';
 import { Button } from '../components/ui/Button';
 import { Input, Select } from '../components/ui/Field';
 import { Badge, Card } from '../components/ui/Surface';
@@ -437,7 +437,7 @@ export function Logs({ isActive = true }: LogsProps) {
         </div>
         <div ref={scrollContainerRef} className="table-scroll-x flex-1 min-h-0 overflow-y-auto">
           <table className="data-table text-[12px] min-w-full">
-          <thead className="sticky top-0 z-10 text-[12px] font-semibold text-[var(--app-text-secondary)] !bg-[rgba(255,255,255,0.9)]">
+          <thead className="sticky top-0 z-10 text-[12px] font-semibold text-[var(--app-text-secondary)] !bg-[rgba(255,255,255,0.9)] dark:!bg-[rgba(15,20,32,0.95)]">
             <tr>
               <th className="px-5 py-2.5 w-32">{t('logs.time')}</th>
               <th className="px-5 py-2.5 w-28">{t('logs.level')}</th>

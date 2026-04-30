@@ -2,16 +2,19 @@
  * DNS 服务器管理
  * 基于 sing-box DNS Server 配置：https://sing-box.sagernet.org/configuration/dns/server/
  */
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Field';
 import { Select } from '../../components/ui/Field';
-import { Card, SectionHeader } from '../../components/ui/Surface';
+import { Badge } from '../../components/ui/Surface';
 import { Modal } from '../../components/ui/Modal';
-import { Plus, Pencil, Trash2, Check, AlertCircle, Power, CircleDot } from 'lucide-react';
+import { Plus, Check, AlertCircle, Star, Server, MoreVertical } from 'lucide-react';
 import { OutboundSelector } from '../../components/OutboundSelector';
 import { JsonEditor } from '../../components/JsonEditor';
+import { cn } from '../../lib/utils';
+import { PolicyListTable, type ColumnDef } from '../../components/PolicyListTable';
+import { DnsServerRowDropdown } from './DnsServerRowDropdown';
 
 /** sing-box DNS 服务器类型 */
 export type DnsServerType =
@@ -157,18 +160,14 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
 
   const buildServerFromForm = () => {
     const type = (form.type || 'udp') as DnsServerType;
-    // 构建完整的服务器对象，只包含当前类型需要的字段
-    // 注意：不提交 id/enabled/is_default，这些由后端控制或保持不变
     const server: Record<string, unknown> = {
       type,
       name: form.name?.trim() || '',
     };
     if (type === 'raw') {
-      // raw 类型直接保存原始 JSON
       try {
         const rawData = JSON.parse(rawJsonText);
         server.raw_data = rawData;
-        // 从 raw_data 中提取 type（不提取 id，id 由后端控制）
         if (rawData.type) server.type = rawData.type;
       } catch {
         // 验证时已检查，这里应该不会出错
@@ -180,19 +179,15 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
       const port = form.server_port ?? DEFAULT_PORTS[type];
       if (port !== undefined && port !== DEFAULT_PORTS[type]) server.server_port = port;
     }
-    // 只有 https 类型才有 path 字段
     if (type === 'https' && form.path?.trim()) {
       server.path = form.path.trim();
     }
-    // domain_resolver
     if (form.domain_resolver?.trim()) {
       server.domain_resolver = form.domain_resolver.trim();
     }
-    // detour：空字符串表示直连，不设置该字段
     if (form.detour?.trim()) {
       server.detour = form.detour.trim();
     }
-    // preferred_detour 保存到 profile 关联，在 handleSubmit 中处理
     if (type === 'local' && form.prefer_go !== undefined) server.prefer_go = form.prefer_go;
     return server;
   };
@@ -219,9 +214,7 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
   const openEditModal = async (s: any) => {
     setEditingId(s.id);
     const id = s.id || '';
-    // 从 profile 获取 preferred_detour
     const preferredDetourVal = await getDnsServerDetour(s.id);
-    // 判断是否为 raw 类型（存储时有 raw_data 字段）
     const isRaw = !!s.raw_data;
     setForm({
       type: isRaw ? 'raw' : ((s.type || 'udp') as DnsServerType),
@@ -252,7 +245,6 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
 
     let serverId: string;
     if (editingId) {
-      // 编辑时，从原始服务器获取 id、enabled、is_default
       const originalServer = dnsServers.find((s) => s.id === editingId);
       if (originalServer) {
         serverData.id = originalServer.id;
@@ -265,7 +257,6 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
       serverId = await window.ipcRenderer.db.addDnsServer(serverData);
     }
 
-    // 保存 preferred_detour 到 profile 关联（与订阅相关）
     if (profileId) {
       try {
         await window.ipcRenderer.db.setProfileDnsServerDetour(profileId, serverId, preferredDetourVal);
@@ -318,7 +309,6 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
         return;
       }
     }
-    // 使用独立接口切换启用状态
     await window.ipcRenderer.db.toggleDnsServerEnabled(s.id, newEnabled);
     setSaved(true);
     setTimeout(() => setSaved(false), 3000);
@@ -327,13 +317,30 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
   };
 
   const handleSetDefault = async (s: any) => {
-    // 使用独立接口设置默认服务器
     await window.ipcRenderer.db.setDefaultDnsServer(s.id);
     setSaved(true);
     setTimeout(() => setSaved(false), 3000);
     await loadDnsServers();
     await onRegenerateConfig?.();
   };
+
+  // 拖拽排序回调
+  const handleReorder = useCallback(async (itemId: string, _oldIndex: number, newIndex: number) => {
+    const currentServers = [...dnsServers];
+    const fromIndex = currentServers.findIndex(s => s.id === itemId);
+    if (fromIndex === -1 || fromIndex === newIndex) return;
+    const [movedItem] = currentServers.splice(fromIndex, 1);
+    currentServers.splice(newIndex, 0, movedItem);
+    setDnsServers(currentServers);
+    const orderedIds = currentServers.map(s => s.id);
+    try {
+      await window.ipcRenderer.db.updateDnsServersOrder(orderedIds);
+      window.ipcRenderer.core.generateConfig().catch(console.error);
+    } catch (err: any) {
+      console.error('Failed to update DNS servers order:', err);
+      loadDnsServers();
+    }
+  }, [dnsServers]);
 
   const needsServerField = ['udp', 'tls', 'https'].includes(form.type || '');
   const needsPathField = form.type === 'https';
@@ -343,9 +350,7 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
   const isServerDomain = (addr: string | undefined): boolean => {
     if (!addr?.trim()) return false;
     const s = addr.trim();
-    // IPv4 地址
     if (/^(\d{1,3}\.){3}\d{1,3}$/.test(s)) return false;
-    // IPv6 地址（带或不带方括号）
     if (/^\[([0-9a-fA-F:]+)\]$/.test(s)) return false;
     if (/^[0-9a-fA-F:]+$/.test(s)) return false;
     return true;
@@ -353,129 +358,218 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
   
   const needsDomainResolver = needsServerField && isServerDomain(form.server);
 
-  return (
-    <div className="max-w-5xl space-y-5">
-      <Card>
-        <SectionHeader>
-          <div>
-            <h2 className="text-[12px] font-semibold uppercase tracking-[0.18em] text-[var(--app-text-quaternary)]">
-              {t('dnsServersTab.title')}
-            </h2>
-            <p className="text-[12px] text-[var(--app-text-quaternary)] mt-1">
-              {t('dnsServersTab.subtitle')}{' '}
-              <a
-                href="https://sing-box.sagernet.org/configuration/dns/server/"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-[var(--app-accent)] hover:underline"
-              >
-                {t('dnsServersTab.docLink')}
-              </a>
-            </p>
+  // ---- PolicyListTable 配置 ----
+
+  // 给每个 DNS 服务器加上 name 字段（兼容 PolicyListTable 的泛型约束）
+  const tableItems = useMemo(() => {
+    return dnsServers.map((s) => ({ ...s, name: s.name || s.id || '' }));
+  }, [dnsServers]);
+
+  // 列定义
+  const columns: ColumnDef<any>[] = useMemo(() => [
+    {
+      id: 'type',
+      header: t('dnsServersTab.colType'),
+      width: 'w-[72px]',
+      align: 'text-center',
+    },
+    {
+      id: 'name',
+      header: t('dnsServersTab.colName'),
+      width: 'min-w-[100px]',
+    },
+    {
+      id: 'address',
+      header: t('dnsServersTab.colAddress'),
+      width: 'min-w-[140px]',
+    },
+    {
+      id: 'detour',
+      header: t('dnsServersTab.colDetour'),
+      width: 'w-[70px]',
+      align: 'text-center',
+    },
+  ], [t]);
+
+  // 搜索字段
+  const searchFields = useMemo(() => (s: any) => [
+    s.name || '',
+    s.id || '',
+    s.type || '',
+    s.server || '',
+  ], []);
+
+  // 单元格渲染
+  const renderCell = (s: any, columnId: string, _index: number) => {
+    const enabled = s.enabled !== false;
+    switch (columnId) {
+      case 'type':
+        return (
+          <Badge tone={enabled ? 'accent' : 'neutral'} className="text-[12px] px-2.5 py-0.5 whitespace-nowrap inline-block">
+            {s.type}
+          </Badge>
+        );
+      case 'name':
+        return (
+          <span className={cn(
+            "text-[13px] font-medium truncate",
+            enabled ? "text-[var(--app-text)]" : "text-[var(--app-text-tertiary)] line-through"
+          )}>
+            {s.name || s.id}
+          </span>
+        );
+      case 'address':
+        return (
+          <span className="text-[12px] text-[var(--app-text-tertiary)] truncate block">
+            {s.raw_data ? null : s.server ? (
+              <>
+                {s.server}
+                {s.server_port && s.server_port !== DEFAULT_PORTS[s.type as DnsServerType] && `:${s.server_port}`}
+              </>
+            ) : null}
+          </span>
+        );
+      case 'detour':
+        return (
+          <div className="flex items-center justify-center">
+            <Badge tone={s.detour ? 'accent' : 'neutral'} className="text-[10px] px-2 py-0.5 whitespace-nowrap inline-block">
+              {s.detour ? t('dnsServersTab.detourProxy') : t('dnsServersTab.detourDirect')}
+            </Badge>
           </div>
-          <div className="flex items-center gap-2">
-            {saved && (
-              <span className="inline-flex items-center gap-1 text-[11px] text-green-600">
-                <Check className="w-3.5 h-3.5" />
-                {t('dnsServersTab.saved')}
-              </span>
-            )}
-            <Button variant="primary" size="sm" onClick={openAddModal}>
-              <Plus className="w-4 h-4 mr-1.5" />
-              {t('dnsServersTab.addServer')}
-            </Button>
-          </div>
-        </SectionHeader>
-        <div className="panel-section overflow-x-auto">
-          {dnsServers.length === 0 ? (
-            <div className="py-12 text-center text-[var(--app-text-tertiary)] text-[13px]">
-              {t('dnsServersTab.emptyHint')}
-            </div>
-          ) : (
-            <table className="data-table w-full">
-              <thead className="border-b border-[rgba(39,44,54,0.08)]">
-                <tr className="h-9">
-                  <th className="w-12 shrink-0 pl-4 pr-2 py-1.5 text-center text-[11px] font-medium text-[var(--app-text-quaternary)]">{t('dnsServersTab.colIndex')}</th>
-                  <th className="w-[72px] shrink-0 px-2 py-1.5 text-center text-[11px] font-medium text-[var(--app-text-quaternary)]">{t('dnsServersTab.colType')}</th>
-                    <th className="min-w-[100px] px-2 py-1.5 text-left text-[11px] font-medium text-[var(--app-text-quaternary)]">{t('dnsServersTab.colName')}</th>
-                  <th className="min-w-[140px] px-2 py-1.5 text-left text-[11px] font-medium text-[var(--app-text-quaternary)]">{t('dnsServersTab.colAddress')}</th>
-                  <th className="w-[60px] shrink-0 px-2 py-1.5 text-center text-[11px] font-medium text-[var(--app-text-quaternary)]">{t('dnsServersTab.colDetour')}</th>
-                  <th className="w-[140px] shrink-0 pl-2 pr-4 py-1.5 text-right text-[11px] font-medium text-[var(--app-text-quaternary)]">{t('dnsServersTab.colActions')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {dnsServers.map((s, index) => (
-                  <tr key={s.id} className="border-b border-[rgba(39,44,54,0.06)] hover:bg-[rgba(0,0,0,0.02)]">
-                    <td className="w-12 shrink-0 pl-4 pr-2 py-1.5 text-center text-[11px] text-[var(--app-text-quaternary)] align-middle">
-                      {index + 1}
-                    </td>
-                    <td className="w-[72px] shrink-0 px-2 py-1.5 text-center align-middle">
-                      <span className={`badge shrink-0 ${s.enabled === false ? 'badge-neutral opacity-50' : 'badge-neutral'}`}>{s.type}</span>
-                    </td>
-                    <td className="min-w-[100px] px-2 py-1.5 align-middle">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className={`text-[13px] font-medium truncate ${s.enabled === false ? 'text-[var(--app-text-tertiary)] line-through' : 'text-[var(--app-text)]'}`}>
-                          {s.name || s.id}
-                        </span>
-                        {s.is_default && (
-                          <span className="inline-flex items-center gap-1 text-[11px] text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full shrink-0">
-                            <CircleDot className="w-3 h-3 fill-emerald-600" />
-                            {t('dnsServersTab.defaultBadge')}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="min-w-[140px] px-2 py-1.5 align-middle">
-                      <span className="text-[12px] text-[var(--app-text-tertiary)] truncate block">
-                        {s.raw_data ? null : s.server ? (
-                          <>
-                            {s.server}
-                            {s.server_port && s.server_port !== DEFAULT_PORTS[s.type as DnsServerType] && `:${s.server_port}`}
-                          </>
-                        ) : null}
-                      </span>
-                    </td>
-                    <td className="w-[60px] shrink-0 px-2 py-1.5 text-center align-middle">
-                      <span className={`badge text-[10px] ${s.detour ? 'badge-accent' : 'badge-neutral'}`}>
-                        {s.detour ? t('dnsServersTab.detourProxy') : t('dnsServersTab.detourDirect')}
-                      </span>
-                    </td>
-                    <td className="w-[140px] shrink-0 pl-2 pr-4 py-1.5 text-right align-middle">
-                      <div className="flex items-center justify-end gap-0.5">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleToggleEnabled(s)}
-                          aria-label={s.enabled === false ? t('dnsServersTab.enable') : t('dnsServersTab.disable')}
-                          title={s.enabled === false ? t('dnsServersTab.enable') : t('dnsServersTab.disable')}
-                        >
-                          <Power className={`w-4 h-4 ${s.enabled === false ? 'text-[var(--app-text-quaternary)]' : 'text-green-600'}`} />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleSetDefault(s)}
-                          aria-label={t('dnsServersTab.setDefault')}
-                          title={t('dnsServersTab.setDefault')}
-                          disabled={s.is_default === true || s.enabled === false}
-                        >
-                          <CircleDot className={`w-4 h-4 ${s.is_default ? 'text-emerald-600 fill-emerald-600' : 'text-[var(--app-text-tertiary)]'}`} />
-                        </Button>
-                        <Button variant="ghost" size="icon" onClick={() => openEditModal(s)} aria-label={t('dnsServersTab.edit')}>
-                          <Pencil className="w-4 h-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" onClick={() => handleDelete(s)} aria-label={t('dnsServersTab.delete')}>
-                          <Trash2 className="w-4 h-4 text-red-500" />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        );
+      default:
+        return null;
+    }
+  };
+
+  // 下拉菜单渲染
+  const renderDropdown = (s: any, position: { top: number; left: number }, close: () => void) => (
+    <DnsServerRowDropdown
+      server={s}
+      position={position}
+      onEdit={(srv) => { close(); openEditModal(srv); }}
+      onDelete={(srv) => { close(); handleDelete(srv); }}
+    />
+  );
+
+  // 自定义操作列（设为默认按钮 + 更多菜单按钮）
+  const renderActions = (s: any, _index: number, dropdownButtonRef: (el: HTMLButtonElement | null) => void, onOpenDropdown: (e: React.MouseEvent, itemId: string) => void) => {
+    const isDefault = s.is_default === true;
+    const isDisabled = s.enabled === false;
+    return (
+      <div className="flex items-center justify-end gap-0.5">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => handleSetDefault(s)}
+          aria-label={t('dnsServersTab.setDefault')}
+          title={isDefault ? t('dnsServersTab.isDefault') : t('dnsServersTab.setDefault')}
+          disabled={isDefault || isDisabled}
+          className={cn(
+            "h-7 w-7",
+            isDefault && "text-[var(--app-accent)]"
           )}
-        </div>
-      </Card>
+        >
+          <Star className={cn(
+            "w-3.5 h-3.5",
+            isDefault ? "text-[var(--app-accent)] fill-[var(--app-accent)]" : "text-[var(--app-text-tertiary)]"
+          )} />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7"
+          ref={dropdownButtonRef}
+          onClick={(e) => onOpenDropdown(e, s.id)}
+        >
+          <MoreVertical className="w-3.5 h-3.5" />
+        </Button>
+      </div>
+    );
+  };
+
+  // 工具栏右侧额外内容（保存提示）
+  const toolbarRightExtra = saved ? (
+    <span className="inline-flex items-center gap-1 text-[11px] text-[var(--app-success)]">
+      <Check className="w-3.5 h-3.5" />
+      {t('dnsServersTab.saved')}
+    </span>
+  ) : null;
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden">
+      <PolicyListTable<any>
+        items={tableItems}
+        columns={columns}
+        renderCell={renderCell}
+        searchFields={searchFields}
+        searchPlaceholder={t('dnsServersTab.searchPlaceholder')}
+        statsLineKey="dnsServersTab.statsLine"
+        addLabelKey="dnsServersTab.addServer"
+        getEnabled={(s) => s.enabled !== false}
+        onAdd={openAddModal}
+        onToggleEnabled={handleToggleEnabled}
+        onBatchEnable={async (selectedIds) => {
+          for (const id of selectedIds) {
+            await window.ipcRenderer.db.toggleDnsServerEnabled(id, true);
+          }
+          setSaved(true);
+          setTimeout(() => setSaved(false), 3000);
+          await loadDnsServers();
+          await onRegenerateConfig?.();
+        }}
+        onBatchDisable={async (selectedIds) => {
+          // 检查引用
+          for (const id of selectedIds) {
+            const refs = await window.ipcRenderer.db.getDnsServerRefs(id);
+            if (refs.length > 0) {
+              const lines = refs.map((r) => `#${r.index} ${r.name}（${getSourceLabel(r.source)}）`);
+              setErrorMessage(t('dnsServersTab.refBlockDisable', { id, lines: lines.join('\n') }));
+              setErrorModalOpen(true);
+              return;
+            }
+          }
+          for (const id of selectedIds) {
+            await window.ipcRenderer.db.toggleDnsServerEnabled(id, false);
+          }
+          setSaved(true);
+          setTimeout(() => setSaved(false), 3000);
+          await loadDnsServers();
+          await onRegenerateConfig?.();
+        }}
+        onBatchDelete={async (selectedIds) => {
+          // 检查引用
+          for (const id of selectedIds) {
+            const refs = await window.ipcRenderer.db.getDnsServerRefs(id);
+            if (refs.length > 0) {
+              const lines = refs.map((r) => `#${r.index} ${r.name}（${getSourceLabel(r.source)}）`);
+              setErrorMessage(t('dnsServersTab.refBlockDelete', { id, lines: lines.join('\n') }));
+              setErrorModalOpen(true);
+              return;
+            }
+          }
+          for (const id of selectedIds) {
+            await window.ipcRenderer.db.deleteDnsServer(id);
+          }
+          setSaved(true);
+          setTimeout(() => setSaved(false), 3000);
+          await loadDnsServers();
+          await onRegenerateConfig?.();
+        }}
+        onEdit={openEditModal}
+        renderDropdown={renderDropdown}
+        renderActions={renderActions}
+        onReorder={handleReorder}
+        showIndexColumn
+        noMatchText={t('dnsServersTab.noMatch')}
+        toolbarRightExtra={toolbarRightExtra}
+        emptyState={
+          <div className="flex min-h-[180px] flex-col items-center justify-center py-8 text-center">
+            <Server className="h-8 w-8 text-[var(--app-text-quaternary)] opacity-40" />
+            <p className="mt-3 text-[13px] text-[var(--app-text-tertiary)]">{t('dnsServersTab.emptyHint')}</p>
+          </div>
+        }
+      />
 
       {/* 添加/编辑弹窗 */}
       <Modal
@@ -574,7 +668,7 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
           {needsDomainResolver && (
             <div>
               <label className="block text-[12px] font-medium text-[var(--app-text-secondary)] mb-1.5">
-                {t('dnsServersTab.domainResolver')} <span className="text-red-500">*</span>
+                {t('dnsServersTab.domainResolver')} <span className="text-[var(--app-danger)]">*</span>
               </label>
               <Select
                 value={form.domain_resolver || ''}
@@ -668,7 +762,7 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
         footer={<Button onClick={() => setErrorModalOpen(false)}>{t('dnsServersTab.ok')}</Button>}
       >
         <div className="flex items-start gap-3">
-          <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+          <AlertCircle className="w-5 h-5 text-[var(--app-danger)] shrink-0 mt-0.5" />
           <p className="text-[14px] text-[var(--app-text-secondary)] whitespace-pre-line">{errorMessage}</p>
         </div>
       </Modal>

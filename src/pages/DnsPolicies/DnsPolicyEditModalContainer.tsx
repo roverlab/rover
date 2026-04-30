@@ -15,7 +15,7 @@ import {
     type BasePolicy,
     type PolicyFieldDataConfig,
 } from '../Policies/PolicyEditModalBaseContainer';
-import { cn } from '../../components/Sidebar';
+import { cn } from '../../lib/utils';
 import { Select } from '../../components/ui/Field';
 
 export interface DnsPolicyEditFormState extends PolicyEditFormStateBase {
@@ -40,7 +40,7 @@ const DNS_FIELD_DATA_CONFIG: PolicyFieldDataConfig<DnsPolicyEditFormState> = {
 };
 
 // DNS策略字段UI配置（用于Modal渲染）- 使用空选项，实际选项从数据库动态加载
-const DNS_FIELD_CONFIG_BASE: Omit<PolicyFieldConfig<DnsPolicyEditFormState>, 'fieldLabel' | 'options'> = {
+const DNS_FIELD_CONFIG_BASE: Omit<PolicyFieldConfig<DnsPolicyEditFormState>, 'fieldLabel'> = {
     fieldName: 'server',
     options: [], // 动态加载
 };

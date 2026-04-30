@@ -7,9 +7,12 @@ import { Card, ListRow, SectionHeader } from '../components/ui/Surface';
 import { Modal } from '../components/ui/Modal';
 import { useTranslation } from 'react-i18next';
 import { useApi } from '../contexts/ApiContext';
-import { Settings as SettingsIcon, Sliders, Check, Globe, Download, Upload, Info, ExternalLink } from 'lucide-react';
+import { Settings as SettingsIcon, Sliders, Check, Globe, Download, Upload, Info, ExternalLink, FileJson } from 'lucide-react';
+import { ViewConfigModal } from '../components/ui/ViewConfigModal';
 import { DnsServersTab } from './Settings/DnsServersTab';
 import { useOverrideRules } from '../contexts/OverrideRulesContext';
+import { useTheme } from '../contexts/ThemeContext';
+import { cn } from '../lib/utils';
 import { changeLanguage, getCurrentLanguage, getAvailableLanguages } from '../i18n';
 
 interface SettingsProps {
@@ -23,6 +26,7 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
   const { t, i18n } = useTranslation();
   const { apiUrl, apiSecret, setApiUrl, setApiSecret } = useApi();
   const { refreshOverrideRules } = useOverrideRules();
+  const { theme, setTheme } = useTheme();
 
   // App Settings
   const [lang, setLang] = useState(getCurrentLanguage());
@@ -69,6 +73,12 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
   const [configExportError, setConfigExportError] = useState<string | null>(null);
   const [configImportSuccessModal, setConfigImportSuccessModal] = useState(false);
   const [configImportStep, setConfigImportStep] = useState<string | null>(null);
+
+  // 查看当前配置弹窗
+  const [viewConfigOpen, setViewConfigOpen] = useState(false);
+  const [viewConfigContent, setViewConfigContent] = useState('');
+  const [viewConfigLoading, setViewConfigLoading] = useState(false);
+  const [viewConfigCopied, setViewConfigCopied] = useState(false);
 
   // RoverService 状态 (支持的系统)
   const [roverserviceStatus, setRoverServiceStatus] = useState<{
@@ -423,42 +433,46 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
         <div className="page-header shrink-0" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
           <div>
             <h1 className="page-title">{t('settings.title')}</h1>
-            <p className="page-subtitle">{t('settings.subtitle')}</p>
           </div>
           <div className="toolbar" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
           </div>
         </div>
 
-      <div className="page-content">
         {!isDataLoaded ? (
-          <div className="flex items-center justify-center h-40">
-            <div className="w-6 h-6 border-2 border-[var(--app-text-quaternary)] border-t-transparent rounded-full animate-spin" />
+          <div className="page-content">
+            <div className="flex items-center justify-center h-40">
+              <div className="w-6 h-6 border-2 border-[var(--app-text-quaternary)] border-t-transparent rounded-full animate-spin" />
+            </div>
           </div>
         ) : null}
         {isDataLoaded && (
         <>
-        {/* Tab 导航 */}
-        <div className="flex gap-1 mb-4 p-1 bg-[rgba(39,44,54,0.06)] rounded-xl w-fit">
-          {[
-            { id: 'basic' as SettingsTab, label: t('settings.basic'), icon: SettingsIcon },
-            { id: 'advanced' as SettingsTab, label: t('settings.advanced'), icon: Sliders },
-            { id: 'dns' as SettingsTab, label: t('settings.dns'), icon: Globe },
-            { id: 'about' as SettingsTab, label: t('settings.about'), icon: Info },
-          ].map(({ id, label, icon: Icon }) => (
-            <button
-              key={id}
-              onClick={() => setActiveTab(id)}
-              className={`flex items-center gap-2 px-4 py-2.5 text-[13px] font-medium rounded-lg transition-colors ${
-                activeTab === id
-                  ? 'bg-white text-[var(--app-text)] shadow-sm'
-                  : 'text-[var(--app-text-tertiary)] hover:text-[var(--app-text)]'
-              }`}
-            >
-              <Icon className="w-4 h-4" />
-              {label}
-            </button>
-          ))}
+        {/* Tab 导航 - 固定在 page-header 下方 */}
+        <div className="shrink-0 px-10 pt-5 pb-0">
+          <div className="settings-tabbar">
+            {[
+              { id: 'basic' as SettingsTab, label: t('settings.basic'), icon: SettingsIcon },
+              { id: 'advanced' as SettingsTab, label: t('settings.advanced'), icon: Sliders },
+              { id: 'dns' as SettingsTab, label: t('settings.dns'), icon: Globe },
+              { id: 'about' as SettingsTab, label: t('settings.about'), icon: Info },
+            ].map(({ id, label, icon: Icon }) => (
+              <button
+                key={id}
+                onClick={() => setActiveTab(id)}
+                className={`settings-tabbar-item ${
+                  activeTab === id
+                    ? 'settings-tabbar-item-active'
+                    : ''
+                }`}
+              >
+                <Icon className="w-4 h-4" />
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
+
+        <div className={cn("page-content", activeTab === 'dns' && "flex flex-col !overflow-hidden")}>
 
         {/* 基础设置 Tab */}
         {activeTab === 'basic' && (
@@ -469,8 +483,8 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
             <Card>
               <SectionHeader>
                 <div>
-                  <h2 className="text-[12px] font-semibold uppercase tracking-[0.18em] text-[var(--app-text-quaternary)]">{t('settings.serverConfig')}</h2>
-                  <p className="text-[12px] text-[var(--app-text-quaternary)] mt-1">{t('settings.serverConfigDesc')}</p>
+                  <h2 className="settings-card-title">{t('settings.serverConfig')}</h2>
+                  <p className="settings-card-subtitle">{t('settings.serverConfigDesc')}</p>
                 </div>
               </SectionHeader>
               <div className="panel-section">
@@ -555,8 +569,8 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
             <Card>
               <SectionHeader>
                 <div>
-                  <h2 className="text-[12px] font-semibold uppercase tracking-[0.18em] text-[var(--app-text-quaternary)]">{t('settings.appConfig')}</h2>
-                  <p className="text-[12px] text-[var(--app-text-quaternary)] mt-1">{t('settings.appConfigDesc')}</p>
+                  <h2 className="settings-card-title">{t('settings.appConfig')}</h2>
+                  <p className="settings-card-subtitle">{t('settings.appConfigDesc')}</p>
                 </div>
               </SectionHeader>
               <div className="panel-section">
@@ -592,11 +606,12 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
                     <div className="list-row-description">{t('settings.themeDesc')}</div>
                   </div>
                   <Select
-                    defaultValue="light"
+                    value={theme}
+                    onChange={(e) => setTheme(e.target.value as 'light' | 'dark')}
                     className="w-[132px]"
                   >
                     <option value="light">{t('settings.themeLight')}</option>
-                    <option value="dark" disabled>{t('settings.themeDark')}</option>
+                    <option value="dark">{t('settings.themeDark')}</option>
                   </Select>
                 </ListRow>
 
@@ -633,8 +648,8 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
             <Card>
               <SectionHeader>
                 <div>
-                  <h2 className="text-[12px] font-semibold uppercase tracking-[0.18em] text-[var(--app-text-quaternary)]">{t('settings.advancedSettings')}</h2>
-                  <p className="text-[12px] text-[var(--app-text-quaternary)] mt-1">{t('settings.advancedSettingsDesc')}</p>
+                  <h2 className="settings-card-title">{t('settings.advancedSettings')}</h2>
+                  <p className="settings-card-subtitle">{t('settings.advancedSettingsDesc')}</p>
                 </div>
               </SectionHeader>
               <div className="panel-section">
@@ -691,11 +706,11 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
                       onChange={(e) => setHostsText(e.target.value)}
                       placeholder={t('settings.hostsPlaceholder')}
                       rows={6}
-                      className="w-full px-3 py-2 text-[13px] font-mono rounded-[10px] resize-y bg-white text-[var(--app-text)] placeholder:text-[var(--app-text-quaternary)] input-field focus:border-[var(--app-stroke-strong)] focus:outline-none"
+                      className="w-full px-3 py-2 text-[13px] font-mono rounded-[10px] resize-y bg-[var(--app-panel)] text-[var(--app-text)] placeholder:text-[var(--app-text-quaternary)] input-field focus:border-[var(--app-stroke-strong)] focus:outline-none"
                     />
                     <div className="flex items-center gap-2 mt-2 justify-end">
                       {hostsSaved && (
-                        <span className="inline-flex items-center gap-1 text-[11px] text-green-600">
+                        <span className="inline-flex items-center gap-1 text-[11px] text-[var(--app-success)]">
                           <Check className="w-3 h-3" />
                           {t('settings.saved')}
                         </span>
@@ -718,11 +733,11 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
                       onChange={(e) => setTunExcludeAddressText(e.target.value)}
                       placeholder={t('settings.tunExcludePlaceholder')}
                       rows={6}
-                      className="w-full px-3 py-2 text-[13px] font-mono rounded-[10px] resize-y bg-white text-[var(--app-text)] placeholder:text-[var(--app-text-quaternary)] input-field focus:border-[var(--app-stroke-strong)] focus:outline-none"
+                      className="w-full px-3 py-2 text-[13px] font-mono rounded-[10px] resize-y bg-[var(--app-panel)] text-[var(--app-text)] placeholder:text-[var(--app-text-quaternary)] input-field focus:border-[var(--app-stroke-strong)] focus:outline-none"
                     />
                     <div className="flex items-center gap-2 mt-2 justify-end">
                       {tunExcludeAddressSaved && (
-                        <span className="inline-flex items-center gap-1 text-[11px] text-green-600">
+                        <span className="inline-flex items-center gap-1 text-[11px] text-[var(--app-success)]">
                           <Check className="w-3 h-3" />
                           已保存
                         </span>
@@ -741,7 +756,9 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
 
         {/* DNS 服务器 Tab */}
         {activeTab === 'dns' && (
-          <DnsServersTab isActive={isActive} onRegenerateConfig={regenerateConfigIfNeeded} />
+          <div className="max-w-5xl flex-1 min-h-0">
+            <DnsServersTab isActive={isActive} onRegenerateConfig={regenerateConfigIfNeeded} />
+          </div>
         )}
 
         {/* 关于 Tab */}
@@ -750,8 +767,8 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
             <Card>
               <SectionHeader>
                 <div>
-                  <h2 className="text-[12px] font-semibold uppercase tracking-[0.18em] text-[var(--app-text-quaternary)]">{t('settings.aboutSection')}</h2>
-                  <p className="text-[12px] text-[var(--app-text-quaternary)] mt-1">{t('settings.aboutSectionDesc')}</p>
+                  <h2 className="settings-card-title">{t('settings.aboutSection')}</h2>
+                  <p className="settings-card-subtitle">{t('settings.aboutSectionDesc')}</p>
                 </div>
               </SectionHeader>
               <div className="panel-section">
@@ -777,6 +794,31 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
                     <div className="list-row-title">{t('settings.coreVersion')}</div>
                     <div className="list-row-description">{singboxVersion}</div>
                   </div>
+                </ListRow>
+                <ListRow>
+                  <div>
+                    <div className="list-row-title">{t('settings.currentConfig')}</div>
+                    <div className="list-row-description">{t('settings.viewCurrentConfig')}</div>
+                  </div>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={async () => {
+                      setViewConfigOpen(true);
+                      setViewConfigLoading(true);
+                      try {
+                        const config = await window.ipcRenderer.core.getActiveConfig();
+                        setViewConfigContent(JSON.stringify(config, null, 2));
+                      } catch {
+                        setViewConfigContent('');
+                      } finally {
+                        setViewConfigLoading(false);
+                      }
+                    }}
+                  >
+                    <FileJson className="w-3.5 h-3.5 mr-1" />
+                    {t('settings.viewCurrentConfig')}
+                  </Button>
                 </ListRow>
                 <ListRow>
                   <div>
@@ -829,7 +871,7 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
                       </span>
                     )}
                     {(configImportError || configExportError) && (
-                      <span className="text-[11px] text-red-600">{configImportError || configExportError}</span>
+                      <span className="text-[11px] text-[var(--app-danger)]">{configImportError || configExportError}</span>
                     )}
                   </div>
                 </ListRow>
@@ -841,8 +883,8 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
               <Card>
                 <SectionHeader>
                   <div>
-                    <h2 className="text-[12px] font-semibold uppercase tracking-[0.18em] text-[var(--app-text-quaternary)]">系统服务</h2>
-                    <p className="text-[12px] text-[var(--app-text-quaternary)] mt-1">以系统权限运行，支持 TUN 模式等需要高级权限的功能。</p>
+                    <h2 className="settings-card-title">系统服务</h2>
+                    <p className="settings-card-subtitle">以系统权限运行，支持 TUN 模式等需要高级权限的功能。</p>
                   </div>
                 </SectionHeader>
                 <div className="panel-section">
@@ -852,11 +894,11 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
                       <div className="list-row-title">{t('settings.serviceStatus')}</div>
                       <div className="list-row-description">
                         {roverserviceStatus.running ? (
-                          <span className="text-green-600">
+                          <span className="text-[var(--app-success)]">
                             {t('settings.serviceRunningDetail', { pid: roverserviceStatus.pid ?? 0, version: roverserviceStatus.version ?? '' })}
                           </span>
                         ) : roverserviceStatus.binaryInstalled ? (
-                          <span className="text-yellow-600">{t('settings.serviceInstalledNotRunning')}</span>
+                          <span className="text-[var(--app-warning)]">{t('settings.serviceInstalledNotRunning')}</span>
                         ) : (
                           <span className="text-[var(--app-text-tertiary)]">{t('settings.serviceNotInstalled')}</span>
                         )}
@@ -905,14 +947,14 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
 
                   {/* 错误信息 */}
                   {roverserviceError && (
-                    <div className="px-4 py-2 text-[12px] text-red-600 bg-red-50 rounded-lg">
+                    <div className="px-4 py-2 text-[12px] text-[var(--app-danger)] bg-[var(--app-danger-soft)] rounded-lg">
                       {roverserviceError}
                     </div>
                   )}
 
                   {/* 安装提示 */}
                   {!roverserviceStatus.binaryInstalled && (
-                    <div className="px-4 py-2 text-[12px] text-[var(--app-text-secondary)] bg-[rgba(39,44,54,0.04)] rounded-lg">
+                    <div className="px-4 py-2 text-[12px] text-[var(--app-text-secondary)] bg-[var(--app-bg-secondary)] rounded-lg">
                       安装需要管理员权限，请在弹出的对话框中输入密码确认。
                     </div>
                   )}
@@ -921,9 +963,9 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
             )}
           </div>
         )}
+        </div>
         </>
         )}
-      </div>
 
       {/* 导入成功引导弹窗 */}
       <Modal
@@ -938,6 +980,15 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
           {t('settings.configImportedDesc')}
         </p>
       </Modal>
+
+      {/* 查看当前配置弹窗 */}
+      <ViewConfigModal
+        open={viewConfigOpen}
+        onClose={() => setViewConfigOpen(false)}
+        title={t('settings.currentConfig')}
+        content={viewConfigContent}
+        loading={viewConfigLoading}
+      />
     </div>
   );
 }

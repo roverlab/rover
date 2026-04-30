@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Field';
 import { X, Check, Search } from 'lucide-react';
-import { cn } from '../../components/Sidebar';
+import { cn } from '../../lib/utils';
 import type { RuleProvider } from '../../types/rule-providers';
 
 export interface RuleSetGroupItem {
@@ -119,7 +119,7 @@ export function PolicyAllRuleSetModal({
                     initial={{ opacity: 0, scale: 0.95, y: 10 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                    className="relative z-10 w-full max-w-3xl flex flex-col bg-white border border-[var(--app-stroke)] rounded-[20px] shadow-[var(--shadow-window)] overflow-hidden"
+                    className="relative z-10 w-full max-w-3xl flex flex-col bg-[var(--app-panel)] border border-[var(--app-stroke)] rounded-[20px] shadow-[var(--shadow-window)] overflow-hidden"
                     style={{ 
                         minHeight: '480px', // 设定最小高度，保证视觉稳定
                         maxHeight: '85vh',
@@ -177,7 +177,7 @@ export function PolicyAllRuleSetModal({
                     )}
 
                     {/* 内容列表 - 滚动区域 */}
-                    <div className="flex-1 p-6 overflow-y-auto min-h-0 bg-white">
+                    <div className="flex-1 p-6 overflow-y-auto min-h-0 bg-[var(--app-panel)]">
                         {filteredGroups.length === 0 ? (
                             <div className="flex flex-col items-center justify-center py-12">
                                 <Search className="w-8 h-8 text-[var(--app-text-quaternary)] mb-2 opacity-20" />
@@ -197,7 +197,7 @@ export function PolicyAllRuleSetModal({
                                                 "inline-flex items-center gap-1.5 px-3 py-2 rounded-[10px] cursor-pointer transition-all border shrink-0",
                                                 isSelected
                                                     ? "border-[var(--app-accent)] bg-[var(--app-accent-soft-card)]"
-                                                    : "border-[var(--app-stroke)] bg-white hover:bg-[var(--app-hover)]"
+                                                    : "border-[var(--app-stroke)] bg-[var(--app-panel)] hover:bg-[var(--app-hover)]"
                                             )}
                                         >
                                             <div className={cn(
@@ -210,7 +210,7 @@ export function PolicyAllRuleSetModal({
                                             </div>
                                             <span className="text-[13px] text-[var(--app-text)]">{item.name}</span>
                                             {!item.enabled && (
-                                                <span className="text-[10px] text-[var(--app-text-quaternary)]">{t('policies.disabledBadge')}</span>
+                                                <span className="text-[11px] text-[var(--app-text-quaternary)]">{t('policies.disabledBadge')}</span>
                                             )}
                                         </div>
                                     );

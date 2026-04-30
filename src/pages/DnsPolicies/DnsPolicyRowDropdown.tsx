@@ -27,7 +27,7 @@ export function DnsPolicyRowDropdown({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: -5 }}
             transition={{ duration: 0.15 }}
-            className="dropdown-menu fixed z-[200] flex w-30 flex-col overflow-hidden rounded-[12px] border border-[rgba(39,44,54,0.08)] bg-white py-1 shadow-[0_12px_24px_rgba(15,23,42,0.12)]"
+            className="dropdown-menu fixed z-[200] flex w-30 flex-col overflow-hidden rounded-[12px] border border-[var(--app-stroke)] bg-[var(--app-panel)] py-1 shadow-[0_12px_24px_rgba(15,23,42,0.12)]"
             style={{ top: position.top, left: position.left }}
             onClick={(e) => e.stopPropagation()}
         >
@@ -43,9 +43,9 @@ export function DnsPolicyRowDropdown({
             >
                 <Edit2 className="w-3.5 h-3.5 mr-2" />{t('policies.rowEdit')}
             </button>
-            <div className="mx-2 my-1 border-t border-[rgba(39,44,54,0.06)]" />
+            <div className="mx-2 my-1 border-t border-[var(--app-divider)]" />
             <button
-                className="flex items-center px-3 py-1.5 text-[12px] text-red-500 hover:bg-red-50 text-left"
+                className="flex items-center px-3 py-1.5 text-[12px] text-[var(--app-danger)] hover:bg-[var(--app-danger-soft)] text-left"
                 onClick={() => onDelete(policy.id, policy.name)}
             >
                 <Trash2 className="w-3.5 h-3.5 mr-2" />{t('policies.rowDelete')}

@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useTranslation } from 'react-i18next';
 import { X } from 'lucide-react';
-import { cn } from '../Sidebar';
+import { cn } from '../../lib/utils';
 
 export interface TagInputProps {
     value: string[];
@@ -89,9 +89,9 @@ export const TagInput = React.forwardRef<HTMLDivElement, TagInputProps>(
             <div
                 ref={ref}
                 className={cn(
-                    'flex flex-nowrap items-center gap-1.5 min-h-[36px] px-3 py-2 rounded-[10px] border border-[var(--app-stroke-strong)] bg-white overflow-hidden',
-                    'focus-within:border-[var(--app-accent-border)]',
-                    'text-[13px] text-[var(--app-text)]',
+                    'flex flex-nowrap items-center gap-1.5 min-h-[36px] px-3 py-2 rounded-md border border-input bg-background overflow-hidden',
+                    'focus-within:border-ring focus-within:ring-1 focus-within:ring-ring/20',
+                    'text-[13px] text-foreground',
                     className
                 )}
                 onClick={() => inputRef.current?.focus()}
@@ -100,12 +100,12 @@ export const TagInput = React.forwardRef<HTMLDivElement, TagInputProps>(
                     {value.map((tag, idx) => (
                         <span
                             key={`${tag}-${idx}`}
-                            className="inline-flex shrink-0 items-center gap-1 px-2 py-0.5 rounded-[6px] text-[11px] bg-[var(--app-accent-soft)] text-[var(--app-text)] border border-[var(--app-accent-border)] max-w-[140px]"
+                            className="inline-flex shrink-0 items-center gap-1 px-2 py-0.5 rounded-sm text-[11px] bg-secondary text-secondary-foreground border border-border max-w-[140px]"
                         >
                             <span className="truncate">{tag}</span>
                             <button
                                 type="button"
-                                className="shrink-0 p-0.5 rounded hover:bg-[var(--app-stroke)] hover:text-[var(--app-text)] transition-colors"
+                                className="shrink-0 p-0.5 rounded hover:bg-accent hover:text-accent-foreground transition-colors"
                                 onClick={e => {
                                     e.stopPropagation();
                                     removeTag(idx);
@@ -125,7 +125,7 @@ export const TagInput = React.forwardRef<HTMLDivElement, TagInputProps>(
                     onKeyDown={handleKeyDown}
                     onPaste={handlePaste}
                     placeholder={value.length === 0 ? defaultPlaceholder : ''}
-                    className="min-w-[80px] flex-1 bg-transparent border-0 outline-none shadow-none focus:ring-0 focus:shadow-none focus-visible:ring-0 focus-visible:shadow-none placeholder:text-[var(--app-text-quaternary)] text-left"
+                    className="min-w-[80px] flex-1 bg-transparent border-0 outline-none shadow-none focus:ring-0 focus:shadow-none focus-visible:ring-0 focus-visible:shadow-none placeholder:text-muted-foreground text-left"
                 />
             </div>
         );

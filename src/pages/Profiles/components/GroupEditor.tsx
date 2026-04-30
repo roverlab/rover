@@ -160,12 +160,12 @@ export function GroupEditor({ profileId, profileName, onClose, onSave }: GroupEd
                     initial={{ opacity: 0, scale: 0.95, y: 10 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                    className="relative z-10 w-full max-w-2xl max-h-[85vh] flex flex-col bg-white border border-[rgba(39,44,54,0.08)] rounded-[20px] shadow-[var(--shadow-elevated)] overflow-hidden"
+                    className="relative z-10 w-full max-w-2xl max-h-[85vh] flex flex-col bg-[var(--app-panel)] border border-[var(--app-stroke)] rounded-[20px] shadow-[var(--shadow-elevated)] overflow-hidden"
                     style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
                     onClick={e => e.stopPropagation()}
                 >
                     {/* Header */}
-                    <div className="flex shrink-0 items-center justify-between px-6 py-4 border-b border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/50">
+                    <div className="flex shrink-0 items-center justify-between px-6 py-4 border-b border-[var(--app-divider)] bg-[var(--app-bg-secondary)]/50">
                         <div>
                             <h2 className="text-[15px] font-semibold text-[var(--app-text)]">{t('profiles.groupEditor.title')}</h2>
                             <p className="text-[12px] text-[var(--app-text-tertiary)]">{profileName}</p>
@@ -273,7 +273,7 @@ export function GroupEditor({ profileId, profileName, onClose, onSave }: GroupEd
                     </div>
 
                     {/* Footer */}
-                    <div className="flex items-center justify-between gap-2 px-6 py-4 border-t border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/30">
+                    <div className="flex items-center justify-between gap-2 px-6 py-4 border-t border-[var(--app-divider)] bg-[var(--app-bg-secondary)]/30">
                         <div className="text-[12px] text-[var(--app-text-tertiary)]">
                             {groups.length > 0 ? t('profiles.groupEditor.footerDefined', { count: groups.length }) : t('profiles.groupEditor.footerNone')}
                         </div>

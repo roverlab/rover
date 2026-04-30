@@ -32,7 +32,7 @@ export const LanguageSwitcher: React.FC = () => {
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-32 bg-white border border-[var(--app-divider)] rounded-lg shadow-lg z-50">
+        <div className="absolute right-0 mt-2 w-32 bg-[var(--app-panel)] border border-[var(--app-divider)] rounded-lg shadow-lg z-50">
           {availableLanguages.map((language) => (
             <button
               key={language.code}

@@ -38,23 +38,23 @@ export const LanguageSelectModal: React.FC<LanguageSelectModalProps> = ({ open, 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 z-0 bg-black/40 backdrop-blur-sm"
+            className="absolute inset-0 z-0 bg-black/50"
           />
           <motion.div
             initial={{ opacity: 0, scale: 0.95, y: 10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 10 }}
-            className="relative z-10 w-full max-w-md bg-white border border-[rgba(39,44,54,0.08)] rounded-[20px] shadow-[var(--shadow-elevated)] overflow-hidden"
+            className="relative z-10 w-full max-w-md bg-background border border-border rounded-lg shadow-lg overflow-hidden"
             onClick={e => e.stopPropagation()}
           >
-            <div className="flex shrink-0 items-center justify-between px-6 py-5 border-b border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/50">
+            <div className="flex shrink-0 items-center justify-between px-6 py-5 border-b border-border bg-muted/50">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-[var(--app-accent-soft)] flex items-center justify-center">
-                  <Globe className="w-5 h-5 text-[var(--app-accent)]" />
+                <div className="w-10 h-10 rounded-full bg-accent flex items-center justify-center">
+                  <Globe className="w-5 h-5 text-primary" />
                 </div>
                 <div>
-                  <h2 className="text-[16px] font-semibold text-[var(--app-text)]">{t('languageModal.title')}</h2>
-                  <p className="text-[12px] text-[var(--app-text-quaternary)] mt-0.5">{t('languageModal.subtitle')}</p>
+                  <h2 className="text-[16px] font-semibold text-foreground">{t('languageModal.title')}</h2>
+                  <p className="text-[12px] text-muted-foreground mt-0.5">{t('languageModal.subtitle')}</p>
                 </div>
               </div>
             </div>
@@ -65,10 +65,10 @@ export const LanguageSelectModal: React.FC<LanguageSelectModalProps> = ({ open, 
                   <button
                     key={language.code}
                     onClick={() => handleLanguageSelect(language.code)}
-                    className={`w-full flex items-center justify-between px-4 py-3 rounded-[12px] transition-all border ${
+                    className={`w-full flex items-center justify-between px-4 py-3 rounded-md transition-all border ${
                       selectedLanguage === language.code
-                        ? 'border-[var(--app-accent-border)] bg-[var(--app-accent-soft-card)] text-[var(--app-text)]'
-                        : 'border-[var(--app-stroke)] bg-white/40 text-[var(--app-text-secondary)] hover:bg-[var(--app-hover)]'
+                        ? 'border-primary/30 bg-accent text-foreground'
+                        : 'border-border bg-background/40 text-muted-foreground hover:bg-accent'
                     }`}
                   >
                     <div className="flex items-center gap-3">
@@ -77,20 +77,20 @@ export const LanguageSelectModal: React.FC<LanguageSelectModalProps> = ({ open, 
                       </div>
                     </div>
                     {selectedLanguage === language.code && (
-                      <Check className="w-5 h-5 text-[var(--app-accent)]" />
+                      <Check className="w-5 h-5 text-primary" />
                     )}
                   </button>
                 ))}
               </div>
             </div>
 
-            <div className="flex shrink-0 items-center justify-end gap-3 px-6 py-4 border-t border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/30">
-              <p className="text-[11px] text-[var(--app-text-quaternary)] flex-1">
+            <div className="flex shrink-0 items-center justify-end gap-3 px-6 py-4 border-t border-border bg-muted/30">
+              <p className="text-[11px] text-muted-foreground flex-1">
                 {t('languageModal.changeLater')}
               </p>
               <button
                 onClick={handleConfirm}
-                className="px-5 py-2 text-[13px] font-medium text-white bg-[var(--app-accent)] hover:bg-[var(--app-accent-hover)] rounded-[10px] transition-colors"
+                className="px-5 py-2 text-[13px] font-medium text-primary-foreground bg-primary hover:bg-primary/90 rounded-md transition-colors"
               >
                 {t('common.confirm')}
               </button>

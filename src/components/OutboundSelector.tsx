@@ -1,11 +1,11 @@
 /**
- * 出站节点选择器组件
+  * 出站节点选择器组件
  * 封装了选择器触发器和 OutboundSelectorModal 弹窗
  */
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronDown, X } from 'lucide-react';
-import { cn } from './Sidebar';
+import { cn } from '../lib/utils';
 import { OutboundSelectorModal } from './OutboundSelectorModal';
 import { POLICY_FINAL_OPTION_DEFS } from '../types/policy';
 
@@ -27,8 +27,8 @@ type OutboundSelectorPropsBase = {
     /** 弹窗标题（默认「选择订阅出站节点」） */
     modalTitle?: string;
     /**
-     * 若提供则使用该列表作为可选节点，不从当前选中订阅配置加载。
-     * 用于分组编辑等需与指定 profile 节点列表一致的场景。
+          * 若提供则使用该列表作为可选节点，不从当前选中订阅配置加载
+     * 用于分组编辑等需与指定 profile 节点列表一致的场景
      */
     availableOutboundsOverride?: OutboundItem[];
 };
@@ -175,9 +175,9 @@ export function OutboundSelector(props: OutboundSelectorProps) {
             )}
             <div
                 className={cn(
-                    'relative flex items-center min-h-[36px] px-3 py-2 pr-8 rounded-[10px] border bg-white transition-all',
+                    'relative flex items-center min-h-[36px] px-3 py-2 pr-8 rounded-[10px] border bg-[var(--app-panel)] transition-all',
                     disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer',
-                    'border-[rgba(39,44,54,0.12)]'
+                    'border-[var(--app-stroke)]'
                 )}
                 onClick={handleOpenModal}
             >

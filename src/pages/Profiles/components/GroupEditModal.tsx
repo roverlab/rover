@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { X, MousePointer2, Zap } from 'lucide-react';
-import { cn } from '../../../components/Sidebar';
+import { cn } from '../../../lib/utils';
 import { Button } from '../../../components/ui/Button';
 import { Input } from '../../../components/ui/Field';
 import type { ProxyNode } from '../../../electron';
@@ -117,12 +117,12 @@ export function GroupEditModal({
                         initial={{ opacity: 0, scale: 0.95, y: 10 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                        className="relative z-10 w-full max-w-lg max-h-[85vh] flex flex-col bg-white border border-[rgba(39,44,54,0.08)] rounded-[20px] shadow-[var(--shadow-elevated)] overflow-hidden"
+                        className="relative z-10 w-full max-w-lg max-h-[85vh] flex flex-col bg-[var(--app-panel)] border border-[var(--app-stroke)] rounded-[20px] shadow-[var(--shadow-elevated)] overflow-hidden"
                         style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
                         onClick={e => e.stopPropagation()}
                     >
                         {/* Header */}
-                        <div className="flex shrink-0 items-center justify-between px-6 py-4 border-b border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/50">
+                        <div className="flex shrink-0 items-center justify-between px-6 py-4 border-b border-[var(--app-divider)] bg-[var(--app-bg-secondary)]/50">
                             <h2 className="text-[15px] font-semibold text-[var(--app-text)]">
                                 {mode === 'add' ? '添加分组' : '编辑分组'}
                             </h2>
@@ -147,7 +147,7 @@ export function GroupEditModal({
                                         'inline-flex items-center gap-1.5 py-1 px-3 rounded-[6px] text-[12px] font-medium transition-all border',
                                         type === 'selector'
                                             ? 'bg-[var(--app-accent-soft)] border-[var(--app-accent-border)] text-[var(--app-accent-strong)]'
-                                            : 'bg-white border-[var(--app-stroke)] text-[var(--app-text-tertiary)] hover:border-[var(--app-accent-border)]'
+                                            : 'bg-[var(--app-panel)] border-[var(--app-stroke)] text-[var(--app-text-tertiary)] hover:border-[var(--app-accent-border)]'
                                     )}
                                 >
                                     <MousePointer2 className="w-3.5 h-3.5" />
@@ -160,7 +160,7 @@ export function GroupEditModal({
                                         'inline-flex items-center gap-1.5 py-1 px-3 rounded-[6px] text-[12px] font-medium transition-all border',
                                         type === 'urltest'
                                             ? 'bg-[var(--app-accent-soft)] border-[var(--app-accent-border)] text-[var(--app-accent-strong)]'
-                                            : 'bg-white border-[var(--app-stroke)] text-[var(--app-text-tertiary)] hover:border-[var(--app-accent-border)]'
+                                            : 'bg-[var(--app-panel)] border-[var(--app-stroke)] text-[var(--app-text-tertiary)] hover:border-[var(--app-accent-border)]'
                                     )}
                                 >
                                     <Zap className="w-3.5 h-3.5" />
@@ -183,7 +183,7 @@ export function GroupEditModal({
                                 />
                             </div>
 
-                            {/* 节点选择（与策略/DNS 共用的 OutboundSelector，多选 + 订阅节点列表覆盖） */}
+                            {/* 节点选择（与策略/DNS 共用 OutboundSelector，多选 + 订阅节点列表覆盖） */}
                             <div className="space-y-1.5">
                                 <div className="flex items-center justify-between">
                                     <span className="text-[12px] font-medium text-[var(--app-text-secondary)] pl-1">
@@ -231,7 +231,7 @@ export function GroupEditModal({
                         </div>
 
                         {/* Footer */}
-                        <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/30">
+                        <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-[var(--app-divider)] bg-[var(--app-bg-secondary)]/30">
                             <Button variant="ghost" onClick={onClose}>
                                 {t('common.cancel')}
                             </Button>

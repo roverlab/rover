@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { Button } from './ui/Button';
 import { X, Search, RefreshCw, Clock, Check } from 'lucide-react';
-import { cn } from './Sidebar';
+import { cn } from '../lib/utils';
 import { useApi } from '../contexts/ApiContext';
 import { fetchProxies } from '../services/api';
 
@@ -35,10 +35,10 @@ export type OutboundSelectorModalProps =
  */
 function getDelayClass(delay?: number): string {
     if (delay === undefined) return 'text-[var(--app-text-quaternary)]';
-    if (delay === 0) return 'text-red-500';
+    if (delay === 0) return 'text-[var(--app-danger)]';
     if (delay < 200) return 'text-green-500';
-    if (delay < 500) return 'text-yellow-600';
-    return 'text-red-500';
+    if (delay < 500) return 'text-[var(--app-warning)]';
+    return 'text-[var(--app-danger)]';
 }
 
 /**
@@ -108,7 +108,7 @@ export function OutboundSelectorModal(props: OutboundSelectorModalProps) {
             // 判断是否有任何节点有延迟数据
             setHasAnyDelay(Object.keys(newDelays).length > 0);
         } catch {
-            // 核心未启动或 API 不可达：不展示延迟即可，不向外抛错
+            // 核心未启动或 API 不可达：不展示延迟即可，不向外抛出
             setDelayMap({});
             setHasAnyDelay(false);
         } finally {
@@ -200,7 +200,7 @@ export function OutboundSelectorModal(props: OutboundSelectorModalProps) {
                     initial={{ opacity: 0, scale: 0.95, y: 10 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                    className="relative z-10 w-full max-w-2xl flex flex-col bg-white border border-[var(--app-stroke)] rounded-[20px] shadow-[var(--shadow-window)] overflow-hidden"
+                    className="relative z-10 w-full max-w-2xl flex flex-col bg-[var(--app-panel)] border border-[var(--app-stroke)] rounded-[20px] shadow-[var(--shadow-window)] overflow-hidden"
                     style={{ 
                         minHeight: '320px', // 设定最小高度，解决节点少时的塌陷感
                         maxHeight: '85vh',  // 限制弹窗整体最大高度
@@ -221,7 +221,7 @@ export function OutboundSelectorModal(props: OutboundSelectorModalProps) {
                     </div>
 
                     {/* Content - 滚动区域 */}
-                    <div className="flex-1 p-6 overflow-y-auto min-h-0 bg-white">
+                    <div className="flex-1 p-6 overflow-y-auto min-h-0 bg-[var(--app-panel)]">
                         {/* 搜索框和过滤按钮 */}
                         <div className="mb-4 flex gap-2">
                             <div className="relative flex-1">
@@ -231,7 +231,7 @@ export function OutboundSelectorModal(props: OutboundSelectorModalProps) {
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
                                     placeholder={t('outboundSelector.modalSearchPlaceholder')}
-                                    className="w-full pl-9 pr-3 py-2 text-[13px] rounded-[10px] border border-[rgba(39,44,54,0.12)] bg-white text-[var(--app-text)] placeholder:text-[var(--app-text-quaternary)] focus:outline-none focus:border-[var(--app-accent-border)] hover:border-[rgba(39,44,54,0.18)] transition-colors"
+                                    className="w-full pl-9 pr-3 py-2 text-[13px] rounded-[10px] border border-[var(--app-stroke)] bg-[var(--app-panel)] text-[var(--app-text)] placeholder:text-[var(--app-text-quaternary)] focus:outline-none focus:border-[var(--app-accent-border)] hover:border-[var(--app-stroke-strong)] transition-colors"
                                 />
                             </div>
                             {/* 过滤超时按钮 */}
@@ -242,7 +242,7 @@ export function OutboundSelectorModal(props: OutboundSelectorModalProps) {
                                     "shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-[10px] text-[12px] border transition-all",
                                     hideTimeout
                                         ? "border-[var(--app-accent)] bg-[var(--app-accent-soft)] text-[var(--app-accent)]"
-                                        : "border-[rgba(39,44,54,0.12)] bg-white text-[var(--app-text-secondary)] hover:bg-[var(--app-hover)]"
+                                        : "border-[var(--app-stroke)] bg-[var(--app-panel)] text-[var(--app-text-secondary)] hover:bg-[var(--app-hover)]"
                                 )}
                                 title={t('outboundSelector.filterTimeoutTitle')}
                             >
@@ -281,7 +281,7 @@ export function OutboundSelectorModal(props: OutboundSelectorModalProps) {
                                             "inline-flex items-center gap-1.5 px-3 py-2 rounded-[10px] cursor-pointer transition-all border shrink-0",
                                             active
                                                 ? "border-[var(--app-accent)] bg-[var(--app-accent-soft-card)]"
-                                                : "border-[var(--app-stroke)] bg-white hover:bg-[var(--app-hover)]"
+                                                : "border-[var(--app-stroke)] bg-[var(--app-panel)] hover:bg-[var(--app-hover)]"
                                         )}
                                     >
                                         {multiple ? (
@@ -317,7 +317,7 @@ export function OutboundSelectorModal(props: OutboundSelectorModalProps) {
                                                 {formatDelay(delay, 'Timeout')}
                                             </span>
                                         ) : showAsTimeout ? (
-                                            <span className="text-[10px] font-mono ml-1 text-red-500">Timeout</span>
+                                            <span className="text-[10px] font-mono ml-1 text-[var(--app-danger)]">Timeout</span>
                                         ) : null}
                                     </div>
                                 );
@@ -345,7 +345,7 @@ export function OutboundSelectorModal(props: OutboundSelectorModalProps) {
                                     <button
                                         type="button"
                                         onClick={() => setLocalSelectedMulti([])}
-                                        className="text-[11px] text-[var(--app-text-tertiary)] hover:text-red-500 transition-colors shrink-0"
+                                        className="text-[11px] text-[var(--app-text-tertiary)] hover:text-[var(--app-danger)] transition-colors shrink-0"
                                     >
                                         {t('outboundSelector.clearSelection')}
                                     </button>
@@ -355,7 +355,7 @@ export function OutboundSelectorModal(props: OutboundSelectorModalProps) {
                                     <button
                                         type="button"
                                         onClick={() => setLocalSelected(null)}
-                                        className="text-[11px] text-[var(--app-text-tertiary)] hover:text-red-500 transition-colors shrink-0"
+                                        className="text-[11px] text-[var(--app-text-tertiary)] hover:text-[var(--app-danger)] transition-colors shrink-0"
                                     >
                                         {t('outboundSelector.clearSelection')}
                                     </button>

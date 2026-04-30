@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Surface';
 import { X, Copy, Edit2 } from 'lucide-react';
-import { cn } from '../../components/Sidebar';
+import { cn } from '../../lib/utils';
 import type { DnsPolicy } from '../../types/dns-policy';
 import { getDnsPolicyRuleSet, getDnsPolicyMatchableFields } from '../../services/dns-policy';
 import type { RuleProvider } from '../../types/rule-providers';
@@ -48,11 +48,11 @@ export function DnsPolicyDetailModal({
                     initial={{ opacity: 0, scale: 0.95, y: 10 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                    className="relative z-10 w-full max-w-2xl flex flex-col bg-white border border-[rgba(39,44,54,0.08)] rounded-[20px] shadow-[var(--shadow-elevated)] overflow-hidden"
+                    className="relative z-10 w-full max-w-2xl flex flex-col bg-[var(--app-panel)] border border-[var(--app-stroke)] rounded-[20px] shadow-[var(--shadow-elevated)] overflow-hidden"
                     style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
                     onClick={e => e.stopPropagation()}
                 >
-                    <div className="flex shrink-0 items-center justify-between px-6 py-4 border-b border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/50">
+                    <div className="flex shrink-0 items-center justify-between px-6 py-4 border-b border-[var(--app-divider)] bg-[var(--app-bg-secondary)]/50">
                         <h2 className="text-[15px] font-semibold text-[var(--app-text)]">{t('dnsPolicies.dnsPolicyDetailTitle')}</h2>
                         <div className="flex items-center gap-2">
                             <button
@@ -116,7 +116,7 @@ export function DnsPolicyDetailModal({
                                         {t('common.copy')}
                                     </Button>
                                 </div>
-                                <pre className="bg-[var(--app-bg-secondary)] rounded-[10px] p-4 overflow-x-auto border border-[rgba(39,44,54,0.08)]">
+                                <pre className="bg-[var(--app-bg-secondary)] rounded-[10px] p-4 overflow-x-auto border border-[var(--app-stroke)]">
                                     <code className="text-[12px] font-mono text-[var(--app-text-secondary)]">
                                         {JSON.stringify(detailPolicy.raw_data || {}, null, 2)}
                                     </code>
@@ -166,7 +166,7 @@ export function DnsPolicyDetailModal({
                                                         <p className="text-[11px] text-blue-600 mb-2">{t('policies.domainCount', { count: domain.length })}</p>
                                                         <div className="flex flex-wrap gap-1">
                                                             {domain.map((d, idx) => (
-                                                                <span key={idx} className="text-[11px] px-2 py-0.5 bg-white rounded text-blue-700">{d}</span>
+                                                                <span key={idx} className="text-[11px] px-2 py-0.5 bg-[var(--app-panel)] rounded text-blue-700">{d}</span>
                                                             ))}
                                                         </div>
                                                     </div>
@@ -176,7 +176,7 @@ export function DnsPolicyDetailModal({
                                                         <p className="text-[11px] text-purple-600 mb-2">{t('policies.domainKeywordCount', { count: domainKeyword.length })}</p>
                                                         <div className="flex flex-wrap gap-1">
                                                             {domainKeyword.map((d, idx) => (
-                                                                <span key={idx} className="text-[11px] px-2 py-0.5 bg-white rounded text-purple-700">{d}</span>
+                                                                <span key={idx} className="text-[11px] px-2 py-0.5 bg-[var(--app-panel)] rounded text-purple-700">{d}</span>
                                                             ))}
                                                         </div>
                                                     </div>
@@ -186,7 +186,7 @@ export function DnsPolicyDetailModal({
                                                         <p className="text-[11px] text-indigo-600 mb-2">{t('policies.domainSuffixCount', { count: domainSuffix.length })}</p>
                                                         <div className="flex flex-wrap gap-1">
                                                             {domainSuffix.map((d, idx) => (
-                                                                <span key={idx} className="text-[11px] px-2 py-0.5 bg-white rounded text-indigo-700">{d}</span>
+                                                                <span key={idx} className="text-[11px] px-2 py-0.5 bg-[var(--app-panel)] rounded text-indigo-700">{d}</span>
                                                             ))}
                                                         </div>
                                                     </div>
@@ -220,7 +220,7 @@ export function DnsPolicyDetailModal({
                         </div>
                     </div>
 
-                    <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/30">
+                    <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-[var(--app-divider)] bg-[var(--app-bg-secondary)]/30">
                         <Button variant="ghost" onClick={onClose}>{t('common.close')}</Button>
                         <Button variant="primary" onClick={() => { onClose(); onEdit(detailPolicy); }}>
                             <Edit2 className="w-3.5 h-3.5 mr-1" />

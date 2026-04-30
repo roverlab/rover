@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { Button } from '../../components/ui/Button';
 import { Input, Select } from '../../components/ui/Field';
 import { X, ChevronDown, Settings2, Code2, ChevronUp } from 'lucide-react';
-import { cn } from '../../components/Sidebar';
+import { cn } from '../../lib/utils';
 import type { RuleSetGroupItem } from './PolicyAllRuleSetModal';
 import { PolicyAllRuleSetModal } from './PolicyAllRuleSetModal';
 import { JsonEditor } from '../../components/JsonEditor';
@@ -143,11 +143,11 @@ export function PolicyEditModalBase<T extends PolicyEditFormStateBase>({
                             initial={{ opacity: 0, scale: 0.95, y: 10 }}
                             animate={{ opacity: 1, scale: 1, y: 0 }}
                             exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                            className="relative z-10 w-full max-w-2xl flex flex-col bg-white border border-[rgba(39,44,54,0.08)] rounded-[20px] shadow-[var(--shadow-elevated)] overflow-hidden"
+                            className="relative z-10 w-full max-w-2xl flex flex-col bg-[var(--app-panel)] border border-[var(--app-stroke)] rounded-[20px] shadow-[var(--shadow-elevated)] overflow-hidden"
                             style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
                             onClick={e => e.stopPropagation()}
                         >
-                            <div className="flex shrink-0 items-center justify-between px-6 py-4 border-b border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/50">
+                            <div className="flex shrink-0 items-center justify-between px-6 py-4 border-b border-[var(--app-divider)] bg-[var(--app-bg-secondary)]/50">
                                 <h2 className="text-[15px] font-semibold text-[var(--app-text)]">
                                     {editingPolicy ? t('policies.editModalEdit', { name: title }) : t('policies.editModalAdd', { name: title })}
                                 </h2>
@@ -167,7 +167,7 @@ export function PolicyEditModalBase<T extends PolicyEditFormStateBase>({
                                                 "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] border transition-all cursor-pointer",
                                                 form.policyType === 'default'
                                                     ? "border-[var(--app-accent-border)] bg-[var(--app-accent-soft)]"
-                                                    : "border-[var(--app-stroke)] bg-white hover:bg-[var(--app-hover)]"
+                                                    : "border-[var(--app-stroke)] bg-[var(--app-panel)] hover:bg-[var(--app-hover)]"
                                             )}
                                         >
                                             <Settings2 className={cn(
@@ -189,7 +189,7 @@ export function PolicyEditModalBase<T extends PolicyEditFormStateBase>({
                                                 "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] border transition-all cursor-pointer",
                                                 form.policyType === 'raw'
                                                     ? "border-[var(--app-accent-border)] bg-[var(--app-accent-soft)]"
-                                                    : "border-[var(--app-stroke)] bg-white hover:bg-[var(--app-hover)]"
+                                                    : "border-[var(--app-stroke)] bg-[var(--app-panel)] hover:bg-[var(--app-hover)]"
                                             )}
                                         >
                                             <Code2 className={cn(
@@ -246,13 +246,13 @@ export function PolicyEditModalBase<T extends PolicyEditFormStateBase>({
                                         <div className="space-y-1.5">
                                             <label className="text-[12px] font-medium text-[var(--app-text-secondary)] pl-1">{t('policies.ruleSetsLabel')}</label>
                                             {ruleSetGroups.length === 0 ? (
-                                                <p className="px-3 py-4 text-[12px] text-[var(--app-text-quaternary)] border border-[rgba(39,44,54,0.12)] rounded-[10px] bg-white">{t('policies.ruleSetsEmptyHint')}</p>
+                                                <p className="px-3 py-4 text-[12px] text-[var(--app-text-quaternary)] border border-[var(--app-stroke)] rounded-[10px] bg-[var(--app-panel)]">{t('policies.ruleSetsEmptyHint')}</p>
                                             ) : (
                                                 <div
                                                     ref={ruleSetBarRef}
                                                     className={cn(
-                                                        "relative flex flex-wrap items-center gap-1.5 min-h-[36px] px-3 py-2 pr-8 rounded-[10px] border bg-white transition-all cursor-pointer",
-                                                        "border-[rgba(39,44,54,0.12)]",
+                                                        "relative flex flex-wrap items-center gap-1.5 min-h-[36px] px-3 py-2 pr-8 rounded-[10px] border bg-[var(--app-panel)] transition-all cursor-pointer",
+                                                        "border-[var(--app-stroke)]",
                                                         showAllRuleSets && selectedRuleSetList.length > ruleSetMaxVisible ? "max-h-none" : "overflow-hidden"
                                                     )}
                                                     onClick={() => setShowRuleSetModal(true)}
@@ -339,7 +339,7 @@ export function PolicyEditModalBase<T extends PolicyEditFormStateBase>({
                                 )}
                             </div>
 
-                            <div className="flex shrink-0 items-center justify-end gap-2 px-6 py-4 border-t border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/30">
+                            <div className="flex shrink-0 items-center justify-end gap-2 px-6 py-4 border-t border-[var(--app-divider)] bg-[var(--app-bg-secondary)]/30">
                                 <Button variant="ghost" onClick={onClose}>{t('common.cancel')}</Button>
                                 <Button variant="primary" onClick={onSave} disabled={!form.name.trim()}>{t('common.save')}</Button>
                             </div>

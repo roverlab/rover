@@ -335,11 +335,12 @@ function fastStringify(arg: unknown): string {
 
 /**
  * 重定向控制台输出到日志系统
- * 将 console.log 和 console.error 重定向到 logger
+ * 将 console.log、console.info 和 console.error 重定向到 logger
  */
 export function redirectConsole(): void {
     // 保存原始的 console 方法
     const originalConsoleLog = console.log;
+    const originalConsoleInfo = console.info;
     const originalConsoleError = console.error;
     const originalConsoleWarn = console.warn;
 
@@ -361,10 +362,17 @@ export function redirectConsole(): void {
         warn('Renderer', message);
     };
 
+    // 重写 console.info
+    console.info = (...args: unknown[]) => {
+        const message = args.map(fastStringify).join(' ');
+        info('Renderer', message);
+    };
+
     // 保存原始方法以便需要时恢复
-    (console as Console & { _originalLog?: typeof console.log; _originalError?: typeof console.error; _originalWarn?: typeof console.warn })._originalLog = originalConsoleLog;
-    (console as Console & { _originalLog?: typeof console.log; _originalError?: typeof console.error; _originalWarn?: typeof console.warn })._originalError = originalConsoleError;
-    (console as Console & { _originalLog?: typeof console.log; _originalError?: typeof console.error; _originalWarn?: typeof console.warn })._originalWarn = originalConsoleWarn;
+    (console as Console & { _originalLog?: typeof console.log; _originalInfo?: typeof console.info; _originalError?: typeof console.error; _originalWarn?: typeof console.warn })._originalLog = originalConsoleLog;
+    (console as Console & { _originalLog?: typeof console.log; _originalInfo?: typeof console.info; _originalError?: typeof console.error; _originalWarn?: typeof console.warn })._originalInfo = originalConsoleInfo;
+    (console as Console & { _originalLog?: typeof console.log; _originalInfo?: typeof console.info; _originalError?: typeof console.error; _originalWarn?: typeof console.warn })._originalError = originalConsoleError;
+    (console as Console & { _originalLog?: typeof console.log; _originalInfo?: typeof console.info; _originalError?: typeof console.error; _originalWarn?: typeof console.warn })._originalWarn = originalConsoleWarn;
 
     // 页面卸载前刷新缓冲区
     window.addEventListener('beforeunload', () => {
@@ -376,9 +384,12 @@ export function redirectConsole(): void {
  * 恢复原始的 console 方法
  */
 export function restoreConsole(): void {
-    const extendedConsole = console as Console & { _originalLog?: typeof console.log; _originalError?: typeof console.error; _originalWarn?: typeof console.warn };
+    const extendedConsole = console as Console & { _originalLog?: typeof console.log; _originalInfo?: typeof console.info; _originalError?: typeof console.error; _originalWarn?: typeof console.warn };
     if (extendedConsole._originalLog) {
         console.log = extendedConsole._originalLog;
+    }
+    if (extendedConsole._originalInfo) {
+        console.info = extendedConsole._originalInfo;
     }
     if (extendedConsole._originalError) {
         console.error = extendedConsole._originalError;

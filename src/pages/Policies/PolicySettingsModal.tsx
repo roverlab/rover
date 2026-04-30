@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Globe, Ban, ArrowRightCircle, HelpCircle } from 'lucide-react';
-import { cn } from '../../components/Sidebar';
+import { cn } from '../../lib/utils';
 import { POLICY_FINAL_OPTION_DEFS } from '../../types/policy';
 
 interface PolicySettingsModalProps {
@@ -26,8 +26,8 @@ const outboundColors = {
         icon: 'text-emerald-500',
     },
     block_out: {
-        selected: 'border-red-300 bg-red-50 text-red-700',
-        icon: 'text-red-500',
+        selected: 'border-red-300 bg-[var(--app-danger-soft)] text-[var(--app-danger)]',
+        icon: 'text-[var(--app-danger)]',
     },
     selector_out: {
         selected: 'border-blue-300 bg-blue-50 text-blue-700',
@@ -65,12 +65,12 @@ export function PolicySettingsModal({
                     initial={{ opacity: 0, scale: 0.95, y: 10 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                    className="relative z-10 w-full max-w-md flex flex-col bg-white border border-[rgba(39,44,54,0.08)] rounded-[20px] shadow-[var(--shadow-elevated)] overflow-hidden"
+                    className="relative z-10 w-full max-w-md flex flex-col bg-[var(--app-panel)] border border-[var(--app-stroke)] rounded-[20px] shadow-[var(--shadow-elevated)] overflow-hidden"
                     style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
                     onClick={e => e.stopPropagation()}
                 >
                     {/* Header */}
-                    <div className="flex shrink-0 items-center justify-between px-6 py-4 border-b border-[rgba(39,44,54,0.06)] bg-[var(--app-bg-secondary)]/50">
+                    <div className="flex shrink-0 items-center justify-between px-6 py-4 border-b border-[var(--app-divider)] bg-[var(--app-bg-secondary)]/50">
                         <h2 className="text-[15px] font-semibold text-[var(--app-text)]">
                             {t('policies.settingsTitle')}
                         </h2>
@@ -113,12 +113,12 @@ export function PolicySettingsModal({
                                             "w-full flex items-center gap-3 px-4 py-3 rounded-[12px] border-2 transition-all text-left",
                                             isSelected
                                                 ? colors.selected
-                                                : "border-[var(--app-stroke)] bg-white hover:bg-[var(--app-hover)] text-[var(--app-text-secondary)]"
+                                                : "border-[var(--app-stroke)] bg-[var(--app-panel)] hover:bg-[var(--app-hover)] text-[var(--app-text-secondary)]"
                                         )}
                                     >
                                         <div className={cn(
                                             "shrink-0 w-8 h-8 rounded-full flex items-center justify-center",
-                                            isSelected ? "bg-white/60" : "bg-[var(--app-bg-secondary)]"
+                                            isSelected ? "bg-[var(--app-panel)]/60" : "bg-[var(--app-bg-secondary)]"
                                         )}>
                                             <Icon className={cn("w-4 h-4", isSelected ? colors.icon : "text-[var(--app-text-tertiary)]")} />
                                         </div>

@@ -1,6 +1,6 @@
 /**
  * 规则编辑字段组件
- * 封装"打开规则编辑器"按钮、规则预览和提示文本
+  * 封装"打开规则编辑器"按钮、规则预览和提示文本
  * 供策略编辑和规则集编辑复用
  */
 import React, { useState } from 'react';
@@ -15,7 +15,7 @@ import {
 } from './ruleTreeNodeConversion';
 
 export interface RuleEditorFieldProps {
-    /** 当前逻辑规则值 */
+    /** 当前逻辑规则 */
     value?: RouteLogicRule | null;
     /** 值变化回调 */
     onChange: (value: RouteLogicRule | null) => void;
@@ -77,7 +77,7 @@ export function RuleEditorField({
                             type="button"
                             onClick={() => onChange(null)}
                             disabled={disabled}
-                            className="px-3 py-1.5 rounded-[8px] border border-[rgba(39,44,54,0.12)] bg-white hover:bg-red-50 hover:border-red-200 hover:text-red-600 transition-colors text-[12px] text-[var(--app-text-tertiary)] disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="px-3 py-1.5 rounded-[8px] border border-[var(--app-stroke)] bg-[var(--app-panel)] hover:bg-[var(--app-danger-soft)] hover:border-[var(--app-danger)]/30 hover:text-[var(--app-danger)] transition-colors text-[12px] text-[var(--app-text-tertiary)] disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             {t('advancedRuleEditor.clearRules')}
                         </button>
@@ -86,7 +86,7 @@ export function RuleEditorField({
                         type="button"
                         onClick={handleOpenEditor}
                         disabled={disabled}
-                        className="px-3 py-1.5 rounded-[8px] border border-[rgba(39,44,54,0.12)] bg-white hover:bg-[var(--app-hover)] transition-colors text-[12px] text-[var(--app-text)] disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="px-3 py-1.5 rounded-[8px] border border-[var(--app-stroke)] bg-[var(--app-panel)] hover:bg-[var(--app-hover)] transition-colors text-[12px] text-[var(--app-text)] disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         {t('advancedRuleEditor.openEditor')}
                     </button>
@@ -116,7 +116,7 @@ export default RuleEditorField;
 // ==================== 只读展示组件 ====================
 
 export interface RuleEditorViewProps {
-    /** 当前逻辑规则值 */
+    /** 当前逻辑规则 */
     value?: RouteLogicRule | null;
     /** 字段标签，默认"规则内容" */
     label?: string;
