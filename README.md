@@ -15,7 +15,7 @@
 
 </div>
 
-**Rover** is a modern desktop client for sing-box, избавing you from tedious handwritten JSON configurations and delivering a true **what-you-see-is-what-you-get** proxy experience.
+**Rover** is a modern desktop client for sing-box, eliminating you from tedious handwritten JSON configurations and delivering a true **what-you-see-is-what-you-get** proxy experience.
 
 ## ✨ Key Features
 
