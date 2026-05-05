@@ -181,6 +181,7 @@
     "overrideRulesDesc": "구독 규칙을 대체하는 사용자 지정 라우팅 규칙 사용",
     "customProxyGroups": "사용자 지정 프록시 그룹",
     "customProxyGroupsDesc": "원래 구독 그룹을 대체하는 사용자 지정 프록시 그룹 사용",
+    "customProxyGroupsRequiresOverride": "사용자 지정 라우팅 규칙을 먼저 활성화해야 합니다",
     "ipv6": "IPv6",
     "ipv6Desc": "IPv6 지원 활성화",
     "hostsConfig": "Hosts 구성",

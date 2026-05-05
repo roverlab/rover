@@ -180,6 +180,7 @@
     "overrideRulesDesc": "使用自定义的分流策略替换订阅中的规则",
     "customProxyGroups": "自定义代理分组",
     "customProxyGroupsDesc": "使用自定义的代理分组替换订阅中的原始分组",
+    "customProxyGroupsRequiresOverride": "需要先开启自定义分流策略才能使用此功能",
     "ipv6": "IPv6",
     "ipv6Desc": "启用 IPv6 支持",
     "hostsConfig": "Hosts 配置",

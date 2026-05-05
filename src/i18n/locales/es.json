@@ -180,6 +180,7 @@
     "overrideRulesDesc": "Usar reglas de enrutamiento personalizadas para reemplazar las reglas de suscripción",
     "customProxyGroups": "Grupos de proxy personalizados",
     "customProxyGroupsDesc": "Usar grupos de proxy personalizados para reemplazar los grupos de suscripción originales",
+    "customProxyGroupsRequiresOverride": "Requiere que las reglas de enrutamiento personalizadas estén habilitadas primero",
     "ipv6": "IPv6",
     "ipv6Desc": "Habilitar soporte IPv6",
     "hostsConfig": "Configuración de Hosts",

@@ -96,6 +96,18 @@ export function convertClashToSingbox(config: MihomoConfig , options?: ConvertOp
     };
 }
 
+/** 将 Clash 出站名称映射为 sing-box 出站 tag
+ *  DIRECT → direct_out
+ *  REJECT / BLOCK → block_out
+ *  其他值保持不变
+ */
+function mapOutboundTag(tag: string): string {
+    const upper = tag.toUpperCase();
+    if (upper === 'DIRECT') return 'direct_out';
+    if (upper === 'REJECT') return 'block_out';
+    return tag;
+}
+
 /** 可合并规则中的数组字段 */
 const ARRAY_MATCH_KEYS = ['domain', 'domain_suffix', 'domain_keyword', 'ip_cidr', 'source_ip_cidr', 'rule_set', 'port', 'source_port', 'process_name', 'process_path', 'network'];
 
@@ -136,13 +148,6 @@ export function getRuleConversionStats(clashConfig: MihomoConfig, singboxConfig:
 function buildOutbounds(config: MihomoConfig): OutboundConfig[] {
     const builtins = buildBuiltinOutbounds(config);
 
-    // Collect SSR proxy names to filter them out from groups as well
-    const ssrProxyNames = new Set(
-        (config.proxies ?? [])
-            .filter(proxy => (proxy as any).type === 'ssr')
-            .map(proxy => proxy.name)
-    );
-
     // Collect load-balance group names to filter them out from references
     const loadBalanceGroupNames = new Set(
         (config['proxy-groups'] ?? [])
@@ -157,13 +162,13 @@ function buildOutbounds(config: MihomoConfig): OutboundConfig[] {
 
     const validProxyTags = new Set(proxies.map((proxy) => proxy.tag));
 
-    // Filter out SSR proxy references and load-balance groups first
+    // Filter out load-balance groups first
     const groupCandidates = (config['proxy-groups'] ?? [])
         .filter(group => group.type !== 'load-balance') // 忽略 load-balance 类型
         .map(group => ({
             ...group,
             proxies: group.proxies.filter(name =>
-                !ssrProxyNames.has(name) && !loadBalanceGroupNames.has(name)
+                !loadBalanceGroupNames.has(name)
             )
         }));
 
@@ -174,11 +179,15 @@ function buildOutbounds(config: MihomoConfig): OutboundConfig[] {
     const groups = groupCandidates
         .map(group => ({
             ...group,
-            proxies: group.proxies.filter((name) => validProxyTags.has(name) || validGroupTags.has(name))
+            proxies: group.proxies
+                .filter((name) =>
+                    validProxyTags.has(name) || validGroupTags.has(name)
+                )
+                .map((name) => mapOutboundTag(name))
         }))
         .map(group => {
             if (!group.proxies || group.proxies.length === 0) {
-                return { ...group, proxies: ['DIRECT'] };
+                return { ...group, proxies: ['direct_out'] };
             }
             return group;
         })
@@ -187,22 +196,9 @@ function buildOutbounds(config: MihomoConfig): OutboundConfig[] {
     return [...builtins, ...proxies, ...groups];
 }
 
-function buildBuiltinOutbounds(config: MihomoConfig): OutboundConfig[] {
-    const tags = new Set([
-        ...(config.proxies ?? []).map((proxy) => proxy.name),
-        ...(config['proxy-groups'] ?? []).map((group) => group.name)
-    ]);
-    const builtins: OutboundConfig[] = [];
-
-    if (!tags.has('DIRECT')) {
-        builtins.push({ type: 'direct', tag: 'DIRECT' });
-    }
-
-    if (!tags.has('REJECT')) {
-        builtins.push({ type: 'block', tag: 'REJECT' });
-    }
-
-    return builtins;
+function buildBuiltinOutbounds(_config: MihomoConfig): OutboundConfig[] {
+    // DIRECT/REJECT 由 appendExtraOutbounds 统一添加为 direct_out/block_out，此处不再重复生成
+    return [];
 }
 
 /** 解析 Clash up/down 带宽字符串（如 "50 Mbps"）为 sing-box 所需的数值 Mbps */
@@ -507,7 +503,7 @@ export function convertClashRuleToRouteRule(rule: string, requireOutbound = true
     }
 
     const value = segments[1];
-    const outbound = requireOutbound ? segments[2] : undefined;
+    const outbound = requireOutbound ? mapOutboundTag(segments[2]) : undefined;
     // 使用 RoutePlainRule 类型，因为 rule_set 只在 RouteRule 中存在
     const routeRule: RoutePlainRule = outbound ? { outbound } : {};
 
@@ -634,11 +630,12 @@ function mergeRouteRules(rules: RouteRule[]): RouteRule[] {
 
 function resolveFinalOutbound(config: MihomoConfig): string | undefined {
     if (config.mode === 'direct') {
-        return 'DIRECT';
+        return 'direct_out';
     }
 
     if (config.mode === 'global') {
-        return config['proxy-groups']?.[0]?.name ?? config.proxies?.[0]?.name ?? 'DIRECT';
+        const name = config['proxy-groups']?.[0]?.name ?? config.proxies?.[0]?.name;
+        return name ? mapOutboundTag(name) : 'direct_out';
     }
 
     // In rule mode, find the MATCH rule to determine the final outbound
@@ -647,11 +644,12 @@ function resolveFinalOutbound(config: MihomoConfig): string | undefined {
     );
     if (matchRule) {
         const parts = matchRule.split(',').map(s => s.trim());
-        return parts[1] ?? 'DIRECT';
+        return parts[1] ? mapOutboundTag(parts[1]) : 'direct_out';
     }
 
-    // Fallback: use the first proxy group or DIRECT
-    return config['proxy-groups']?.[0]?.name ?? 'DIRECT';
+    // Fallback: use the first proxy group or direct_out
+    const fallback = config['proxy-groups']?.[0]?.name;
+    return fallback ? mapOutboundTag(fallback) : 'direct_out';
 }
 
 function buildTransport(
@@ -728,18 +726,7 @@ function buildShadowsocksPluginOpts(pluginOpts: Record<string, unknown>): string
     return parts.join(';');
 }
 
-function normalizeListenAddress(config: MihomoConfig): string | undefined {
-    const bindAddress = config['bind-address'];
-    if (bindAddress) {
-        return bindAddress === '*' ? '0.0.0.0' : bindAddress;
-    }
 
-    if (config['allow-lan'] === false) {
-        return '127.0.0.1';
-    }
-
-    return undefined;
-}
 
 function mapGroupType(type: ProxyGroup['type']): string {
     switch (type) {

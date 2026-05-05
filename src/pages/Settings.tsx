@@ -664,6 +664,11 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
                       setOverrideRules(v);
                       try {
                         await window.ipcRenderer.db.setSetting('override-rules', v.toString());
+                        // 关闭自定义分流时，自动关闭自定义分组
+                        if (!v && customProxyGroups) {
+                          setCustomProxyGroups(false);
+                          await window.ipcRenderer.db.setSetting('custom-proxy-groups', 'false');
+                        }
                         await refreshOverrideRules();
                         await regenerateConfigIfNeeded();
                       } catch (e) {
@@ -676,10 +681,13 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
                 <ListRow>
                   <div>
                     <div className="list-row-title">{t('settings.customProxyGroups')}</div>
-                    <div className="list-row-description">{t('settings.customProxyGroupsDesc')}</div>
+                    <div className="list-row-description">
+                      {overrideRules ? t('settings.customProxyGroupsDesc') : t('settings.customProxyGroupsRequiresOverride')}
+                    </div>
                   </div>
                   <Switch
                     checked={customProxyGroups}
+                    disabled={!overrideRules}
                     onCheckedChange={(v) => handleUpdateConfig('custom-proxy-groups', v)}
                   />
                 </ListRow>

@@ -403,68 +403,33 @@ export function redirectConsole(): void {
     const originalConsoleError = console.error;
     const originalConsoleWarn = console.warn;
 
+    // 序列化 console 参数，正确处理 Error 对象（其 message/stack 不可枚举，JSON.stringify 会输出 {}）
+    const stringifyArg = (arg: unknown): string => {
+        if (arg instanceof Error) return arg.stack || `${arg.name}: ${arg.message}`;
+        if (typeof arg === 'object' && arg !== null) {
+            try { return JSON.stringify(arg, null, 2); } catch { return String(arg); }
+        }
+        return String(arg);
+    };
+
     // 重写 console.log
     console.log = (...args: unknown[]) => {
-        const message = args.map(arg => {
-            if (typeof arg === 'object') {
-                try {
-                    return JSON.stringify(arg, null, 2);
-                } catch {
-                    return String(arg);
-                }
-            }
-            return String(arg);
-        }).join(' ');
-
-        info('Console', message);
+        info('Console', args.map(stringifyArg).join(' '));
     };
 
     // 重写 console.error
     console.error = (...args: unknown[]) => {
-        const message = args.map(arg => {
-            if (typeof arg === 'object') {
-                try {
-                    return JSON.stringify(arg, null, 2);
-                } catch {
-                    return String(arg);
-                }
-            }
-            return String(arg);
-        }).join(' ');
-
-        error('Console', message);
+        error('Console', args.map(stringifyArg).join(' '));
     };
 
     // 重写 console.warn
     console.warn = (...args: unknown[]) => {
-        const message = args.map(arg => {
-            if (typeof arg === 'object') {
-                try {
-                    return JSON.stringify(arg, null, 2);
-                } catch {
-                    return String(arg);
-                }
-            }
-            return String(arg);
-        }).join(' ');
-
-        warn('Console', message);
+        warn('Console', args.map(stringifyArg).join(' '));
     };
 
     // 重写 console.info
     console.info = (...args: unknown[]) => {
-        const message = args.map(arg => {
-            if (typeof arg === 'object') {
-                try {
-                    return JSON.stringify(arg, null, 2);
-                } catch {
-                    return String(arg);
-                }
-            }
-            return String(arg);
-        }).join(' ');
-
-        info('Console', message);
+        info('Console', args.map(stringifyArg).join(' '));
     };
 
     // 保存原始方法以便需要时恢复

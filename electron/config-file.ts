@@ -547,8 +547,26 @@ export function appendExtraOutbounds(config: SingboxConfig): void {
         )
         .map((o: OutboundConfig) => o.tag);
 
+    // 如果没有分组，构造一个包含全部节点的 selector 分组
+    let finalOutbounds: OutboundConfig[];
+    if (selectorUrltestTags.length > 0) {
+        finalOutbounds = outbounds;
+    } else {
+        const allNodeTags = outbounds
+            .map((o: OutboundConfig) => o.tag)
+            .filter(Boolean);
+        const fallbackGroup: OutboundConfig = {
+            type: 'selector',
+            tag: t('main.config.proxyGroupSelector'),
+            outbounds: allNodeTags,
+        };
+        outbounds.push(fallbackGroup);
+        selectorUrltestTags.push(fallbackGroup.tag);
+        finalOutbounds = outbounds;
+    }
+
     config.outbounds = [
-        ...outbounds,
+        ...finalOutbounds,
             {
             "type": "selector",
             "tag": "selector_out",
@@ -869,7 +887,7 @@ function addSystemRouteRules(config: SingboxConfig, settings: Record<string, str
     }
     config.route.rules = [
         ...appendRules,
-        ...config.route.rules,
+        ...(config.route.rules || []),
     ]
 }
 
@@ -1070,7 +1088,7 @@ export async function writeConfigFileOnly(
     if (overrideRules) {
         applyOverrideRulesRoute(mergedConfig, profileId);
 
-        // 应用自定义代理分组（独立于 override-rules，只要启用就生效）
+        // 应用自定义代理分组（依赖自定义分流：只在 override-rules 开启时生效）
         const customProxyGroupsEnabled = settings['custom-proxy-groups'] === 'true';
         if (customProxyGroupsEnabled) {
             applyCustomProxyGroups(mergedConfig, profileId);

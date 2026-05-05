@@ -181,6 +181,7 @@
     "overrideRulesDesc": "استفاده از قوانین مسیریابی سفارشی به جای قوانین اشتراک",
     "customProxyGroups": "گروه‌های پروکسی سفارشی",
     "customProxyGroupsDesc": "استفاده از گروه‌های پروکسی سفارشی به جای گروه‌های اشتراک اصلی",
+    "customProxyGroupsRequiresOverride": "ابتدا باید قوانین مسیریابی سفارشی را فعال کنید",
     "ipv6": "IPv6",
     "ipv6Desc": "فعال کردن پشتیبانی IPv6",
     "hostsConfig": "پیکربندی Hosts",

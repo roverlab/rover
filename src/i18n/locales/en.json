@@ -180,6 +180,7 @@
     "overrideRulesDesc": "Use custom routing rules to replace subscription rules",
     "customProxyGroups": "Custom Proxy Groups",
     "customProxyGroupsDesc": "Use custom proxy groups to replace original subscription groups",
+    "customProxyGroupsRequiresOverride": "Requires custom routing rules to be enabled first",
     "ipv6": "IPv6",
     "ipv6Desc": "Enable IPv6 support",
     "hostsConfig": "Hosts Configuration",

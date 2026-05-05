@@ -180,6 +180,7 @@
     "overrideRulesDesc": "サブスクリプションのルールをカスタムルーティングルールに置き換える",
     "customProxyGroups": "カスタムプロキシグループ",
     "customProxyGroupsDesc": "サブスクリプションの元のグループをカスタムプロキシグループに置き換える",
+    "customProxyGroupsRequiresOverride": "カスタムルーティングルールを先に有効にする必要があります",
     "ipv6": "IPv6",
     "ipv6Desc": "IPv6サポートを有効化",
     "hostsConfig": "Hosts設定",
