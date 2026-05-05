@@ -20,16 +20,16 @@ jobs:
         include:
           - os: windows-latest
             platform: windows
-            arch: x86_64
+            arch: x64
           - os: macos-latest
             platform: macos
             arch: arm64
           - os: macos-latest
             platform: macos
-            arch: x86_64
+            arch: x64
           - os: ubuntu-latest
             platform: linux
-            arch: x86_64
+            arch: x64
 
     env:
       SINGBOX_VERSION: 1.13.2
@@ -56,8 +56,8 @@ jobs:
 
       - name: Download sing-box
         run: |
-          # arch 映射: x86_64 -> amd64, arm64 -> arm64
-          if [ "${{ matrix.arch }}" == "x86_64" ]; then
+          # arch 映射: x64 -> amd64, arm64 -> arm64
+          if [ "${{ matrix.arch }}" == "x64" ]; then
             SB_ARCH="amd64"
           else
             SB_ARCH="${{ matrix.arch }}"
@@ -81,21 +81,21 @@ jobs:
       - name: Build roverservice
         run: |
           cd roverservice
-          # arch 映射: x86_64 -> amd64, arm64 -> arm64
-          if [ "${{ matrix.arch }}" == "x86_64" ]; then
+          # arch 映射: x64 -> amd64, arm64 -> arm64
+          if [ "${{ matrix.arch }}" == "x64" ]; then
             GO_ARCH="amd64"
           else
             GO_ARCH="${{ matrix.arch }}"
           fi
           if [ "${{ matrix.platform }}" == "windows" ]; then
             # Build for Windows amd64
-            GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o ../resources/roverservice.exe .
+            GOOS=windows GOARCH=$GO_ARCH CGO_ENABLED=0 go build -ldflags="-s -w" -o ../resources/roverservice.exe .
           elif [ "${{ matrix.platform }}" == "macos" ]; then
             # Build for macOS (both arm64 and amd64)
             GOOS=darwin GOARCH=$GO_ARCH CGO_ENABLED=0 go build -ldflags="-s -w" -o ../resources/roverservice .
           else
             # Build for Linux
-            GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o ../resources/roverservice .
+            GOOS=linux GOARCH=$GO_ARCH CGO_ENABLED=0 go build -ldflags="-s -w" -o ../resources/roverservice .
           fi
         shell: bash
 
@@ -117,29 +117,28 @@ jobs:
               $VERSION="latest"
           }
 
-          # electron-builder 使用 x64 而不是 x86_64
-          $EB_ARCH = if ("${{ matrix.arch }}" -eq "x86_64") { "x64" } else { "${{ matrix.arch }}" }
-
           if ("${{ matrix.platform }}" -eq "windows") {
-              $ARTIFACT="Rover-$VERSION-windows-${{ matrix.arch }}.exe"
-              # 关键：这里强制指定 --win nsis，覆盖 package.json 里的 "dir"
+              $EXE_ARTIFACT="Rover-$VERSION-windows-${{ matrix.arch }}.exe"
+              $ZIP_ARTIFACT="Rover-$VERSION-windows-${{ matrix.arch }}.zip"
+              # 关键：这里强制指定 --win nsis zip，覆盖 package.json 里的 "dir"
               npx electron-builder `
-                --win nsis `
-                --$EB_ARCH `
+                --win nsis zip `
+                --${{ matrix.arch }} `
                 --publish never `
-                --config.nsis.artifactName=$ARTIFACT
+                --config.nsis.artifactName=$EXE_ARTIFACT `
+                --config.win.artifactName=$ZIP_ARTIFACT
           } elseif ("${{ matrix.platform }}" -eq "macos") {
               $ARTIFACT="Rover-$VERSION-macos-${{ matrix.arch }}.dmg"
               npx electron-builder `
                 --mac dmg `
-                --$EB_ARCH `
+                --${{ matrix.arch }} `
                 --publish never `
                 --config.dmg.artifactName=$ARTIFACT
           } else {
               $ARTIFACT="Rover-$VERSION-linux-${{ matrix.arch }}.AppImage"
               npx electron-builder `
                 --linux appimage `
-                --$EB_ARCH `
+                --${{ matrix.arch }} `
                 --publish never `
                 --config.linux.artifactName=$ARTIFACT
           }
@@ -164,6 +163,7 @@ jobs:
           name: build-${{ matrix.platform }}-${{ matrix.arch }}
           path: |
             release/Rover-*.exe
+            release/Rover-*.zip
             release/Rover-*.dmg
             release/Rover-*.AppImage
           retention-days: 1
@@ -190,6 +190,7 @@ jobs:
           # 使用通配符匹配 release-assets 目录及其子目录下所有相关文件
           files: |
             release-assets/**/*.exe
+            release-assets/**/*.zip
             release-assets/**/*.dmg
             release-assets/**/*.AppImage
           generate_release_notes: true
