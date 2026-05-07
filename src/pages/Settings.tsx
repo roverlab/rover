@@ -448,7 +448,7 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
         {isDataLoaded && (
         <>
         {/* Tab 导航 - 固定在 page-header 下方 */}
-        <div className="shrink-0 px-10 pt-5 pb-0">
+        <div className="shrink-0 px-10 pb-0">
           <div className="settings-tabbar">
             {[
               { id: 'basic' as SettingsTab, label: t('settings.basic'), icon: SettingsIcon },

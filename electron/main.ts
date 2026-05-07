@@ -265,7 +265,6 @@ ipcMain.handle('db:addDnsServer', (_, server: any) => dbUtils.addDnsServer(serve
 ipcMain.handle('db:updateDnsServer', (_, id: string, updates: any) => dbUtils.updateDnsServer(id, updates));
 ipcMain.handle('db:deleteDnsServer', (_, id: string) => dbUtils.deleteDnsServer(id));
 ipcMain.handle('db:toggleDnsServerEnabled', (_, id: string, enabled: boolean) => dbUtils.toggleDnsServerEnabled(id, enabled));
-ipcMain.handle('db:setDefaultDnsServer', (_, id: string) => dbUtils.setDefaultDnsServer(id));
 ipcMain.handle('db:updateDnsServersOrder', (_, orderedIds) => {
     dbUtils.updateDnsServersOrder(orderedIds);
 });

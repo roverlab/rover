@@ -589,7 +589,21 @@
     "editModalTitle": "Política DNS",
     "dnsServerLocal": "Local",
     "dnsServerRemote": "Remoto",
-    "dnsServerBlock": "Bloquear"
+    "dnsServerBlock": "Bloquear",
+    "settingsTitle": "Configuración de políticas DNS",
+    "unmatchedServer": {
+      "label": "Servidor DNS predeterminado para reglas sin coincidencia",
+      "description": "Servidor DNS utilizado cuando ninguna regla de política DNS coincide"
+    },
+    "resolveServer": {
+      "label": "Servidor DNS de resolve de enrutamiento",
+      "description": "Servidor DNS para resolver nombres de dominio en reglas de enrutamiento"
+    },
+    "proxyServer": {
+      "label": "Servidor DNS de nodos proxy",
+      "description": "Servidor DNS para resolver direcciones de nodos proxy"
+    },
+    "settingsHint": "La configuración surte efecto después de guardar. Los servidores DNS deben agregarse en「Configuración → DNS」primero"
   },
   "ruleProviders": {
     "title": "Proveedores de reglas",
@@ -746,8 +760,6 @@
     "detourDirect": "Directo",
     "enable": "Habilitar",
     "disable": "Deshabilitar",
-    "setDefault": "Establecer como predeterminado",
-    "isDefault": "Predeterminado actual",
     "edit": "Editar",
     "delete": "Eliminar",
     "modalAddTitle": "Agregar servidor DNS",
@@ -792,6 +804,7 @@
     "refTypeDns": "Política DNS",
     "refTypeRoute": "Política de ruta",
     "refTypeDnsServer": "Resolvedor de dominio de servidor DNS",
+    "refTypeSetting": "Configuración de política DNS",
 "rawEditorPlaceholder": "Ingresa JSON de servidor DNS de sing-box, ej.:\n{\n  \"type\": \"udp\",\n  \"tag\": \"my-dns\",\n  \"server\": \"8.8.8.8\",\n  \"server_port\": 53,\n  \"detour\": \"proxy\"\n}",
 "searchPlaceholder": "Buscar nombre, dirección...",
 "statsLine": "{{total}} servidores · {{enabled}} habilitados",
@@ -907,7 +920,10 @@
         "customGroupNotFound": "El grupo \"{{name}}\" no existe",
         "dnsRuleFallback": "Regla DNS {{index}}",
         "routeRuleFallback": "Regla {{index}}",
-        "dnsServerFallback": "Servidor DNS {{index}}"
+        "dnsServerFallback": "Servidor DNS {{index}}",
+        "dnsSettingUnmatched": "Servidor DNS predeterminado sin coincidencia",
+        "dnsSettingResolve": "Servidor DNS predeterminado de resolve de ruta",
+        "dnsSettingProxy": "Servidor DNS de nodo proxy"
       },
       "routePolicy": {
         "templateNotFound": "Archivo de plantilla no encontrado",
@@ -919,7 +935,6 @@
         "suffixDns": "; configuración DNS aplicada",
         "suffixFinalOutbound": "; salida final predeterminada establecida",
         "suffixTun": "; modo TUN establecido",
-        "suffixDefaultDns": "; servidor DNS predeterminado establecido",
         "templateImportFailed": "Error al importar: {{message}}"
       },
       "core": {

@@ -1,17 +1,17 @@
 [
   {
-    "name": "国内网站白名单+国外代理（Clash规则集）",
-    "description": "Clash 内置规则模板（包含直连应用、私有网络、广告拦截、苹果服务、Google、常用国外域名、Telegram、直连域名、局域网IP、中国大陆IP等规则）",
-    "path": "templates/1.json"
+    "name": "🌍 国外代理+其余直连",
+    "description": "- DNS 策略： 统一使用本地 DNS 解析，简洁高效。\n- 流量分配： 仅已知国外站点（GFW 列表、海外媒体等）走代理，其余流量全部直连。\n- 特性： 适合仅需访问少量国外网站的场景，未匹配流量默认直连，最大限度保障国内访问速度与稳定性。",
+    "path": "templates/4.json"
   },
   {
-    "name": "国内网站白名单+国外代理（ACL4SSR规则集）",
-    "description": "ACL4SSR + Geosite 规则模板（包含苹果服务、Google Play、哔哩哔哩、国内直连、国外穿墙等规则）",
-    "path": "templates/2.json"
+    "name": "🔒 国内直连+其余代理",
+    "description": "- DNS 策略： 国内域名使用本地 DNS 解析；国外域名使用 Google DoT 经代理解析。\n- 流量分配： 国内域名及 IP 直连，其余所有未匹配流量均走代理。\n- 特性： 适合需要全局代理的场景，仅国内流量直连以保证速度，其余流量全部走代理保障隐私与访问能力。",
+    "path": "templates/5.json"
   },
   {
     "name": "🚀 全能分流平衡方案",
-    "description": "- DNS 策略： 国内使用阿里云 UDP 快速解析；国外使用 Google DoT 加密并开启 FakeIP 模式，有效解决 DNS 污染。\n- 流量分配： 自动识别内网、国内域名及 IP，确保低延迟直连；国外目标自动调度至代理服务器。\n- 特性： 集成 DNS 劫持、流量嗅探与独立缓存，兼顾隐私安全与访问速度）",
+    "description": "- DNS 策略： 国内使用阿里云 UDP 快速解析；国外使用 Google DoT 加密并开启 FakeIP 模式，有效解决 DNS 污染。\n- 流量分配： 自动识别内网、国内域名及 IP，确保低延迟直连；国外目标自动调度至代理服务器。\n- 特性： 集成 DNS 劫持、流量嗅探与独立缓存，兼顾隐私安全与访问速度。",
     "path": "templates/3.json"
   }
 ]

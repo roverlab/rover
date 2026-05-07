@@ -260,9 +260,7 @@ const [loading, setLoading] = useState(true);
         <div className="page-shell text-[var(--app-text-secondary)] relative">
             <NotificationList notifications={notifications} onRemove={removeNotification} />
 
-            <PolicyHeader
-                onOpenSettings={() => setShowSettingsModal(true)}
-            />
+            <PolicyHeader />
 
             <div className="page-content flex flex-col !overflow-hidden">
                 {policies.length === 0 ? (
@@ -278,6 +276,8 @@ const [loading, setLoading] = useState(true);
                         onToggleEnabled={handleToggleEnabled}
                         onReorder={handleReorder}
                         refreshKey={refreshKey}
+                        policyFinalOutbound={policyFinalOutbound.value}
+                        onFinalOutboundClick={() => setShowSettingsModal(true)}
                     />
                 )}
             </div>

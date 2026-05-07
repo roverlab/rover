@@ -1,51 +1,39 @@
-import React from 'react';
-import { useTranslation } from 'react-i18next';
+import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Globe, Ban, ArrowRightCircle, HelpCircle } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { X, Server, HelpCircle } from 'lucide-react';
 import { cn } from '../../lib/utils';
-import { POLICY_FINAL_OPTION_DEFS } from '../../types/policy';
 
-interface PolicySettingsModalProps {
+interface DnsUnmatchedServerModalProps {
     open: boolean;
-    policyFinalOutbound: 'direct_out' | 'block_out' | 'selector_out';
-    saving: boolean;
+    dnsServers: Array<{ id: string; name?: string }>;
+    currentServer: string;
     onClose: () => void;
-    onPolicyFinalOutboundChange: (value: 'direct_out' | 'block_out' | 'selector_out') => void;
+    onConfirm: (serverId: string) => void;
 }
 
-const outboundIcons = {
-    direct_out: Globe,
-    block_out: Ban,
-    selector_out: ArrowRightCircle,
-};
-
-const outboundColors = {
-    direct_out: {
-        selected: 'border-emerald-400/60 bg-emerald-500/10 text-emerald-400 dark:text-emerald-300',
-        icon: 'text-emerald-500 dark:text-emerald-400',
-    },
-    block_out: {
-        selected: 'border-red-400/60 bg-[var(--app-danger-soft)] text-[var(--app-danger)]',
-        icon: 'text-[var(--app-danger)]',
-    },
-    selector_out: {
-        selected: 'border-blue-400/60 bg-blue-500/10 text-blue-400 dark:text-blue-300',
-        icon: 'text-blue-500 dark:text-blue-400',
-    },
-};
-
-export function PolicySettingsModal({
+/**
+ * DNS未匹配服务器选择弹窗 - 一行一个单选卡片风格，参考 PolicySettingsModal
+ */
+export function DnsUnmatchedServerModal({
     open,
-    policyFinalOutbound,
-    saving,
+    dnsServers,
+    currentServer,
     onClose,
-    onPolicyFinalOutboundChange,
-}: PolicySettingsModalProps) {
+    onConfirm,
+}: DnsUnmatchedServerModalProps) {
     const { t } = useTranslation();
+    const [localSelected, setLocalSelected] = useState<string>(currentServer);
 
-    const handleOutboundChange = (value: 'direct_out' | 'block_out' | 'selector_out') => {
-        onPolicyFinalOutboundChange(value);
+    useEffect(() => {
+        if (!open) return;
+        setLocalSelected(currentServer);
+    }, [open, currentServer]);
+
+    const handleSelect = (serverId: string) => {
+        setLocalSelected(serverId);
+        onConfirm(serverId);
         onClose();
     };
 
@@ -54,6 +42,7 @@ export function PolicySettingsModal({
     return createPortal(
         <AnimatePresence>
             <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+                {/* 背景遮罩 */}
                 <motion.div
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
@@ -61,6 +50,8 @@ export function PolicySettingsModal({
                     className="absolute inset-0 z-0 bg-black/40 backdrop-blur-sm"
                     onClick={onClose}
                 />
+
+                {/* 弹窗主体 */}
                 <motion.div
                     initial={{ opacity: 0, scale: 0.95, y: 10 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -72,7 +63,7 @@ export function PolicySettingsModal({
                     {/* Header */}
                     <div className="flex shrink-0 items-center justify-between px-6 py-4 border-b border-[var(--app-divider)] bg-[var(--app-bg-secondary)]/50">
                         <h2 className="text-[15px] font-semibold text-[var(--app-text)]">
-                            {t('policies.settingsTitle')}
+                            {t('dnsPolicies.unmatchedServer.label')}
                         </h2>
                         <button
                             type="button"
@@ -85,34 +76,27 @@ export function PolicySettingsModal({
                     </div>
 
                     {/* Content */}
-                    <div className="p-6 space-y-4">
-                        {/* Section Header */}
+                    <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto">
+                        {/* Section description */}
                         <div>
-                            <div className="text-[14px] font-medium text-[var(--app-text)]">
-                                {t('policies.finalOutbound.label')}
-                            </div>
-                            <p className="mt-1 text-[12px] text-[var(--app-text-tertiary)] leading-relaxed">
-                                {t('policies.finalOutbound.description')}
+                            <p className="text-[12px] text-[var(--app-text-tertiary)] leading-relaxed">
+                                {t('dnsPolicies.unmatchedServer.description')}
                             </p>
                         </div>
 
-                        {/* Options as Cards */}
+                        {/* Options as Cards - one per row */}
                         <div className="space-y-2">
-                            {POLICY_FINAL_OPTION_DEFS.map(option => {
-                                const Icon = outboundIcons[option.value];
-                                const colors = outboundColors[option.value];
-                                const isSelected = policyFinalOutbound === option.value;
-
+                            {dnsServers.map(server => {
+                                const isSelected = localSelected === server.id;
                                 return (
                                     <button
-                                        key={option.value}
+                                        key={server.id}
                                         type="button"
-                                        disabled={saving}
-                                        onClick={() => handleOutboundChange(option.value)}
+                                        onClick={() => handleSelect(server.id)}
                                         className={cn(
                                             "w-full flex items-center gap-3 px-4 py-3 rounded-[12px] border-2 transition-all text-left",
                                             isSelected
-                                                ? colors.selected
+                                                ? "border-blue-400/60 bg-blue-500/10 text-blue-400 dark:text-blue-300"
                                                 : "border-[var(--app-stroke)] bg-[var(--app-panel)] hover:bg-[var(--app-hover)] text-[var(--app-text-secondary)]"
                                         )}
                                     >
@@ -120,21 +104,15 @@ export function PolicySettingsModal({
                                             "shrink-0 w-8 h-8 rounded-full flex items-center justify-center",
                                             isSelected ? "bg-[var(--app-panel)]/60" : "bg-[var(--app-bg-secondary)]"
                                         )}>
-                                            <Icon className={cn("w-4 h-4", isSelected ? colors.icon : "text-[var(--app-text-tertiary)]")} />
+                                            <Server className={cn("w-4 h-4", isSelected ? "text-blue-500 dark:text-blue-400" : "text-[var(--app-text-tertiary)]")} />
                                         </div>
                                         <div className="flex-1 min-w-0">
-                                            <div className="text-[13px] font-medium">
-                                                {t(option.labelKey)}
-                                            </div>
-                                            <div className="text-[11px] opacity-70 mt-0.5">
-                                                {t(`policies.finalOutbound.${option.value}Desc` as any)}
+                                            <div className="text-[13px] font-medium truncate">
+                                                {server.name || server.id}
                                             </div>
                                         </div>
                                         {isSelected && (
-                                            <div className={cn(
-                                                "shrink-0 w-5 h-5 rounded-full flex items-center justify-center",
-                                                "bg-current/20"
-                                            )}>
+                                            <div className="shrink-0 w-5 h-5 rounded-full flex items-center justify-center bg-current/20">
                                                 <svg className="w-3 h-3" viewBox="0 0 12 12" fill="currentColor">
                                                     <path d="M10.28 2.28L4.5 8.06 1.72 5.28a.75.75 0 00-1.06 1.06l3.5 3.5a.75.75 0 001.06 0l6.5-6.5a.75.75 0 00-1.06-1.06z" />
                                                 </svg>
@@ -149,7 +127,7 @@ export function PolicySettingsModal({
                         <div className="flex items-start gap-2 pt-2 px-1">
                             <HelpCircle className="w-3.5 h-3.5 text-[var(--app-text-quaternary)] shrink-0 mt-0.5" />
                             <p className="text-[11px] text-[var(--app-text-quaternary)] leading-relaxed">
-                                {t('policies.finalOutbound.hint')}
+                                {t('dnsPolicies.unmatchedServer.hint')}
                             </p>
                         </div>
                     </div>

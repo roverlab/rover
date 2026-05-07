@@ -492,6 +492,7 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
                     <Button
                         variant="secondary"
                         size="sm"
+                        className="h-8 rounded-md border-[var(--app-stroke)] bg-[var(--app-panel)]/75 px-3 text-[12px] shadow-none"
                         onClick={async () => {
                             const s = await window.ipcRenderer.db.getAllSettings();
                             const raw = s['rule-provider-update-interval'];
@@ -513,7 +514,6 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
                     renderCell={renderCell}
                     searchFields={searchFields}
                     searchPlaceholder={t('ruleProviders.searchPlaceholder')}
-                    statsLineKey="ruleProviders.statsLine"
                     addLabelKey="ruleProviders.add"
                     getEnabled={(p) => p.enabled !== false}
                     onAdd={handleAdd}

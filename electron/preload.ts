@@ -61,7 +61,6 @@ contextBridge.exposeInMainWorld('ipcRenderer', {
         updateDnsServer: (id: string, updates: any) => ipcRenderer.invoke('db:updateDnsServer', id, updates),
         deleteDnsServer: (id: string) => ipcRenderer.invoke('db:deleteDnsServer', id),
         toggleDnsServerEnabled: (id: string, enabled: boolean) => ipcRenderer.invoke('db:toggleDnsServerEnabled', id, enabled),
-        setDefaultDnsServer: (id: string) => ipcRenderer.invoke('db:setDefaultDnsServer', id),
         updateDnsServersOrder: (orderedIds: string[]) => ipcRenderer.invoke('db:updateDnsServersOrder', orderedIds),
         // Profile DNS Policies
         getProfileDnsPolicyByPolicyId: (profileId: string, dnsPolicyId: string) => ipcRenderer.invoke('db:getProfileDnsPolicyByPolicyId', profileId, dnsPolicyId),

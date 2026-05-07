@@ -754,7 +754,7 @@ background: rgba(24, 31, 46, 0.7);
         @apply w-full transition-all text-left;
         border-radius: var(--radius-md);
         border: 1px solid hsl(var(--input));
-        background: hsl(var(--background));
+        background-color: hsl(var(--card));
         color: hsl(var(--foreground));
         min-height: 38px;
         padding: 0 14px;

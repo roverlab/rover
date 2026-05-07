@@ -122,5 +122,7 @@
   ],
   "rule_unmatched_outbound": "selector_out",
   "tun": true,
-  "default_dns_server": "Google"
+  "dns-unmatched-server": "Google",
+  "dns-resolve-server": "Google",
+  "dns-proxy-server": "Cloudflare"
 }

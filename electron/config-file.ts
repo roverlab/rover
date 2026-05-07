@@ -526,14 +526,15 @@ export function mergeSettingsIntoConfig(config: SingboxConfig): SingboxConfig {
 }
 
 /** 附加 selector_out、direct_out、block_out 三个出站到 config */
-export function appendExtraOutbounds(config: SingboxConfig): void {
+export function appendExtraOutbounds(config: SingboxConfig, settings?: Record<string, string>): void {
+    // 代理节点的 domain_resolver：优先使用用户设置的 dns-proxy-server，否则默认 dns_direct_out
+    const proxyDomainResolver = settings?.['dns-proxy-server'] || 'dns_direct_out';
+    
     let outbounds = (config.outbounds || [])
     .filter(a=>!['selector_out','direct_out','block_out'].includes(a.tag));
     outbounds.forEach(o=>{
         if(!['selector','urltest','block','direct'].includes(o.type)){
-            o.domain_resolver = {
-                server: "dns_direct_out",
-            };
+            o.domain_resolver = proxyDomainResolver;
         }
     })
 
@@ -896,10 +897,22 @@ function addSystemRouteRules(config: SingboxConfig, settings: Record<string, str
 function applyDashboardMode(config: SingboxConfig, settings: Record<string, string>): void {
     const dashboardMode = settings['dashboard-mode'] || 'rule';
     let final_route_outbound = settings['policy-final-outbound'] || 'selector_out';
-    let final_dns_server = dbUtils.getDnsServers().find(s => s.is_default)?.id || 'dns_direct_out';
+    let final_dns_server = 'dns_direct_out';
   
     if(dashboardMode === 'rule'){
-
+        // 规则模式下，使用用户设置的 DNS 策略默认服务器
+        const unmatchedServer = settings['dns-unmatched-server'];
+        const resolveServer = settings['dns-resolve-server'];
+        if (unmatchedServer) {
+            final_dns_server = unmatchedServer;
+            console.log(`[Config] Using dns-unmatched-server: ${unmatchedServer}`);
+        }
+        // route.default_domain_resolver 优先使用 dns-resolve-server，否则使用 final_dns_server
+        const domainResolver = resolveServer || final_dns_server;
+        config.route.final = final_route_outbound;
+        config.route.default_domain_resolver = domainResolver;
+        config.dns.final = final_dns_server;
+        console.log(`[Config] route.default_domain_resolver: ${domainResolver}, dns.final: ${final_dns_server}`);
     }else{
         config.route.rules = [];
         config.route.rule_set = [];
@@ -913,11 +926,10 @@ function applyDashboardMode(config: SingboxConfig, settings: Record<string, stri
             final_dns_server = 'dns_selector_out';
             console.log('[Config] Outbound mode: global (all traffic via proxy)');
         }
+        config.route.final = final_route_outbound;
+        config.route.default_domain_resolver = final_dns_server;
+        config.dns.final = final_dns_server;
     }
-
-    config.route.final = final_route_outbound;
-    config.route.default_domain_resolver = final_dns_server;
-    config.dns.final = final_dns_server;
     config.route.auto_detect_interface = true;
     
     // 确保 dns.servers 存在
@@ -940,7 +952,7 @@ function applyDashboardMode(config: SingboxConfig, settings: Record<string, stri
     addSystemRouteRules(config, settings);
 
     // 添加默认使用的出站节点
-    appendExtraOutbounds(config);
+    appendExtraOutbounds(config, settings);
 
     // 构建和分配规则集
     config.route.rule_set = getRuleSets(config);

@@ -7,7 +7,7 @@ import { useDropdownPosition } from '../hooks/useDropdownPosition';
 import { Button } from '../components/ui/Button';
 import { Switch } from '../components/ui/Switch';
 import { Select } from '../components/ui/Field';
-import { GripVertical, MoreVertical, Plus, Search, ShieldCheck, X } from 'lucide-react';
+import { GripVertical, MoreVertical, Plus, Search, X } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useDebounce } from '../hooks/useDebounce';
 
@@ -50,12 +50,12 @@ export interface PolicyListTableProps<T extends { id: string; name: string }> {
     /* ---- 工具栏 ---- */
     /** 搜索框占位文本 */
     searchPlaceholder?: string;
-    /** 统计行 i18n key，接收 { total, filtered } */
-    statsLineKey?: string;
     /** 左侧额外工具栏内容（如导入按钮） */
     toolbarLeftExtra?: React.ReactNode;
     /** 右侧额外工具栏内容（放在添加按钮之前） */
     toolbarRightExtra?: React.ReactNode;
+    /** 工具栏上方额外内容（如未匹配出站卡片） */
+    toolbarAboveExtra?: React.ReactNode;
     /** 自定义添加按钮文本 key，默认 'common.add' */
     addLabelKey?: string;
 
@@ -76,6 +76,7 @@ export interface PolicyListTableProps<T extends { id: string; name: string }> {
     onReorder?: (itemId: string, oldIndex: number, newIndex: number, visibleOrderedIds: string[]) => void;
 
     /* ---- 空状态 ---- */
+    /** 自定义空状态内容，当 items 为空时显示（默认显示空表格） */
     emptyState?: React.ReactNode;
     /** 搜索无结果时显示的文本 */
     noMatchText?: string;
@@ -85,6 +86,10 @@ export interface PolicyListTableProps<T extends { id: string; name: string }> {
     showIndexColumn?: boolean;
     /** 是否显示启用开关列，默认 true */
     showEnabledColumn?: boolean;
+
+    /* ---- 只读行 ---- */
+    /** 判断某行是否为只读行（如底部「未匹配」汇总行），只读行不显示拖拽手柄、开关、操作按钮 */
+    isReadonlyRow?: (item: T) => boolean;
 
     /* ---- 样式变体 ---- */
     /** 容器额外 className */
@@ -102,9 +107,9 @@ export function PolicyListTable<T extends { id: string; name: string }>({
     columns,
     renderCell,
     searchPlaceholder,
-    statsLineKey = 'policies.statsLine',
     toolbarLeftExtra,
     toolbarRightExtra,
+    toolbarAboveExtra,
     addLabelKey = 'common.add',
     getEnabled = (item: T) => (item as any).enabled === true || (item as any).enabled !== false,
     onAdd,
@@ -118,6 +123,7 @@ export function PolicyListTable<T extends { id: string; name: string }>({
     noMatchText,
     showIndexColumn = false,
     showEnabledColumn = true,
+    isReadonlyRow,
     containerClassName,
 }: PolicyListTableProps<T>) {
     const { t } = useTranslation();
@@ -155,23 +161,6 @@ export function PolicyListTable<T extends { id: string; name: string }>({
         });
     }, [externalFilteredItems, items, debouncedSearchQuery, statusFilter, searchFields, getEnabled]);
 
-    const stats = useMemo(() => {
-        const enabledCount = items.filter((p) => getEnabled(p)).length;
-        return {
-            total: items.length,
-            filtered: filteredItems.length,
-            enabled: enabledCount,
-            disabled: items.length - enabledCount,
-        };
-    }, [items, filteredItems.length, getEnabled]);
-
-    const statsText = t(statsLineKey, {
-        total: stats.total,
-        filtered: stats.filtered,
-        enabled: stats.enabled,
-        disabled: stats.disabled,
-    });
-
     const handleOpenDropdown = useCallback((e: React.MouseEvent, itemId: string) => {
         e.stopPropagation();
         const button = dropdownButtonRefs.current[itemId];
@@ -198,7 +187,7 @@ export function PolicyListTable<T extends { id: string; name: string }>({
         sortableRef.current = Sortable.create(listBody, {
             animation: 200,
             draggable: '.policy-list-row',
-            filter: 'input, button, select, textarea, [role="switch"], .policy-actions-group',
+            filter: 'input, button, select, textarea, [role="switch"], .policy-actions-group, .policy-list-row-readonly',
             preventOnFilter: false,
             ghostClass: 'sortable-ghost',
             chosenClass: 'sortable-chosen',
@@ -239,6 +228,8 @@ export function PolicyListTable<T extends { id: string; name: string }>({
 
     return (
         <div className={cn("policy-list-card flex flex-col flex-1 min-h-0", containerClassName)}>
+            {/* ---- 工具栏上方额外内容 ---- */}
+            {toolbarAboveExtra}
             {/* ---- 工具栏 ---- */}
             <div className="policy-list-toolbar relative z-10 flex items-center justify-between gap-3 px-3.5 py-2.5 shrink-0">
                 <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -248,7 +239,7 @@ export function PolicyListTable<T extends { id: string; name: string }>({
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                             placeholder={searchPlaceholder || t('policies.listSearchPlaceholder')}
-                            className="input-field h-8 min-h-8 rounded-lg border-[var(--app-stroke)] bg-[var(--app-panel)] pl-7 pr-7 text-[12px] shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] focus:border-[var(--app-accent-border)]"
+                            className="input-field h-8 min-h-8 rounded-lg border-[var(--app-stroke)] bg-[var(--app-panel)] pl-7 pr-7 text-[12px] focus:border-[var(--app-accent-border)]"
                         />
                         {searchQuery && (
                             <button
@@ -262,21 +253,12 @@ export function PolicyListTable<T extends { id: string; name: string }>({
                     <Select
                         value={statusFilter}
                         onChange={(e) => setStatusFilter(e.target.value as 'all' | 'enabled' | 'disabled')}
-                        className="h-8 min-h-8 w-[100px] rounded-lg border-[var(--app-stroke)] bg-[var(--app-panel)] py-1 pl-2.5 pr-7 text-[12px] shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]"
+                        className="h-8 min-h-8 w-[100px] rounded-lg border-[var(--app-stroke)] bg-[var(--app-panel)] py-1 pl-2.5 pr-7 text-[12px]"
                     >
                         <option value="all">{t('common.all')}</option>
                         <option value="enabled">{t('common.enabled')}</option>
                         <option value="disabled">{t('common.disabled')}</option>
                     </Select>
-                    <div className="hidden min-w-0 items-center gap-1.5 xl:flex">
-                        <span className="policy-stat-pill">
-                            <span className="truncate">{statsText}</span>
-                        </span>
-                        <span className="policy-stat-pill policy-stat-pill-success">
-                            <ShieldCheck className="h-3 w-3" />
-                            <span>{stats.enabled}</span>
-                        </span>
-                    </div>
                     {toolbarLeftExtra}
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
@@ -286,15 +268,43 @@ export function PolicyListTable<T extends { id: string; name: string }>({
             </div>
 
             {/* ---- 列表 ---- */}
-            {filteredItems.length === 0 ? (
-                items.length === 0 && emptyState ? (
-                    emptyState
-                ) : (
-                    <div className="policy-empty-state flex min-h-[180px] flex-col items-center justify-center py-8 text-center">
-                        <Search className="h-5 w-5 text-[var(--app-text-quaternary)]" />
-                        <p className="mt-2 text-[12px] text-[var(--app-text-quaternary)]">{noMatchText || t('policies.noMatchingPolicies')}</p>
+            {items.length === 0 && emptyState ? (
+                emptyState
+            ) : items.length === 0 ? (
+                <div className="policy-list-container flex-1 min-h-0 overflow-auto flex flex-col">
+                    <div className="min-w-fit flex flex-col flex-1">
+                        {/* 列表头 */}
+                        <div className="policy-list-header" style={{ gridTemplateColumns: gridColumns }}>
+                            {onReorder && <div className="policy-list-th"></div>}
+                            {showIndexColumn && <div className="policy-list-th policy-list-th-center">#</div>}
+                            {showEnabledColumn && <div className="policy-list-th policy-list-th-center">{t('policies.tableColEnabled')}</div>}
+                            {columns.map((col) => (
+                                <div
+                                    key={col.id}
+                                    className={cn(
+                                        "policy-list-th",
+                                        col.align === 'center' && "policy-list-th-center",
+                                        col.align === 'end' && "policy-list-th-end",
+                                        col.thClassName,
+                                    )}
+                                >
+                                    {col.header}
+                                </div>
+                            ))}
+                            <div className="policy-list-th policy-list-th-end">{t('policies.tableColActions')}</div>
+                        </div>
+
+                        {/* 空数据区域 */}
+                        <div className="policy-list-scroll flex-1 min-h-0 overflow-y-auto">
+                            <div className="policy-list-body" ref={setListBodyNode}></div>
+                        </div>
                     </div>
-                )
+                </div>
+            ) : filteredItems.length === 0 ? (
+                <div className="policy-empty-state flex min-h-[180px] flex-col items-center justify-center py-8 text-center">
+                    <Search className="h-5 w-5 text-[var(--app-text-quaternary)]" />
+                    <p className="mt-2 text-[12px] text-[var(--app-text-quaternary)]">{noMatchText || t('policies.noMatchingPolicies')}</p>
+                </div>
             ) : (
                 <div className="policy-list-container flex-1 min-h-0 overflow-auto flex flex-col">
                     <div className="min-w-fit flex flex-col flex-1">
@@ -324,6 +334,7 @@ export function PolicyListTable<T extends { id: string; name: string }>({
                             <div className="policy-list-body" ref={setListBodyNode}>
                             {filteredItems.map((item, index) => {
                                 const enabled = getEnabled(item);
+                                const readonly = isReadonlyRow?.(item) ?? false;
                                 return (
                                     <div
                                         key={item.id}
@@ -331,6 +342,7 @@ export function PolicyListTable<T extends { id: string; name: string }>({
                                         className={cn(
                                             "policy-list-row group",
                                             !enabled && "policy-list-row-disabled",
+                                            readonly && "policy-list-row-readonly",
                                         )}
                                         style={{ gridTemplateColumns: gridColumns }}
                                         onDoubleClick={(e) => {
@@ -342,25 +354,33 @@ export function PolicyListTable<T extends { id: string; name: string }>({
                                     {/* 拖拽手柄 */}
                                     {onReorder && (
                                         <div className="policy-list-cell policy-list-cell-drag">
-                                            <div className="drag-handle sortable-handle inline-flex h-6 w-6 cursor-grab items-center justify-center rounded text-[var(--app-text-tertiary)] transition-all hover:bg-[var(--app-hover)] hover:text-[var(--app-accent-strong)] active:cursor-grabbing">
-                                                <GripVertical className="w-3 h-3" />
-                                            </div>
+                                            {!readonly && (
+                                                <div className="drag-handle sortable-handle inline-flex h-6 w-6 cursor-grab items-center justify-center rounded text-[var(--app-text-tertiary)] transition-all hover:bg-[var(--app-hover)] hover:text-[var(--app-accent-strong)] active:cursor-grabbing">
+                                                    <GripVertical className="w-3 h-3" />
+                                                </div>
+                                            )}
                                         </div>
                                     )}
                                     {/* 序号列 */}
                                     {showIndexColumn && (
                                         <div className="policy-list-cell policy-list-cell-center">
-                                            <span className="policy-index-pill">{index + 1}</span>
+                                            {!readonly ? (
+                                                <span className="policy-index-pill">{index + 1}</span>
+                                            ) : (
+                                                <span className="policy-readonly-icon">—</span>
+                                            )}
                                         </div>
                                     )}
                                     {/* 启用开关 */}
                                     {showEnabledColumn && (
                                         <div className="policy-list-cell policy-list-cell-center">
-                                            <Switch
-                                                checked={enabled}
-                                                onCheckedChange={() => onToggleEnabled(item)}
-                                                size="sm"
-                                            />
+                                            {!readonly && (
+                                                <Switch
+                                                    checked={enabled}
+                                                    onCheckedChange={() => onToggleEnabled(item)}
+                                                    size="sm"
+                                                />
+                                            )}
                                         </div>
                                     )}
                                     {/* 自定义列 */}
@@ -381,7 +401,7 @@ export function PolicyListTable<T extends { id: string; name: string }>({
                                     {/* 操作按钮 */}
                                     <div className="policy-list-cell policy-list-cell-end" onClick={(e) => e.stopPropagation()}>
                                         <div className="policy-actions-group">
-                                            {renderActions ? (
+                                            {!readonly && (renderActions ? (
                                                 renderActions(
                                                     item,
                                                     index,
@@ -398,16 +418,16 @@ export function PolicyListTable<T extends { id: string; name: string }>({
                                                 >
                                                     <MoreVertical className="h-3 w-3" />
                                                 </button>
-                                            )}
+                                            ))}
                                         </div>
                                     </div>
                                     </div>
                                 );
                             })}
                             </div>
+                        </div>
                     </div>
                 </div>
-            </div>
             )}
 
             {/* ---- 行操作下拉菜单 ---- */}

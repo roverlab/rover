@@ -1,0 +1,28 @@
+{
+  "dns_servers": [
+    {
+      "name": "local",
+      "type": "local"
+    }
+  ],
+  "dns_rules": [
+  ],
+  "rules": [
+    {
+      "name": "🌏 国外代理",
+      "rule_set_build_in": [
+        "geosite:geolocation-!cn",
+        "geosite:google",
+        "geoip:google",
+        "acl:ProxyGFWlist",
+        "acl:ProxyMedia"
+      ],
+      "outbound": "selector_out"
+    }
+  ],
+  "rule_unmatched_outbound": "direct_out",
+  "tun": false,
+  "dns-unmatched-server": "local",
+  "dns-resolve-server": "local",
+  "dns-proxy-server": "local"
+}

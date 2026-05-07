@@ -619,7 +619,21 @@
     "editModalTitle": "DNSポリシー",
     "dnsServerLocal": "ローカル",
     "dnsServerRemote": "リモート",
-    "dnsServerBlock": "ブロック"
+    "dnsServerBlock": "ブロック",
+    "settingsTitle": "DNSポリシー設定",
+    "unmatchedServer": {
+      "label": "ルール未一致時のデフォルトDNSサーバー",
+      "description": "すべてのDNSポリシールールに一致しない場合に使用されるデフォルトDNSサーバー"
+    },
+    "resolveServer": {
+      "label": "ルーティングresolveデフォルトDNSサーバー",
+      "description": "ルーティングルール内のドメイン名解決に使用するDNSサーバー"
+    },
+    "proxyServer": {
+      "label": "プロキシノードDNSサーバー",
+      "description": "プロキシノードアドレスの解決に使用するDNSサーバー"
+    },
+    "settingsHint": "設定は保存後に有効になります。DNSサーバーは「設定 → DNS」で事前に追加する必要があります"
   },
   "ruleProviders": {
     "title": "ルールプロバイダー",
@@ -779,8 +793,6 @@
     "detourDirect": "ダイレクト",
     "enable": "有効化",
     "disable": "無効化",
-    "setDefault": "デフォルトに設定",
-    "isDefault": "現在のデフォルト",
     "edit": "編集",
     "delete": "削除",
     "modalAddTitle": "DNSサーバーを追加",
@@ -825,6 +837,7 @@
     "refTypeDns": "DNSポリシー",
     "refTypeRoute": "ルーティングポリシー",
     "refTypeDnsServer": "DNSサーバードメインリゾルバー",
+    "refTypeSetting": "DNSポリシー設定",
 "rawEditorPlaceholder": "sing-box DNSサーバーJSON設定を入力、例:\n{\n  \"type\": \"udp\",\n  \"tag\": \"my-dns\",\n  \"server\": \"8.8.8.8\",\n  \"server_port\": 53,\n  \"detour\": \"proxy\"\n}",
 "searchPlaceholder": "名前、アドレスで検索...",
 "statsLine": "{{total}} サーバー · {{enabled}} 有効",
@@ -940,7 +953,10 @@
         "customGroupNotFound": "グループ「{{name}}」は存在しません",
         "dnsRuleFallback": "DNSルール {{index}}",
         "routeRuleFallback": "ルール {{index}}",
-        "dnsServerFallback": "DNSサーバー {{index}}"
+        "dnsServerFallback": "DNSサーバー {{index}}",
+        "dnsSettingUnmatched": "未一致デフォルトDNSサーバー",
+        "dnsSettingResolve": "ルートresolveデフォルトDNSサーバー",
+        "dnsSettingProxy": "プロキシノードDNSサーバー"
       },
       "routePolicy": {
         "templateNotFound": "テンプレートファイルが見つかりません",
@@ -952,7 +968,6 @@
         "suffixDns": "、DNS設定を適用しました",
         "suffixFinalOutbound": "、フォールバック送信を設定しました",
         "suffixTun": "、TUNモードを設定しました",
-        "suffixDefaultDns": "、デフォルトDNSサーバーを設定しました",
         "templateImportFailed": "インポート失敗: {{message}}"
       },
       "core": {

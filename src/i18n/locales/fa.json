@@ -663,7 +663,21 @@
     "editModalTitle": "سیاست DNS",
     "dnsServerLocal": "محلی",
     "dnsServerRemote": "از راه دور",
-    "dnsServerBlock": "مسدود"
+    "dnsServerBlock": "مسدود",
+    "settingsTitle": "تنظیمات خط‌مشی DNS",
+    "unmatchedServer": {
+      "label": "سرور DNS پیش‌فرض برای قوانین بدون تطابق",
+      "description": "سرور DNS استفاده شده زمانی که هیچ قانون خط‌مشی DNS تطابق ندارد"
+    },
+    "resolveServer": {
+      "label": "سرور DNS resolve مسیریابی",
+      "description": "سرور DNS برای حل نام دامنه در قوانین مسیریابی"
+    },
+    "proxyServer": {
+      "label": "سرور DNS گره پروکسی",
+      "description": "سرور DNS برای حل آدرس‌های گره پروکسی"
+    },
+    "settingsHint": "تنظیمات پس از ذخیره اعمال می‌شوند. سرورهای DNS باید ابتدا در「تنظیمات → DNS» اضافه شوند"
   },
   "ruleProviders": {
     "title": "ارائه‌دهندگان قوانین",
@@ -820,8 +834,6 @@
     "detourDirect": "مستقیم",
     "enable": "فعال کردن",
     "disable": "غیرفعال کردن",
-    "setDefault": "تنظیم به عنوان پیش‌فرض",
-    "isDefault": "پیش‌فرض فعلی",
     "edit": "ویرایش",
     "delete": "حذف",
     "modalAddTitle": "افزودن سرور DNS",
@@ -866,6 +878,7 @@
     "refTypeDns": "سیاست DNS",
     "refTypeRoute": "سیاست مسیریابی",
     "refTypeDnsServer": "تفکیک‌کننده دامنه سرور DNS",
+    "refTypeSetting": "تنظیمات سیاست DNS",
 "rawEditorPlaceholder": "JSON سرور DNS sing-box را وارد کنید، مثال:\n{\n  \"type\": \"udp\",\n  \"tag\": \"my-dns\",\n  \"server\": \"8.8.8.8\",\n  \"server_port\": 53,\n  \"detour\": \"proxy\"\n}",
 "searchPlaceholder": "جستجوی نام، آدرس...",
 "statsLine": "{{total}} سرور · {{enabled}} فعال",
@@ -981,7 +994,10 @@
         "customGroupNotFound": "گروه \"{{name}}\" وجود ندارد",
         "dnsRuleFallback": "قانون DNS {{index}}",
         "routeRuleFallback": "قانون {{index}}",
-        "dnsServerFallback": "سرور DNS {{index}}"
+        "dnsServerFallback": "سرور DNS {{index}}",
+        "dnsSettingUnmatched": "سرور DNS پیش‌فرض بدون تطابق",
+        "dnsSettingResolve": "سرور DNS پیش‌فرض resolve مسیریابی",
+        "dnsSettingProxy": "سرور DNS گره پروکسی"
       },
       "routePolicy": {
         "templateNotFound": "فایل قالب یافت نشد",
@@ -993,7 +1009,6 @@
         "suffixDns": "؛ تنظیمات DNS اعمال شد",
         "suffixFinalOutbound": "؛ خروجی نهایی پیش‌فرض تنظیم شد",
         "suffixTun": "؛ حالت TUN تنظیم شد",
-        "suffixDefaultDns": "؛ سرور DNS پیش‌فرض تنظیم شد",
         "templateImportFailed": "وارد کردن ناموفق: {{message}}"
       },
       "core": {

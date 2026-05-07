@@ -663,7 +663,21 @@
     "editModalTitle": "DNS 정책",
     "dnsServerLocal": "로컬",
     "dnsServerRemote": "원격",
-    "dnsServerBlock": "차단"
+    "dnsServerBlock": "차단",
+    "settingsTitle": "DNS 정책 설정",
+    "unmatchedServer": {
+      "label": "규칙 미일치 시 기본 DNS 서버",
+      "description": "모든 DNS 정책 규칙과 일치하지 않을 때 사용되는 기본 DNS 서버"
+    },
+    "resolveServer": {
+      "label": "라우팅 resolve 기본 DNS 서버",
+      "description": "라우팅 규칙의 도메인 이름 해석에 사용되는 DNS 서버"
+    },
+    "proxyServer": {
+      "label": "프록시 노드 DNS 서버",
+      "description": "프록시 노드 주소 해석에 사용되는 DNS 서버"
+    },
+    "settingsHint": "설정은 저장 후 적용됩니다. DNS 서버는「설정 → DNS」에서 먼저 추가해야 합니다"
   },
   "ruleProviders": {
     "title": "규칙 제공자",
@@ -820,8 +834,6 @@
     "detourDirect": "직접",
     "enable": "활성화",
     "disable": "비활성화",
-    "setDefault": "기본으로 설정",
-    "isDefault": "현재 기본",
     "edit": "편집",
     "delete": "삭제",
     "modalAddTitle": "DNS 서버 추가",
@@ -866,6 +878,7 @@
     "refTypeDns": "DNS 정책",
     "refTypeRoute": "라우트 정책",
     "refTypeDnsServer": "DNS 서버 도메인 리졸버",
+    "refTypeSetting": "DNS 정책 설정",
 "rawEditorPlaceholder": "sing-box DNS 서버 JSON을 입력하세요, 예:\n{\n  \"type\": \"udp\",\n  \"tag\": \"my-dns\",\n  \"server\": \"8.8.8.8\",\n  \"server_port\": 53,\n  \"detour\": \"proxy\"\n}",
 "searchPlaceholder": "이름, 주소로 검색...",
 "statsLine": "{{total}} 서버 · {{enabled}} 활성",
@@ -981,7 +994,10 @@
         "customGroupNotFound": "그룹 \"{{name}}\"이(가) 존재하지 않습니다",
         "dnsRuleFallback": "DNS 규칙 {{index}}",
         "routeRuleFallback": "규칙 {{index}}",
-        "dnsServerFallback": "DNS 서버 {{index}}"
+        "dnsServerFallback": "DNS 서버 {{index}}",
+        "dnsSettingUnmatched": "미일치 기본 DNS 서버",
+        "dnsSettingResolve": "라우트 resolve 기본 DNS 서버",
+        "dnsSettingProxy": "프록시 노드 DNS 서버"
       },
       "routePolicy": {
         "templateNotFound": "템플릿 파일을 찾을 수 없습니다",
@@ -993,7 +1009,6 @@
         "suffixDns": "; DNS 설정이 적용되었습니다",
         "suffixFinalOutbound": "; 기본 아웃바운드가 설정되었습니다",
         "suffixTun": "; TUN 모드가 설정되었습니다",
-        "suffixDefaultDns": "; 기본 DNS 서버가 설정되었습니다",
         "templateImportFailed": "가져오기 실패: {{message}}"
       },
       "core": {

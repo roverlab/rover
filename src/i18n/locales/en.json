@@ -506,6 +506,7 @@
     "fieldStatus": "Status",
     "typeRaw": "Raw",
     "typeStandard": "Standard",
+    "typeDefault": "Default",
     "rawRules": "Raw rules",
     "ruleSetsHeading": "Rule sets ({{count}})",
     "domainRules": "Domain rules",
@@ -626,7 +627,22 @@
     "editModalTitle": "DNS policy",
     "dnsServerLocal": "Local",
     "dnsServerRemote": "Remote",
-    "dnsServerBlock": "Block"
+    "dnsServerBlock": "Block",
+    "settingsTitle": "DNS Policy Settings",
+    "unmatchedServer": {
+      "label": "Default DNS for Unmatched Rules",
+      "description": "The default DNS server used when no DNS policy rule matches",
+      "hint": "Select a DNS server as the default for unmatched rules"
+    },
+    "resolveServer": {
+      "label": "Route Resolve DNS Server",
+      "description": "DNS server for resolving domain names in routing rules"
+    },
+    "proxyServer": {
+      "label": "Proxy Node DNS Server",
+      "description": "DNS server for resolving proxy node addresses"
+    },
+    "settingsHint": "Settings take effect after saving. DNS servers must be added in Settings → DNS first"
   },
   "ruleProviders": {
     "title": "Rule Providers",
@@ -786,8 +802,6 @@
     "detourDirect": "Direct",
     "enable": "Enable",
     "disable": "Disable",
-    "setDefault": "Set as default",
-    "isDefault": "Current default",
     "edit": "Edit",
     "delete": "Delete",
     "modalAddTitle": "Add DNS server",
@@ -832,6 +846,7 @@
     "refTypeDns": "DNS policy",
     "refTypeRoute": "Route policy",
     "refTypeDnsServer": "DNS server resolver",
+    "refTypeSetting": "DNS policy settings",
 "rawEditorPlaceholder": "Enter sing-box DNS server JSON, e.g.:\n{\n  \"type\": \"udp\",\n  \"tag\": \"my-dns\",\n  \"server\": \"8.8.8.8\",\n  \"server_port\": 53,\n  \"detour\": \"proxy\"\n}",
 "searchPlaceholder": "Search name, address...",
 "statsLine": "{{total}} servers · {{enabled}} enabled",
@@ -947,7 +962,10 @@
         "customGroupNotFound": "Group \"{{name}}\" does not exist",
         "dnsRuleFallback": "DNS rule {{index}}",
         "routeRuleFallback": "Rule {{index}}",
-        "dnsServerFallback": "DNS server {{index}}"
+        "dnsServerFallback": "DNS server {{index}}",
+        "dnsSettingUnmatched": "Unmatched default DNS server",
+        "dnsSettingResolve": "Route resolve default DNS server",
+        "dnsSettingProxy": "Proxy node DNS server"
       },
       "routePolicy": {
         "templateNotFound": "Template file not found",
@@ -958,8 +976,8 @@
         "templateImportSuccess": "Imported {{count}} policies",
         "suffixDns": "; DNS settings applied",
         "suffixFinalOutbound": "; default outbound set",
+        "suffixDnsPolicySettings": "; DNS policy settings applied",
         "suffixTun": "; TUN mode set",
-        "suffixDefaultDns": "; default DNS server set",
         "templateImportFailed": "Import failed: {{message}}"
       },
       "core": {

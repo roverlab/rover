@@ -1,0 +1,74 @@
+{
+  "dns_servers": [
+    {
+      "name": "Google",
+      "type": "tls",
+      "server": "8.8.8.8",
+      "detour": "selector_out"
+    },
+    {
+      "name": "local",
+      "type": "local"
+    }
+  ],
+  "dns_rules": [
+    {
+      "name": "🎯 国内域名直连",
+      "rule_set": [
+        "acl:ChinaDomain",
+        "acl:UnBan",
+        "acl:SteamCN",
+        "acl:ChinaMedia",
+        "acl:Download"
+      ],
+      "server": "local"
+    }
+  ],
+  "rules": [
+    {
+      "rule_set_build_in": [
+        "geoip:private"
+      ],
+      "outbound": "direct_out",
+      "name": "🏠 私有网络"
+    },
+    {
+      "rule_set_build_in": [
+        "acl:Apple"
+      ],
+      "outbound": "direct_out",
+      "name": "🍎 苹果服务"
+    },
+    {
+      "rule_set_build_in": [
+        "acl:ChinaDomain",
+        "acl:UnBan",
+        "acl:SteamCN",
+        "acl:ChinaMedia",
+        "acl:Download"
+      ],
+      "outbound": "direct_out",
+      "name": "🎯 国内域名直连"
+    },
+    {
+      "name": "🔍 未匹配域名DNS解析",
+      "raw_data": {
+        "action": "resolve"
+      }
+    },
+    {
+      "name": "🎯国内IP直连",
+      "rule_set_build_in": [
+        "acl:ChinaIp",
+        "acl:ChinaCompanyIp",
+        "geoip:cn"
+      ],
+      "outbound": "direct_out"
+    }
+  ],
+  "rule_unmatched_outbound": "selector_out",
+  "tun": false,
+  "dns-unmatched-server": "Google",
+  "dns-resolve-server": "Google",
+  "dns-proxy-server": "local"
+}

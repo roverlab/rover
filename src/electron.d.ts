@@ -60,12 +60,11 @@ export interface ElectronAPI {
             deleteDnsPolicy(id: string): Promise<void>;
             updateDnsPoliciesOrder(orders: Array<{ id: string; order: number }>): Promise<void>;
             getDnsServers(): Promise<any[]>;
-            getDnsServerRefs(tag: string): Promise<Array<{ source: 'dns' | 'route' | 'dns_server'; index: number; name: string }>>;
+            getDnsServerRefs(tag: string): Promise<Array<{ source: 'dns' | 'route' | 'dns_server' | 'setting'; index: number; name: string }>>;
             addDnsServer(server: any): Promise<string>;
             updateDnsServer(id: string, updates: any): Promise<void>;
             deleteDnsServer(id: string): Promise<void>;
             toggleDnsServerEnabled(id: string, enabled: boolean): Promise<boolean>;
-            setDefaultDnsServer(id: string): Promise<boolean>;
             updateDnsServersOrder(orderedIds: string[]): Promise<void>;
             // Profile DNS Policies
             getProfileDnsPolicyByPolicyId(profileId: string, dnsPolicyId: string): Promise<any>;

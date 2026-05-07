@@ -506,6 +506,7 @@
     "fieldStatus": "状态",
     "typeRaw": "原始",
     "typeStandard": "标准",
+    "typeDefault": "默认",
     "rawRules": "原始规则",
     "ruleSetsHeading": "规则集 ({{count}})",
     "domainRules": "域名规则",
@@ -626,7 +627,22 @@
     "editModalTitle": "DNS策略",
     "dnsServerLocal": "本地",
     "dnsServerRemote": "远程",
-    "dnsServerBlock": "拦截"
+    "dnsServerBlock": "拦截",
+    "settingsTitle": "DNS策略设置",
+    "unmatchedServer": {
+      "label": "未匹配时的DNS服务器",
+      "description": "当所有DNS策略规则均未匹配时，使用的默认DNS服务器",
+      "hint": "选择一个DNS服务器作为未匹配规则的默认处理方式"
+    },
+    "resolveServer": {
+      "label": "路由resolve默认DNS服务器",
+      "description": "用于解析路由规则中域名的DNS服务器"
+    },
+    "proxyServer": {
+      "label": "代理节点DNS服务器",
+      "description": "用于解析代理节点地址的DNS服务器"
+    },
+    "settingsHint": "以上设置仅在保存后生效，选择DNS服务器需先在「设置 → DNS」中添加"
   },
   "ruleProviders": {
     "title": "规则集",
@@ -786,8 +802,6 @@
     "detourDirect": "直连",
     "enable": "启用",
     "disable": "禁用",
-    "setDefault": "设为默认",
-    "isDefault": "当前默认",
     "edit": "编辑",
     "delete": "删除",
     "modalAddTitle": "添加 DNS 服务器",
@@ -832,6 +846,7 @@
     "refTypeDns": "DNS 策略",
     "refTypeRoute": "路由策略",
     "refTypeDnsServer": "DNS 服务器域名解析",
+    "refTypeSetting": "DNS 策略设置",
 "rawEditorPlaceholder": "输入 sing-box DNS 服务器 JSON 配置，例如：\n{\n  \"type\": \"udp\",\n  \"tag\": \"my-dns\",\n  \"server\": \"8.8.8.8\",\n  \"server_port\": 53,\n  \"detour\": \"proxy\"\n}",
 "searchPlaceholder": "搜索名称、地址...",
 "statsLine": "{{total}} 个服务器 · {{enabled}} 个启用",
@@ -947,7 +962,10 @@
         "customGroupNotFound": "分组 \"{{name}}\" 不存在",
         "dnsRuleFallback": "DNS 规则 {{index}}",
         "routeRuleFallback": "规则 {{index}}",
-        "dnsServerFallback": "DNS 服务器 {{index}}"
+        "dnsServerFallback": "DNS 服务器 {{index}}",
+        "dnsSettingUnmatched": "未匹配默认DNS服务器",
+        "dnsSettingResolve": "路由resolve默认DNS服务器",
+        "dnsSettingProxy": "代理节点DNS服务器"
       },
       "routePolicy": {
         "templateNotFound": "模板文件不存在",
@@ -958,8 +976,8 @@
         "templateImportSuccess": "成功导入 {{count}} 条策略",
         "suffixDns": "，已应用 DNS 配置",
         "suffixFinalOutbound": "，已设置兜底出站",
+        "suffixDnsPolicySettings": "，已应用 DNS 策略设置",
         "suffixTun": "，已设置 TUN 模式",
-        "suffixDefaultDns": "，已设置默认 DNS 服务器",
         "templateImportFailed": "导入失败: {{message}}"
       },
       "core": {

@@ -663,7 +663,21 @@
     "editModalTitle": "DNS политика",
     "dnsServerLocal": "Локальный",
     "dnsServerRemote": "Удаленный",
-    "dnsServerBlock": "Блокировать"
+    "dnsServerBlock": "Блокировать",
+    "settingsTitle": "Настройки DNS политик",
+    "unmatchedServer": {
+      "label": "DNS-сервер по умолчанию для несканированных правил",
+      "description": "DNS-сервер, используемый, когда ни одно правило DNS-политики не совпадает"
+    },
+    "resolveServer": {
+      "label": "DNS-сервер для resolve маршрутизации",
+      "description": "DNS-сервер для разрешения доменных имён в правилах маршрутизации"
+    },
+    "proxyServer": {
+      "label": "DNS-сервер прокси-узлов",
+      "description": "DNS-сервер для разрешения адресов прокси-узлов"
+    },
+    "settingsHint": "Настройки вступают в силу после сохранения. DNS-серверы необходимо добавить в「Настройки → DNS」"
   },
   "ruleProviders": {
     "title": "Провайдеры правил",
@@ -820,8 +834,6 @@
     "detourDirect": "Прямой",
     "enable": "Включить",
     "disable": "Отключить",
-    "setDefault": "Установить по умолчанию",
-    "isDefault": "Текущий по умолч.",
     "edit": "Редактировать",
     "delete": "Удалить",
     "modalAddTitle": "Добавить DNS сервер",
@@ -866,6 +878,7 @@
     "refTypeDns": "DNS политика",
     "refTypeRoute": "Политика маршрутизации",
     "refTypeDnsServer": "Резолвер домена DNS сервера",
+    "refTypeSetting": "Настройки DNS политики",
 "rawEditorPlaceholder": "Введите JSON DNS сервера sing-box, например:\n{\n  \"type\": \"udp\",\n  \"tag\": \"my-dns\",\n  \"server\": \"8.8.8.8\",\n  \"server_port\": 53,\n  \"detour\": \"proxy\"\n}",
 "searchPlaceholder": "Поиск по имени, адресу...",
 "statsLine": "{{total}} серверов · {{enabled}} вкл.",
@@ -981,7 +994,10 @@
         "customGroupNotFound": "Группа \"{{name}}\" не существует",
         "dnsRuleFallback": "DNS правило {{index}}",
         "routeRuleFallback": "Правило {{index}}",
-        "dnsServerFallback": "DNS сервер {{index}}"
+        "dnsServerFallback": "DNS сервер {{index}}",
+        "dnsSettingUnmatched": "DNS сервер по умолчанию для без совпадений",
+        "dnsSettingResolve": "DNS сервер маршрутизации resolve",
+        "dnsSettingProxy": "DNS сервер прокси-узла"
       },
       "routePolicy": {
         "templateNotFound": "Файл шаблона не найден",
@@ -993,7 +1009,6 @@
         "suffixDns": "; настройки DNS применены",
         "suffixFinalOutbound": "; исходящий по умолчанию установлен",
         "suffixTun": "; TUN режим установлен",
-        "suffixDefaultDns": "; DNS сервер по умолчанию установлен",
         "templateImportFailed": "Ошибка импорта: {{message}}"
       },
       "core": {

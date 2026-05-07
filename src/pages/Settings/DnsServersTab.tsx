@@ -9,7 +9,7 @@ import { Input } from '../../components/ui/Field';
 import { Select } from '../../components/ui/Field';
 
 import { Modal } from '../../components/ui/Modal';
-import { Plus, Check, AlertCircle, Star, Server, MoreVertical } from 'lucide-react';
+import { Plus, Check, AlertCircle, Server, MoreVertical } from 'lucide-react';
 import { OutboundSelector } from '../../components/OutboundSelector';
 import { JsonEditor } from '../../components/JsonEditor';
 import { cn } from '../../lib/utils';
@@ -43,7 +43,6 @@ export interface DnsServerConfig {
   /** 是否启用 */
   enabled?: boolean;
   /** 是否为默认DNS服务器 */
-  is_default?: boolean;
   [key: string]: unknown;
 }
 
@@ -93,7 +92,6 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
     preferred_detour: '',
     domain_resolver: '',
     enabled: true,
-    is_default: false,
   });
   /** raw 类型的原始 JSON 文本 */
   const [rawJsonText, setRawJsonText] = useState('');
@@ -205,7 +203,6 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
       preferred_detour: '',
       domain_resolver: '',
       enabled: true,
-      is_default: false,
     });
     setRawJsonText('');
     setModalOpen(true);
@@ -249,7 +246,6 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
       if (originalServer) {
         serverData.id = originalServer.id;
         serverData.enabled = originalServer.enabled;
-        serverData.is_default = originalServer.is_default;
       }
       await window.ipcRenderer.db.updateDnsServer(editingId, serverData);
       serverId = editingId;
@@ -277,6 +273,7 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
       case 'dns': return t('dnsServersTab.refTypeDns');
       case 'route': return t('dnsServersTab.refTypeRoute');
       case 'dns_server': return t('dnsServersTab.refTypeDnsServer');
+      case 'setting': return t('dnsServersTab.refTypeSetting');
       default: return source;
     }
   };
@@ -310,14 +307,6 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
       }
     }
     await window.ipcRenderer.db.toggleDnsServerEnabled(s.id, newEnabled);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 3000);
-    await loadDnsServers();
-    await onRegenerateConfig?.();
-  };
-
-  const handleSetDefault = async (s: any) => {
-    await window.ipcRenderer.db.setDefaultDnsServer(s.id);
     setSaved(true);
     setTimeout(() => setSaved(false), 3000);
     await loadDnsServers();
@@ -458,35 +447,16 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
     />
   );
 
-  // 自定义操作列（设为默认按钮 + 更多菜单按钮）
-  const renderActions = (s: any, _index: number, dropdownButtonRef: (el: HTMLButtonElement | null) => void, onOpenDropdown: (e: React.MouseEvent, itemId: string) => void) => {
-    const isDefault = s.is_default === true;
-    const isDisabled = s.enabled === false;
+  // 自定义操作列（更多菜单按钮）
+  const renderActions = (_s: any, _index: number, dropdownButtonRef: (el: HTMLButtonElement | null) => void, onOpenDropdown: (e: React.MouseEvent, itemId: string) => void) => {
     return (
-      <div className="flex items-center justify-end gap-0.5">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => handleSetDefault(s)}
-          aria-label={t('dnsServersTab.setDefault')}
-          title={isDefault ? t('dnsServersTab.isDefault') : t('dnsServersTab.setDefault')}
-          disabled={isDefault || isDisabled}
-          className={cn(
-            "h-7 w-7",
-            isDefault && "text-[var(--app-accent)]"
-          )}
-        >
-          <Star className={cn(
-            "w-3.5 h-3.5",
-            isDefault ? "text-[var(--app-accent)] fill-[var(--app-accent)]" : "text-[var(--app-text-tertiary)]"
-          )} />
-        </Button>
+      <div className="flex items-center justify-end">
         <Button
           variant="ghost"
           size="icon"
           className="h-7 w-7"
           ref={dropdownButtonRef}
-          onClick={(e) => onOpenDropdown(e, s.id)}
+          onClick={(e) => onOpenDropdown(e, _s.id)}
         >
           <MoreVertical className="w-3.5 h-3.5" />
         </Button>
@@ -510,7 +480,6 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
         renderCell={renderCell}
         searchFields={searchFields}
         searchPlaceholder={t('dnsServersTab.searchPlaceholder')}
-        statsLineKey="dnsServersTab.statsLine"
         addLabelKey="dnsServersTab.addServer"
         getEnabled={(s) => s.enabled !== false}
         onAdd={openAddModal}
@@ -564,7 +533,6 @@ export function DnsServersTab({ isActive = true, onRegenerateConfig }: DnsServer
                   preferred_detour: '',
                   domain_resolver: '',
                   enabled: true,
-                  is_default: false,
                 });
                 setRawJsonText('');
               }}

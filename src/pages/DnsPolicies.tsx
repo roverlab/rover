@@ -3,12 +3,13 @@ import { useTranslation } from 'react-i18next';
 import type { DnsPolicy } from '../types/dns-policy';
 import { useNotificationState, NotificationList } from '../components/ui/Notification';
 import { DnsPolicyHeader } from './DnsPolicies/DnsPolicyHeader';
-import { DnsPolicyEmptyState } from './DnsPolicies/DnsPolicyEmptyState';
 import { DnsPolicyListCard } from './DnsPolicies/DnsPolicyListCard';
 import { DnsPolicyEditModalContainer } from './DnsPolicies/DnsPolicyEditModalContainer';
 import { DnsPolicyDetailModal } from './DnsPolicies/DnsPolicyDetailModal';
 import { DnsPolicyDeleteConfirmModal } from './DnsPolicies/DnsPolicyDeleteConfirmModal';
 import { DnsPolicyBatchDeleteConfirmModal } from './DnsPolicies/DnsPolicyBatchDeleteConfirmModal';
+import { DnsPolicySettingsModal } from './DnsPolicies/DnsPolicySettingsModal';
+import { DnsUnmatchedServerModal } from './DnsPolicies/DnsUnmatchedServerModal';
 
 interface DnsPoliciesProps {
     /** 页面是否处于激活状态，用于进入时重新加载 */
@@ -31,6 +32,9 @@ const [policies, setPolicies] = useState<DnsPolicy[]>([]);
     const [deleteTargetName, setDeleteTargetName] = useState('');
     const [showBatchDeleteConfirm, setShowBatchDeleteConfirm] = useState(false);
     const [batchDeleteIds, setBatchDeleteIds] = useState<Set<string>>(new Set());
+    const [showSettingsModal, setShowSettingsModal] = useState(false);
+    const [showUnmatchedServerModal, setShowUnmatchedServerModal] = useState(false);
+    const [unmatchedServer, setUnmatchedServer] = useState<string>('');
 
     const { notifications, addNotification, removeNotification } = useNotificationState();
 
@@ -46,6 +50,10 @@ const [policies, setPolicies] = useState<DnsPolicy[]>([]);
             setPolicies(data || []);
             setDnsServers((servers || []).map((s: any) => ({ id: s.id, name: s.name })));
             setAvailableOutbounds((outbounds as Array<{ tag: string; type: string }>) || []);
+            
+            // 加载未匹配DNS服务器设置
+            const allSettings = await window.ipcRenderer.db.getAllSettings();
+            setUnmatchedServer(allSettings['dns-unmatched-server'] || '');
             
             // 从 profile.dnsPolicies 加载（已嵌入 profile）
             const dnsPolicies = selectedProfile?.profile?.dnsPolicies ?? [];
@@ -223,25 +231,23 @@ const [policies, setPolicies] = useState<DnsPolicy[]>([]);
         <div className="page-shell text-[var(--app-text-secondary)] relative">
             <NotificationList notifications={notifications} onRemove={removeNotification} />
 
-            <DnsPolicyHeader />
+            <DnsPolicyHeader onOpenSettings={() => setShowSettingsModal(true)} />
 
             <div className="page-content flex flex-col !overflow-hidden">
-                {policies.length === 0 ? (
-                    <DnsPolicyEmptyState onAdd={handleAdd} />
-                ) : (
-                    <DnsPolicyListCard
-                        policies={policies}
-                        dnsServers={dnsServers}
-                        availableOutbounds={availableOutbounds}
-                        profileDnsPolicies={profileDnsPolicies}
-                        onAdd={handleAdd}
-                        onEdit={handleEdit}
-                        onViewDetail={handleViewDetail}
-                        onDelete={openDeleteConfirm}
-                        onToggleEnabled={handleToggleEnabled}
-                        onReorder={handleReorder}
-                    />
-                )}
+                <DnsPolicyListCard
+                    policies={policies}
+                    dnsServers={dnsServers}
+                    availableOutbounds={availableOutbounds}
+                    profileDnsPolicies={profileDnsPolicies}
+                    onAdd={handleAdd}
+                    onEdit={handleEdit}
+                    onViewDetail={handleViewDetail}
+                    onDelete={openDeleteConfirm}
+                    onToggleEnabled={handleToggleEnabled}
+                    onReorder={handleReorder}
+                    unmatchedServer={unmatchedServer}
+                    onUnmatchedServerClick={() => setShowUnmatchedServerModal(true)}
+                />
             </div>
 
             <DnsPolicyEditModalContainer
@@ -273,6 +279,28 @@ const [policies, setPolicies] = useState<DnsPolicy[]>([]);
                 count={batchDeleteIds.size}
                 onConfirm={confirmBatchDelete}
                 onClose={() => setShowBatchDeleteConfirm(false)}
+            />
+
+            <DnsPolicySettingsModal
+                open={showSettingsModal}
+                dnsServers={dnsServers}
+                onClose={() => setShowSettingsModal(false)}
+            />
+
+            <DnsUnmatchedServerModal
+                open={showUnmatchedServerModal}
+                dnsServers={dnsServers}
+                currentServer={unmatchedServer}
+                onClose={() => setShowUnmatchedServerModal(false)}
+                onConfirm={async (serverId) => {
+                    try {
+                        await window.ipcRenderer.db.setSetting('dns-unmatched-server', serverId);
+                        window.ipcRenderer.core.generateConfig().catch(console.error);
+                        setUnmatchedServer(serverId);
+                    } catch (err: unknown) {
+                        console.error('Failed to save unmatched DNS server:', err);
+                    }
+                }}
             />
         </div>
     );

@@ -589,7 +589,21 @@
     "editModalTitle": "DNS 策略",
     "dnsServerLocal": "本機",
     "dnsServerRemote": "遠端",
-    "dnsServerBlock": "封鎖"
+    "dnsServerBlock": "封鎖",
+    "settingsTitle": "DNS策略設定",
+    "unmatchedServer": {
+      "label": "規則未匹配預設DNS伺服器",
+      "description": "當所有DNS策略規則均未匹配時，使用的預設DNS伺服器"
+    },
+    "resolveServer": {
+      "label": "路由resolve預設DNS伺服器",
+      "description": "用於解析路由規則中網域名稱的DNS伺服器"
+    },
+    "proxyServer": {
+      "label": "代理節點DNS伺服器",
+      "description": "用於解析代理節點位址的DNS伺服器"
+    },
+    "settingsHint": "以上設定僅在儲存後生效，選擇DNS伺服器需先在「設定 → DNS」中新增"
   },
   "ruleProviders": {
     "title": "規則集",
@@ -746,8 +760,6 @@
     "detourDirect": "直連",
     "enable": "啟用",
     "disable": "停用",
-    "setDefault": "設為預設",
-    "isDefault": "目前預設",
     "edit": "編輯",
     "delete": "刪除",
     "modalAddTitle": "新增 DNS 伺服器",
@@ -792,6 +804,7 @@
     "refTypeDns": "DNS 策略",
     "refTypeRoute": "路由策略",
     "refTypeDnsServer": "DNS 伺服器網域名稱解析",
+    "refTypeSetting": "DNS 策略設定",
 "rawEditorPlaceholder": "輸入 sing-box DNS 伺服器 JSON 設定，例如：\n{\n  \"type\": \"udp\",\n  \"tag\": \"my-dns\",\n  \"server\": \"8.8.8.8\",\n  \"server_port\": 53,\n  \"detour\": \"proxy\"\n}",
 "searchPlaceholder": "搜尋名稱、地址...",
 "statsLine": "{{total}} 個伺服器 · {{enabled}} 個啟用",
@@ -907,7 +920,10 @@
         "customGroupNotFound": "群組 \"{{name}}\" 不存在",
         "dnsRuleFallback": "DNS 規則 {{index}}",
         "routeRuleFallback": "規則 {{index}}",
-        "dnsServerFallback": "DNS 伺服器 {{index}}"
+        "dnsServerFallback": "DNS 伺服器 {{index}}",
+        "dnsSettingUnmatched": "未匹配預設DNS伺服器",
+        "dnsSettingResolve": "路由resolve預設DNS伺服器",
+        "dnsSettingProxy": "代理節點DNS伺服器"
       },
       "routePolicy": {
         "templateNotFound": "範本檔案不存在",
@@ -919,7 +935,6 @@
         "suffixDns": "，已套用 DNS 設定",
         "suffixFinalOutbound": "，已設定兜底出站",
         "suffixTun": "，已設定 TUN 模式",
-        "suffixDefaultDns": "，已設定預設 DNS 伺服器",
         "templateImportFailed": "匯入失敗: {{message}}"
       },
       "core": {

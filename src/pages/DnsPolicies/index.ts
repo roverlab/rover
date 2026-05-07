@@ -6,5 +6,6 @@ export { DnsPolicyEditModalContainer, type DnsPolicyEditFormState } from './DnsP
 export { DnsPolicyDetailModal } from './DnsPolicyDetailModal';
 export { DnsPolicyDeleteConfirmModal } from './DnsPolicyDeleteConfirmModal';
 export { DnsPolicyBatchDeleteConfirmModal } from './DnsPolicyBatchDeleteConfirmModal';
+export { DnsPolicySettingsModal } from './DnsPolicySettingsModal';
 export { DnsPolicyRowDropdown } from './DnsPolicyRowDropdown';
 export * from './utils';

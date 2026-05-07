@@ -107,8 +107,6 @@ export interface DnsServer {
     order: number;
     /** 是否启用 */
     enabled: boolean;
-    /** 是否为默认DNS服务器 */
-    is_default: boolean;
     server?: string;
     server_port?: number;
     path?: string;
@@ -323,7 +321,6 @@ export function addDnsServer(server: Omit<DnsServer, 'order' | 'id'> & { id?: st
             ...server,
             id,
             enabled: server.enabled ?? true,
-            is_default: server.is_default ?? false,
         } as DnsServer;
         dnsServers.push(newServer);
         data.dnsServers = dnsServers;
@@ -374,49 +371,8 @@ export function toggleDnsServerEnabled(serverId: string, enabled: boolean): bool
         if (!targetServer) return false;
 
         targetServer.enabled = enabled;
-        // 如果禁用服务器，同时取消默认状态
-        if (!enabled && targetServer.is_default) {
-            targetServer.is_default = false;
-        }
         data.dnsServers = dnsServers;
         return true;
-    });
-}
-
-/**
- * 设置默认 DNS 服务器（将指定服务器的 is_default 设为 true，其他全部设为 false）
- * 如果目标服务器被禁用，则同时启用
- * @param serverId DNS 服务器的 id
- * @returns 是否设置成功
- */
-export function setDefaultDnsServer(serverId: string): boolean {
-    return withDb((data) => {
-        const dnsServers = data.dnsServers ?? [];
-        const targetServer = dnsServers.find((s) => s.id === serverId);
-        if (!targetServer) return false;
-
-        // 将所有服务器的 is_default 设为 false
-        for (const s of dnsServers) {
-            s.is_default = false;
-        }
-        // 将目标服务器的 is_default 设为 true，并启用
-        targetServer.is_default = true;
-        targetServer.enabled = true;
-        data.dnsServers = dnsServers;
-        return true;
-    });
-}
-
-/**
- * 清除默认 DNS 服务器（将所有服务器的 is_default 设为 false）
- */
-export function clearDefaultDnsServer(): void {
-    withDb((data) => {
-        const dnsServers = data.dnsServers ?? [];
-        for (const s of dnsServers) {
-            s.is_default = false;
-        }
-        data.dnsServers = dnsServers;
     });
 }
 
@@ -443,7 +399,6 @@ export function upsertDnsServerByTag(serverFromTemplate: Record<string, unknown>
             name: tag, // 导入预设时，id 和 name 相同
             type: hasRawData ? 'raw' : ((serverFromTemplate.type as string) || 'udp'),
             enabled: true,
-            is_default: false,
         };
         const extra: Record<string, unknown> = {};
         for (const [k, v] of Object.entries(serverFromTemplate)) {
@@ -1333,7 +1288,7 @@ export function clearAllPolicyData(): void {
 }
 
 export interface DnsServerRef {
-    source: 'dns' | 'route' | 'dns_server';
+    source: 'dns' | 'route' | 'dns_server' | 'setting';
     index: number;
     name: string;
 }
@@ -1388,6 +1343,18 @@ export function getDnsServerRefs(id: string): DnsServerRef[] {
         if (dr === idTrim) {
             const displayName = server.name || server.id || t('main.errors.db.dnsServerFallback', { index: i + 1 });
             refs.push({ source: 'dns_server', index: i + 1, name: displayName });
+        }
+    }
+    // 检查 settings 中的 DNS 服务器引用
+    const dnsSettingKeys = [
+        { key: 'dns-unmatched-server', nameKey: 'main.errors.db.dnsSettingUnmatched' },
+        { key: 'dns-resolve-server', nameKey: 'main.errors.db.dnsSettingResolve' },
+        { key: 'dns-proxy-server', nameKey: 'main.errors.db.dnsSettingProxy' },
+    ] as const;
+    for (let i = 0; i < dnsSettingKeys.length; i++) {
+        const val = (getSetting(dnsSettingKeys[i].key) || '').trim();
+        if (val === idTrim) {
+            refs.push({ source: 'setting', index: i + 1, name: t(dnsSettingKeys[i].nameKey) });
         }
     }
     return refs;

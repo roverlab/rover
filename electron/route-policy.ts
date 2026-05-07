@@ -435,6 +435,21 @@ export function registerRuleProviderIpcHandlers(
                 }
             }
 
+            // 导入 DNS 策略设置（dns-unmatched-server、dns-resolve-server、dns-proxy-server）
+            let dnsPolicySettingsSet = false;
+            const dnsSettingKeys = ['dns-unmatched-server', 'dns-resolve-server', 'dns-proxy-server'] as const;
+            for (const key of dnsSettingKeys) {
+                const value = data[key];
+                if (value !== undefined && value !== null) {
+                    try {
+                        dbUtils.setSetting(key, String(value));
+                        dnsPolicySettingsSet = true;
+                    } catch (e) {
+                        console.error(`Failed to save ${key} from template:`, e);
+                    }
+                }
+            }
+
             // 处理 tun 字段：只有当模板中明确有 tun 字段时才修改数据库设置
             // 如果模板没有 tun 字段，保持用户当前设置不变
             let tunSet = false;
@@ -471,31 +486,13 @@ tunNeedsAdmin = !checkIsServiceInstalled();
             }
             // 如果模板中没有 tun 字段，不做任何处理，保持用户当前设置
 
-            // 处理 default_dns_server 字段：如果有，将对应的 DNS 服务器设为默认
-            let defaultDnsServerSet = false;
-            if (typeof data.default_dns_server === 'string' && data.default_dns_server.trim()) {
-                try {
-                    const serverId = data.default_dns_server.trim();
-                    const success = dbUtils.setDefaultDnsServer(serverId);
-                    if (success) {
-                        defaultDnsServerSet = true;
-                    } else {
-                        // 找不到对应的服务器，清除现有的默认值
-                        console.warn(`Default DNS server "${serverId}" not found, clearing default`);
-                        dbUtils.clearDefaultDnsServer();
-                    }
-                } catch (e) {
-                    console.error('Failed to set default DNS server from template:', e);
-                }
-            }
-
             // 配置生成由前端在导入成功后触发
 
             let importMsg = t('main.errors.routePolicy.templateImportSuccess', { count: addedCount });
             if (dnsSet) importMsg += t('main.errors.routePolicy.suffixDns');
             if (finalOutboundSet) importMsg += t('main.errors.routePolicy.suffixFinalOutbound');
+            if (dnsPolicySettingsSet) importMsg += t('main.errors.routePolicy.suffixDnsPolicySettings');
             if (tunSet) importMsg += t('main.errors.routePolicy.suffixTun');
-            if (defaultDnsServerSet) importMsg += t('main.errors.routePolicy.suffixDefaultDns');
 
             return {
                 success: true,
@@ -506,7 +503,6 @@ tunNeedsAdmin = !checkIsServiceInstalled();
                 tunSet,
                 tunNeedsAdmin,
                 tunValue,
-                defaultDnsServerSet,
                 message: importMsg
             };
         } catch (e) {
