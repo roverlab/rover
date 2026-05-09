@@ -10,6 +10,7 @@ import { DnsPolicyDeleteConfirmModal } from './DnsPolicies/DnsPolicyDeleteConfir
 import { DnsPolicyBatchDeleteConfirmModal } from './DnsPolicies/DnsPolicyBatchDeleteConfirmModal';
 import { DnsPolicySettingsModal } from './DnsPolicies/DnsPolicySettingsModal';
 import { DnsUnmatchedServerModal } from './DnsPolicies/DnsUnmatchedServerModal';
+import { DnsServersModal } from './DnsPolicies/DnsServersModal';
 
 interface DnsPoliciesProps {
     /** 页面是否处于激活状态，用于进入时重新加载 */
@@ -35,6 +36,7 @@ const [policies, setPolicies] = useState<DnsPolicy[]>([]);
     const [showSettingsModal, setShowSettingsModal] = useState(false);
     const [showUnmatchedServerModal, setShowUnmatchedServerModal] = useState(false);
     const [unmatchedServer, setUnmatchedServer] = useState<string>('');
+    const [showDnsServersModal, setShowDnsServersModal] = useState(false);
 
     const { notifications, addNotification, removeNotification } = useNotificationState();
 
@@ -231,7 +233,7 @@ const [policies, setPolicies] = useState<DnsPolicy[]>([]);
         <div className="page-shell text-[var(--app-text-secondary)] relative">
             <NotificationList notifications={notifications} onRemove={removeNotification} />
 
-            <DnsPolicyHeader onOpenSettings={() => setShowSettingsModal(true)} />
+            <DnsPolicyHeader onOpenSettings={() => setShowSettingsModal(true)} onOpenDnsServers={() => setShowDnsServersModal(true)} />
 
             <div className="page-content flex flex-col !overflow-hidden">
                 <DnsPolicyListCard
@@ -301,6 +303,13 @@ const [policies, setPolicies] = useState<DnsPolicy[]>([]);
                         console.error('Failed to save unmatched DNS server:', err);
                     }
                 }}
+            />
+
+            <DnsServersModal
+                open={showDnsServersModal}
+                onClose={() => setShowDnsServersModal(false)}
+                onRegenerateConfig={async () => { window.ipcRenderer.core.generateConfig().catch(console.error); }}
+                onServersChanged={loadPolicies}
             />
         </div>
     );

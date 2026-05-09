@@ -11,8 +11,11 @@ import * as dbUtils from './db';
 // import { formatDateFixed } from './db'; // 不再使用，改用标准ISO格式
 import * as singbox from './core-controller';
 import { getDataDir, getRulesetsDir, resolveDataPath, getBuiltinResourcesPath, getPresetRulesetsPath, getPresetTemplatesPath } from './paths';
-import { cnJsonRuleToPolicy, getPolicyRuleSet } from '../src/services/policy';
-import type { RuleProviderForConfig, CnJsonRule } from '../src/types/policy';
+import { getPolicyRuleSet } from '../src/services/policy';
+import type { RuleProviderForConfig } from '../src/types/policy';
+import type { DnsServer } from './db';
+import type { DnsPolicy } from '../src/types/dns-policy';
+import type { Policy } from '../src/types/policy';
 import { getRuleProviderFileBaseName, downloadAndConvertRuleSet, compileLocalRuleSet, compileLocalRuleSetFromLogicRule } from './ruleset-utils';
 import {
 } from './config-file';
@@ -287,64 +290,12 @@ export async function addRuleProvidersFromPreset(
     return { added, updated };
 }
 
-/** sing-box DNS 规则中 default 类型支持的字段（rule_set + server + name），其余字段需放入 raw_data */
-const DNS_DEFAULT_ONLY_KEYS = new Set(['rule_set', 'server', 'name']);
-
-/** 从规则中提取 name，用于 DnsPolicy 显示名称（写入数据库） */
-function getRuleName(rule: Record<string, unknown>, fallback: string): string {
-    const n = rule.name;
-    return typeof n === 'string' && n.trim() ? n.trim() : fallback;
-}
-
-/** 判断规则是否为 default 类型：有 rule_set + server，且仅有 default 允许的字段 */
-function isDefaultDnsRuleFormat(rule: Record<string, unknown>): boolean {
-    const ruleSet = rule.rule_set;
-    const hasRuleSet = ruleSet !== undefined && ruleSet !== null &&
-        (Array.isArray(ruleSet) ? ruleSet.length > 0 : typeof ruleSet === 'string');
-    const hasServer = rule.server !== undefined && rule.server !== null;
-    if (!hasRuleSet || !hasServer) return false;
-    const ruleKeys = Object.keys(rule).filter(k => rule[k] !== undefined && rule[k] !== null);
-    return ruleKeys.every(k => DNS_DEFAULT_ONLY_KEYS.has(k));
-}
-
-/** 将模板 dns.rules 中的单条规则转换为 DnsPolicy 输入：仅支持 default 格式（rule_set+server）或显式 raw_data 格式，不自动识别/生成 raw */
-function templateDnsRuleToDnsPolicy(rule: Record<string, unknown>, order: number): Omit<import('../src/types/dns-policy').DnsPolicy, 'id' | 'createdAt' | 'updatedAt'> | null {
-    // 1. 显式 raw_data 格式：仅当模板包含 name + raw_data 时使用 raw 类型
-    if (rule.raw_data && typeof rule.raw_data === 'object') {
-        const rawData = rule.raw_data as Record<string, unknown>;
-        const server = String(rawData.server ?? rule.server ?? 'local');
-        return {
-            type: 'raw',
-            name: getRuleName(rule, t('main.routePolicy.fallbackDnsRuleOrder', { order: order + 1 })),
-            server,
-            enabled: true,
-            order,
-            raw_data: rawData,
-        };
-    }
-    // 2. default 格式：rule_set + server
-    if (isDefaultDnsRuleFormat(rule)) {
-        const server = String(rule.server ?? 'local');
-        const ruleSet = rule.rule_set;
-        const ruleSetArr = Array.isArray(ruleSet) ? ruleSet : typeof ruleSet === 'string' ? [ruleSet] : [];
-        const builtIn = ruleSetArr.filter((v: unknown) => typeof v === 'string' && (v.startsWith('geosite:') || v.startsWith('geoip:')));
-        const acl = ruleSetArr.filter((v: unknown) => typeof v === 'string' && v.startsWith('acl:'));
-        const defaultName =
-            ruleSetArr.length > 0
-                ? t('main.routePolicy.fallbackDnsRuleFromRuleSets', { ruleSets: ruleSetArr.join(', ') })
-                : t('main.routePolicy.fallbackDnsRuleOrder', { order: order + 1 });
-        return {
-            type: 'default',
-            name: getRuleName(rule, defaultName),
-            server,
-            enabled: true,
-            order,
-            rule_set_build_in: builtIn.length > 0 ? builtIn : undefined,
-            ruleSetAcl: acl.length > 0 ? acl : undefined,
-        };
-    }
-    // 3. 其他格式：不导入，不自动生成 raw
-    return null;
+/** 模板数据格式（与 database.json 统一） */
+interface TemplateData {
+    dnsServers?: DnsServer[];
+    dnsPolicies?: DnsPolicy[];
+    policies?: Policy[];
+    settings?: Record<string, string>;
 }
 
 /** 注册规则集相关 IPC 处理器 */
@@ -353,146 +304,125 @@ export function registerRuleProviderIpcHandlers(
     sendToRenderer: (channel: string, ...args: any[]) => void,
     log: { info: (msg: string) => void; error: (msg: string) => void }
 ): void {
-    // 统一导入模板：一次性导入策略、DNS和兜底出站
+    // 统一导入模板：模板使用与 database.json 统一的格式，直接写入数据库
     ipcMain.handle('core:importTemplateComplete', async (_, templatePath: string) => {
         try {
             const fullPath = path.join(getPresetTemplatesPath(), templatePath);
 
-            console.log('fullPath', fullPath);
             if (!fs.existsSync(fullPath)) {
                 throw new Error(t('main.errors.routePolicy.templateNotFound'));
             }
 
             const content = fs.readFileSync(fullPath, 'utf8');
-            const data = JSON.parse(content);
-            const rules = data.rules || [];
+            const data = JSON.parse(content) as TemplateData;
 
-            const policiesToImport: Array<Omit<any, 'id' | 'createdAt' | 'updatedAt'>> = [];
-            rules.forEach((rule: Record<string, unknown>, order: number) => {
-                const policy = cnJsonRuleToPolicy(rule as unknown as CnJsonRule, order);
-                policiesToImport.push(policy);
-            });
+            const policies = data.policies || [];
+            const dnsServers = data.dnsServers || [];
+            const dnsPolicies = data.dnsPolicies || [];
+            const settings = data.settings || {};
 
-            // 新模板格式：顶层 dns_servers 和 dns_rules 字段
-            const servers = Array.isArray(data.dns_servers) ? data.dns_servers : [];
-            const dnsRules = Array.isArray(data.dns_rules) ? data.dns_rules : [];
-            
-            const hasDns = servers.length > 0 || dnsRules.length > 0;
-            if (policiesToImport.length === 0 && !hasDns) {
+            const hasData = policies.length > 0 || dnsServers.length > 0 || dnsPolicies.length > 0 || Object.keys(settings).length > 0;
+            if (!hasData) {
                 return { success: false, message: t('main.errors.routePolicy.templateNoImportable'), addedCount: 0 };
             }
 
             // 导入前清理所有相关数据
             dbUtils.clearAllPolicyData();
 
-            const addedCount = policiesToImport.length > 0 ? dbUtils.addPoliciesBatch(policiesToImport, true) : 0;
+            // 导入路由策略：按模板顺序重写 order，无 id 则移除让数据库重新生成
+            let addedCount = 0;
+            if (policies.length > 0) {
+                const reorderedPolicies = policies.map((p, idx) => {
+                    const { id, ...rest } = p as any;
+                    return { ...rest, order: idx };
+                });
+                addedCount = dbUtils.addPoliciesBatch(reorderedPolicies as any, true);
+            }
 
+            // 导入 DNS 服务器：模板中的按模板顺序排列（包含禁用的），不在模板中的保留但禁用，排在后面
             let dnsSet = false;
-            // 导入模板时：dns_servers -> dnsServers 表（name 作为 id，重复覆盖）；dns_rules -> dnsPolicies 表（先清空再写入）
-      
             try {
-                if (servers.length > 0 || dnsRules.length > 0) {
-                    for (let i = 0; i < servers.length; i++) {
-                        const s = servers[i];
-                        // 支持 tag 或 name 字段作为标识
-                        const serverTag = s.tag || s.name;
-                        if (s && typeof s === 'object' && serverTag) {
-                            // 直接使用模板中的 detour 值，不进行转换
-                            if (s.detour && typeof s.detour === 'string' && s.detour === "selector_out") {
-                                s.detour = "selector_out";
-                            }else{
-                                s.detour = undefined;
-                            }
-                            // 将 tag 或 name 作为 name 字段，用于数据库存储
-                            const serverData = { ...s, name: serverTag } as Record<string, unknown>;
-                            dbUtils.upsertDnsServerByTag(serverData);
-                        }
+                // 获取现有 DNS 服务器列表
+                const existingDnsServers = dbUtils.getDnsServers();
+                const templateServerIds = new Set(dnsServers.map((s: any) => s.id).filter(Boolean));
+
+                // 构建新的 DNS 服务器数组：模板中的在前（按模板顺序），不在模板中的在后
+                const newDnsServers: any[] = [];
+
+                // 1. 先放入模板中定义的 DNS 服务器（覆盖已有数据）
+                for (let i = 0; i < dnsServers.length; i++) {
+                    const server = dnsServers[i];
+                    if (server.id) {
+                        const existing = existingDnsServers.find((s) => s.id === server.id);
+                        newDnsServers.push({
+                            ...(existing || {}),
+                            ...server,
+                            order: i,
+                        });
                     }
-                    for (let i = 0; i < dnsRules.length; i++) {
-                        const r = dnsRules[i];
-                        if (r && typeof r === 'object' && (r.server || r.raw_data)) {
-                            const policy = templateDnsRuleToDnsPolicy(r as Record<string, unknown>, i);
-                            if (policy) dbUtils.addDnsPolicy(policy);
-                        }
-                    }
-                    dnsSet = servers.length > 0 || dnsRules.length > 0;
                 }
+
+                // 2. 放入不在模板中的原有 DNS 服务器（禁用）
+                for (const existing of existingDnsServers) {
+                    if (!templateServerIds.has(existing.id)) {
+                        newDnsServers.push({
+                            ...existing,
+                            enabled: false,
+                        });
+                    }
+                }
+
+                // 一次性替换 DNS 服务器列表
+                dbUtils.setDnsServers(newDnsServers);
+
+                // 导入 DNS 策略：按模板顺序重写 order，无 id 则移除让数据库重新生成
+                for (let i = 0; i < dnsPolicies.length; i++) {
+                    const { id, ...rest } = dnsPolicies[i] as any;
+                    dbUtils.addDnsPolicy({
+                        ...rest,
+                        order: i,
+                    });
+                }
+
+                dnsSet = dnsServers.length > 0 || dnsPolicies.length > 0;
             } catch (e) {
                 console.error('Failed to save DNS config from template:', e);
             }
 
+            // 导入设置
             let finalOutboundSet = false;
             let finalOutbound: string | undefined;
-            if (data.rule_unmatched_outbound) {
-                try {
-                    // 直接使用模板中的 outbound 值，不进行转换
-                    const normalizedOutbound = data.rule_unmatched_outbound;
-                    dbUtils.setSetting('policy-final-outbound', normalizedOutbound);
-                    finalOutbound = normalizedOutbound;
-                    finalOutboundSet = true;
-                } catch (e) {
-                    console.error('Failed to save policy final outbound from template:', e);
-                }
-            }
 
-            // 导入 DNS 策略设置（dns-unmatched-server、dns-resolve-server、dns-proxy-server）
-            let dnsPolicySettingsSet = false;
-            const dnsSettingKeys = ['dns-unmatched-server', 'dns-resolve-server', 'dns-proxy-server'] as const;
-            for (const key of dnsSettingKeys) {
-                const value = data[key];
-                if (value !== undefined && value !== null) {
-                    try {
+            try {
+                for (const [key, value] of Object.entries(settings)) {
+                    if (value !== undefined && value !== null) {
                         dbUtils.setSetting(key, String(value));
-                        dnsPolicySettingsSet = true;
-                    } catch (e) {
-                        console.error(`Failed to save ${key} from template:`, e);
+                        if (key === 'policy-final-outbound') {
+                            finalOutbound = String(value);
+                            finalOutboundSet = true;
+                        }
                     }
                 }
+            } catch (e) {
+                console.error('Failed to save settings from template:', e);
             }
 
-            // 处理 tun 字段：只有当模板中明确有 tun 字段时才修改数据库设置
-            // 如果模板没有 tun 字段，保持用户当前设置不变
+            // 处理 TUN 模式标记（不再在此处调用 resetController，统一由 generateConfig 处理内核重启）
             let tunSet = false;
             let tunNeedsAdmin = false;
             let tunValue: boolean | undefined;
-            
-            // 只有当模板中明确有 tun 字段且为 true 时才处理
-            if (data.tun === true) {
+
+            const tunModeSetting = settings['dashboard-tun-mode'];
+            if (tunModeSetting === 'true') {
                 tunValue = true;
-                try {
-                    // 写入数据库不需要管理员权限，直接设置
-                    // TUN 模式生效时才需要管理员权限（在 Dashboard 中处理）
-                    dbUtils.setSetting('dashboard-tun-mode', 'true');
-                    // 重置控制器，下次启动时将使用 ServiceSingboxController
-                    await require('./core-controller').resetController();
-                    tunSet = true;
-// 检查 RoverService 服务是否已安装，用于前端提示
-tunNeedsAdmin = !checkIsServiceInstalled();
-                } catch (e) {
-                    console.error('Failed to process tun setting from template:', e);
-                }
-            }
-            // 如果模板中 tun 为 false，也更新数据库关闭 TUN 模式
-            else if (data.tun === false) {
+                tunSet = true;
+                tunNeedsAdmin = !checkIsServiceInstalled();
+            } else if (tunModeSetting === 'false') {
                 tunValue = false;
-                try {
-                    dbUtils.setSetting('dashboard-tun-mode', 'false');
-                    // 重置控制器，下次启动时将使用 LocalSingboxController
-                    await require('./core-controller').resetController();
-                    tunSet = true;
-                } catch (e) {
-                    console.error('Failed to process tun setting from template:', e);
-                }
+                tunSet = true;
             }
-            // 如果模板中没有 tun 字段，不做任何处理，保持用户当前设置
 
-            // 配置生成由前端在导入成功后触发
-
-            let importMsg = t('main.errors.routePolicy.templateImportSuccess', { count: addedCount });
-            if (dnsSet) importMsg += t('main.errors.routePolicy.suffixDns');
-            if (finalOutboundSet) importMsg += t('main.errors.routePolicy.suffixFinalOutbound');
-            if (dnsPolicySettingsSet) importMsg += t('main.errors.routePolicy.suffixDnsPolicySettings');
-            if (tunSet) importMsg += t('main.errors.routePolicy.suffixTun');
+            // 配置生成由前端在导入成功后通过 generateConfig() 触发，内核重启在通用流程中处理
 
             return {
                 success: true,
@@ -503,13 +433,13 @@ tunNeedsAdmin = !checkIsServiceInstalled();
                 tunSet,
                 tunNeedsAdmin,
                 tunValue,
-                message: importMsg
+                message: t('main.errors.routePolicy.templateImportSuccess')
             };
         } catch (e) {
             console.error('Failed to import template completely:', templatePath, e);
             return {
                 success: false,
-                message: t('main.errors.routePolicy.templateImportFailed', { message: (e as Error).message }),
+                message: t('main.errors.routePolicy.templateImportFailed'),
                 addedCount: 0
             };
         }

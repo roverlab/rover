@@ -100,7 +100,7 @@ export interface ElectronAPI {
             openUserDataPath(): Promise<void>;
             openExternalUrl(url: string): Promise<void>;
             getActiveConfig(): Promise<any>;
-            generateConfig(): Promise<string>;
+            generateConfig(scene?: string): Promise<string>;
             getSelectedProfile(): Promise<{ profile: any; config: any } | null>;
             isServiceInstalled(): Promise<boolean>;
             isLauncherTaskInstalled(): Promise<boolean>;
@@ -117,7 +117,7 @@ export interface ElectronAPI {
             saveRuleProvider(provider: { id?: string; name: string; url?: string; type: RuleProviderType; enabled?: boolean; rules?: import('./types/singbox').HeadlessRule[]; logical_rule?: import('./types/singbox').RouteLogicRule }): Promise<void>;
             // Templates & Policies
             getTemplates(): Promise<Array<{ name: string; description: string; path: string }>>;
-            getTemplatePolicies(templatePath: string): Promise<{ rules: any[]; dns?: any; rule_unmatched_outbound?: string }>;
+            getTemplatePolicies(templatePath: string): Promise<{ policies: any[]; dnsServers: any[]; dnsPolicies: any[]; settings: Record<string, string> }>;
             importTemplateComplete(templatePath: string): Promise<{ success: boolean; message: string; addedCount: number; presetResult?: { added: number; updated: number }; dnsSet?: boolean; finalOutboundSet?: boolean; finalOutbound?: string; tunSet?: boolean; tunNeedsAdmin?: boolean; tunValue?: boolean; defaultDnsServerSet?: boolean }>;
             getPresetRulesets(): Promise<Array<{ id: string; name: string; url: string; type?: string; interval?: number; path?: string; enabled: boolean }>>;
             getAllRuleSetsGrouped(): Promise<Array<{ groupKey: string; displayName: string; items: Array<{ id: string; name: string; url: string; type?: string; path?: string; enabled: boolean }> }>>;
@@ -155,6 +155,16 @@ export interface ElectronAPI {
                 running: boolean;
                 pid?: number;
                 version?: string;
+                needsUpgrade?: boolean;
+            }>;
+            getDnsStatus(): Promise<{
+                success: boolean;
+                data?: {
+                    running: boolean;
+                    address?: string;
+                    cert_path?: string;
+                };
+                error?: string;
             }>;
             install(): Promise<{ success: boolean; error?: string; isUserCanceled?: boolean }>;
             uninstall(): Promise<{ success: boolean; error?: string; isUserCanceled?: boolean }>;

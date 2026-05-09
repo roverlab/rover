@@ -97,7 +97,7 @@ export function DnsPolicyListCard({
             case 'type':
                 return (
                     <div className="flex items-center justify-center h-full">
-                        <span className="policy-type-badge">
+                        <span className="inline-flex items-center rounded-md border border-[var(--app-stroke)]/70 px-1.5 py-0.5 text-[11px] font-semibold text-[var(--app-text-secondary)] tracking-wide">
                             {policy.type === 'raw' ? t('policies.typeRaw') : t('policies.typeStandard')}
                         </span>
                     </div>
@@ -110,7 +110,10 @@ export function DnsPolicyListCard({
                             const dnsServer = serverId ? dnsServers.find(s => s.id === serverId) : null;
                             const displayLabel = dnsServer ? (dnsServer.name || dnsServer.id) : getServerLabel(serverId, t);
                             return serverId ? (
-                                <span className="policy-chip" title={displayLabel}>
+                                <span
+                                    className="inline-flex items-center rounded-full border border-[var(--app-accent-border)]/60 bg-gradient-to-b from-[var(--app-accent-soft)]/50 to-[var(--app-accent-soft)]/20 px-2.5 py-0.5 text-[11px] font-semibold text-[var(--app-accent-strong)] shadow-sm"
+                                    title={displayLabel}
+                                >
                                     {displayLabel}
                                 </span>
                             ) : null;
@@ -161,24 +164,25 @@ export function DnsPolicyListCard({
         const displayLabel = dnsServer ? (dnsServer.name || dnsServer.id) : getServerLabel(unmatchedServer, t);
         return (
             <div
-                className="mb-2 flex items-center gap-3 rounded-lg border border-[var(--app-stroke)]/40 bg-[var(--app-panel-soft)]/20 px-4 py-2 text-[13px] cursor-pointer hover:bg-[var(--app-hover)] transition-all"
+                className="group mb-2 flex items-center gap-3 rounded-xl border border-[var(--app-accent-border)]/60 bg-gradient-to-r from-[var(--app-accent-soft)]/40 to-[var(--app-panel-soft)]/30 px-4 py-2.5 text-[13px] cursor-pointer transition-all hover:shadow-[0_4px_16px_rgba(31,119,255,0.08)] hover:border-[var(--app-accent)]/40 hover:from-[var(--app-accent-soft)]/60 hover:to-[var(--app-accent-soft)]/20"
                 onClick={onUnmatchedServerClick}
             >
-                <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-[var(--app-accent)]/10 shrink-0">
-                    <Lightbulb className="w-4 h-4 text-[var(--app-accent)]" />
+                <span className="inline-flex items-center justify-center w-8 h-8 rounded-xl bg-gradient-to-br from-[var(--app-accent)]/20 to-[var(--app-accent)]/5 shadow-inner shrink-0 ring-1 ring-[var(--app-accent)]/15">
+                    <Lightbulb className="w-4 h-4 text-[var(--app-accent-strong)]" />
                 </span>
-                <span className="font-semibold text-[#1a1a1a] dark:text-white shrink-0">{t('dnsPolicies.unmatchedServer.label')}</span>
-                <span className="h-3.5 w-px bg-[var(--app-stroke)]/50 hidden md:block" />
-                <span className="text-[12px] text-[var(--app-text-tertiary)] hidden md:block">
-                    {t('dnsPolicies.unmatchedServer.description')}
-                </span>
+                <div className="flex flex-col gap-0.5 min-w-0">
+                    <span className="font-semibold text-[#1a1a1a] dark:text-white leading-tight">{t('dnsPolicies.unmatchedServer.label')}</span>
+                    <span className="text-[11px] text-[var(--app-text-tertiary)] leading-tight hidden md:block">
+                        {t('dnsPolicies.unmatchedServer.description')}
+                    </span>
+                </div>
                 <span className="flex-1" />
                 <span className="inline-flex items-center gap-1.5">
-                    <span className="policy-chip" title={displayLabel}>
+                    <span className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--app-accent-border)]/70 bg-gradient-to-b from-white/80 to-[var(--app-accent-soft)]/40 dark:from-white/[0.03] dark:to-[var(--app-accent)]/[0.08] px-3 py-1 text-[11px] font-semibold text-[var(--app-accent-strong)] shadow-sm">
                         {displayLabel}
                     </span>
                 </span>
-                <ChevronRight className="w-4 h-4 text-[var(--app-text-tertiary)] shrink-0" />
+                <ChevronRight className="w-4 h-4 text-[var(--app-text-tertiary)] group-hover:text-[var(--app-accent)] transition-colors shrink-0" />
             </div>
         );
     }, [unmatchedServer, dnsServers, t, onUnmatchedServerClick]);

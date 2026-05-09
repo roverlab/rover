@@ -513,6 +513,11 @@
     "presetAdded": "Agregadas {{count}}",
     "presetUpdated": "Actualizadas {{count}}",
     "tunNeedsAdmin": "No se pudo habilitar TUN. Instala el servicio del sistema en Configuración para que surta efecto.",
+    "tunNeedsInstallTitle": "Modo TUN requerido",
+    "tunNeedsInstallMessage": "Esta plantilla requiere el modo TUN, pero el servicio del sistema no está instalado. ¿Desea instalarlo ahora?",
+    "tunInstallNow": "Instalar ahora",
+    "tunInstallRefusedTitle": "Modo TUN no habilitado",
+    "tunInstallRefusedMessage": "Rechazó la instalación del servicio del sistema. El modo TUN no puede habilitarse. Puede volver a habilitarlo desde la configuración de tarjeta de red virtual en el panel.",
     "ruleSetPickerTitle": "Seleccionar conjuntos de reglas",
     "ruleSetPickerSearch": "Buscar nombre o ID de conjunto de reglas...",
     "ruleSetPickerEmpty": "Sin conjuntos de reglas",
@@ -799,6 +804,7 @@
     "valResolverRequired": "Cuando se usa un dominio como servidor, especifica un resolvedor de dominio",
     "valRawEmpty": "El JSON raw no puede estar vacío",
     "valRawInvalid": "JSON raw inválido",
+  "valBootstrapRequired": "Para el tipo rover sin proxy, Bootstrap DNS es obligatorio",
     "refBlockDelete": "\"{{id}}\" está siendo referenciado por las siguientes reglas y no puede eliminarse:\n\n{{lines}}\n\nElimina las referencias primero.",
     "refBlockDisable": "\"{{id}}\" está siendo referenciado por las siguientes reglas y no puede deshabilitarse:\n\n{{lines}}\n\nElimina las referencias primero.",
     "refTypeDns": "Política DNS",
@@ -931,11 +937,8 @@
         "ruleNameRequired": "El nombre del proveedor de reglas no puede estar vacío",
         "localRuleRequiresRule": "El proveedor de reglas local debe contener al menos una regla",
         "remoteUrlRequired": "La URL del proveedor de reglas remoto no puede estar vacía",
-        "templateImportSuccess": "Importadas {{count}} políticas",
-        "suffixDns": "; configuración DNS aplicada",
-        "suffixFinalOutbound": "; salida final predeterminada establecida",
-        "suffixTun": "; modo TUN establecido",
-        "templateImportFailed": "Error al importar: {{message}}"
+        "templateImportSuccess": "Importación exitosa",
+        "templateImportFailed": "Error al importar"
       },
       "core": {
         "portNotReleased": "El puerto {{host}}:{{port}} no se liberó en {{timeoutMs}}ms, por favor intenta de nuevo más tarde",

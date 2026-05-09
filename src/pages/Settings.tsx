@@ -7,17 +7,15 @@ import { Card, ListRow, SectionHeader } from '../components/ui/Surface';
 import { Modal } from '../components/ui/Modal';
 import { useTranslation } from 'react-i18next';
 import { useApi } from '../contexts/ApiContext';
-import { Settings as SettingsIcon, Sliders, Check, Globe, Download, Upload, Info, ExternalLink, FileJson } from 'lucide-react';
+import { Settings as SettingsIcon, Sliders, Check, Download, Upload, Info, ExternalLink, FileJson } from 'lucide-react';
 import { ViewConfigModal } from '../components/ui/ViewConfigModal';
-import { DnsServersTab } from './Settings/DnsServersTab';
 import { useOverrideRules } from '../contexts/OverrideRulesContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { cn } from '../lib/utils';
 import { changeLanguage, getCurrentLanguage, getAvailableLanguages } from '../i18n';
 
 interface SettingsProps {
   isActive?: boolean;
-  initialTab?: 'basic' | 'advanced' | 'dns' | 'about' | null;
+  initialTab?: 'basic' | 'advanced' | 'about' | null;
   onTabConsumed?: () => void;
 }
 
@@ -52,6 +50,7 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
 
   // IPv6 开关（默认 false）
   const [ipv6, setIpv6] = useState(false);
+
 
   // Build info
   const [appVersion, setAppVersion] = useState('v1.0.0');
@@ -90,10 +89,16 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
     running: boolean;
     pid?: number;
     version?: string;
+    needsUpgrade?: boolean;
   } | null>(null);
   const [roverserviceInstalling, setRoverServiceInstalling] = useState(false);
   const [roverserviceUninstalling, setRoverServiceUninstalling] = useState(false);
   const [roverserviceError, setRoverServiceError] = useState<string | null>(null);
+  const [dnsServerStatus, setDnsServerStatus] = useState<{
+    running: boolean;
+    address?: string;
+    cert_path?: string;
+  } | null>(null);
 
   // 数据加载状态
   const [isDataLoaded, setIsDataLoaded] = useState(false);
@@ -194,6 +199,21 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
       const status = await window.ipcRenderer.roverservice.getInstallationStatus();
       setRoverServiceStatus(status);
 
+      // 同时加载 DNS server 状态
+      if (status.running) {
+        try {
+          const dnsResp = await window.ipcRenderer.roverservice.getDnsStatus();
+          if (dnsResp.success && dnsResp.data) {
+            setDnsServerStatus(dnsResp.data);
+          } else {
+            setDnsServerStatus({ running: false });
+          }
+        } catch {
+          setDnsServerStatus({ running: false });
+        }
+      } else {
+        setDnsServerStatus({ running: false });
+      }
     } catch (err: any) {
       console.error('Failed to load RoverService status:', err);
     }
@@ -331,11 +351,6 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
       // 不需要传路径，会自动从应用资源目录查找
       const result = await window.ipcRenderer.roverservice.install();
       if (result.success) {
-
-        // 卸载服务后自动关闭 TUN 模式
-        await window.ipcRenderer.db.setSetting('dashboard-tun-mode', 'true');
-
-
         await loadRoverServiceStatus();
 
         window.ipcRenderer.core.generateConfig();
@@ -395,10 +410,6 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
       // 再安装
       const installResult = await window.ipcRenderer.roverservice.install();
       if (installResult.success) {
-
-         // 卸载成功，自动关闭 TUN 模式
-        await window.ipcRenderer.db.setSetting('dashboard-tun-mode', 'true');
-        
         await loadRoverServiceStatus();
 
         // 重新生成配置以应用最新的服务状态
@@ -417,16 +428,22 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
   };
 
   // Tab 切换
-  type SettingsTab = 'basic' | 'advanced' | 'dns' | 'about';
+  type SettingsTab = 'basic' | 'advanced' | 'about';
   const [activeTab, setActiveTab] = useState<SettingsTab>('basic');
 
   // 当从引导页跳转过来时，自动切换到对应 Tab
   useEffect(() => {
-    if (initialTab === 'advanced' || initialTab === 'dns' || initialTab === 'about') {
+    if (initialTab === 'advanced' || initialTab === 'about') {
       setActiveTab(initialTab);
       onTabConsumed?.();
     }
   }, [initialTab]);
+
+  // 切换 tab 时刷新系统服务状态
+  useEffect(() => {
+    if (!isActive) return;
+    loadRoverServiceStatus();
+  }, [isActive, activeTab]);
 
   return (
     <div className="page-shell">
@@ -453,7 +470,6 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
             {[
               { id: 'basic' as SettingsTab, label: t('settings.basic'), icon: SettingsIcon },
               { id: 'advanced' as SettingsTab, label: t('settings.advanced'), icon: Sliders },
-              { id: 'dns' as SettingsTab, label: t('settings.dns'), icon: Globe },
               { id: 'about' as SettingsTab, label: t('settings.about'), icon: Info },
             ].map(({ id, label, icon: Icon }) => (
               <button
@@ -472,7 +488,7 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
           </div>
         </div>
 
-        <div className={cn("page-content", activeTab === 'dns' && "flex flex-col !overflow-hidden")}>
+        <div className="page-content">
 
         {/* 基础设置 Tab */}
         {activeTab === 'basic' && (
@@ -560,6 +576,17 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
                     className="w-[180px]"
                   />
                 </ListRow>
+
+                <ListRow>
+                  <div>
+                    <div className="list-row-title">{t('settings.ipv6')}</div>
+                    <div className="list-row-description">{t('settings.ipv6Desc')}</div>
+                  </div>
+                  <Switch
+                    checked={ipv6}
+                    onCheckedChange={(v) => handleUpdateConfig('ipv6', v)}
+                  />
+                </ListRow>
               </div>
             </Card>
           </div>
@@ -636,6 +663,7 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
                     ))}
                   </Select>
                 </ListRow>
+
               </div>
             </Card>
           </div>
@@ -692,16 +720,6 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
                   />
                 </ListRow>
 
-                <ListRow>
-                  <div>
-                    <div className="list-row-title">{t('settings.ipv6')}</div>
-                    <div className="list-row-description">{t('settings.ipv6Desc')}</div>
-                  </div>
-                  <Switch
-                    checked={ipv6}
-                    onCheckedChange={(v) => handleUpdateConfig('ipv6', v)}
-                  />
-                </ListRow>
 
                 <ListRow className="flex-col items-stretch gap-2 py-3">
                   <div>
@@ -747,11 +765,11 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
                       {tunExcludeAddressSaved && (
                         <span className="inline-flex items-center gap-1 text-[11px] text-[var(--app-success)]">
                           <Check className="w-3 h-3" />
-                          已保存
+                          {t('settings.saved')}
                         </span>
                       )}
                       <Button variant="secondary" size="sm" onClick={handleSaveTunExcludeAddress}>
-                        保存
+                        {t('actions.save')}
                       </Button>
                     </div>
                   </div>
@@ -760,13 +778,6 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
               </div>
             </Card>
         </div>
-        )}
-
-        {/* DNS 服务器 Tab */}
-        {activeTab === 'dns' && (
-          <div className="max-w-5xl flex-1 min-h-0">
-            <DnsServersTab isActive={isActive} onRegenerateConfig={regenerateConfigIfNeeded} />
-          </div>
         )}
 
         {/* 关于 Tab */}
@@ -901,11 +912,17 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
                     <div>
                       <div className="list-row-title">{t('settings.serviceStatus')}</div>
                       <div className="list-row-description">
-                        {roverserviceStatus.running ? (
-                          <span className="text-[var(--app-success)]">
-                            {t('settings.serviceRunningDetail', { pid: roverserviceStatus.pid ?? 0, version: roverserviceStatus.version ?? '' })}
-                          </span>
-                        ) : roverserviceStatus.binaryInstalled ? (
+{roverserviceStatus.running ? (
+roverserviceStatus.needsUpgrade ? (
+<span className="text-[var(--app-warning)]">
+{t('settings.serviceNeedsUpgrade', { version: roverserviceStatus.version ?? 'unknown' })}
+</span>
+) : (
+<span className="text-[var(--app-success)]">
+{t('settings.serviceRunningDetail', { pid: roverserviceStatus.pid ?? 0, version: roverserviceStatus.version ?? '' })}
+</span>
+)
+) : roverserviceStatus.binaryInstalled ? (
                           <span className="text-[var(--app-warning)]">{t('settings.serviceInstalledNotRunning')}</span>
                         ) : (
                           <span className="text-[var(--app-text-tertiary)]">{t('settings.serviceNotInstalled')}</span>
@@ -914,14 +931,26 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
                     </div>
                     <div className="flex items-center gap-2">
                       {roverserviceStatus.running ? (
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={handleUninstallRoverService}
-                          disabled={roverserviceUninstalling}
-                        >
-                          {roverserviceUninstalling ? t('settings.uninstalling') : t('settings.uninstall')}
-                        </Button>
+                        <>
+                          {roverserviceStatus.binaryInstalled && (
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              onClick={handleReinstallRoverService}
+                              disabled={roverserviceInstalling}
+                            >
+                              {roverserviceInstalling ? t('settings.installing') : t('settings.reinstall')}
+                            </Button>
+                          )}
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={handleUninstallRoverService}
+                            disabled={roverserviceUninstalling}
+                          >
+                            {roverserviceUninstalling ? t('settings.uninstalling') : t('settings.uninstall')}
+                          </Button>
+                        </>
                       ) : (
                         <Button
                           variant="secondary"
@@ -935,21 +964,21 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
                     </div>
                   </ListRow>
 
-                  {/* 重新安装按钮 - 在已安装时显示 */}
-                  {roverserviceStatus.binaryInstalled && (
+                  {/* DNS Server 状态 */}
+                  {roverserviceStatus.running && dnsServerStatus && (
                     <ListRow>
                       <div>
-                        <div className="list-row-title">{t('settings.reinstall')}</div>
-                        <div className="list-row-description">{t('settings.reinstallDesc')}</div>
+                        <div className="list-row-title">{t('settings.dnsServerStatus')}</div>
+                        <div className="list-row-description">
+                          {dnsServerStatus.running ? (
+                            <span className="text-[var(--app-success)]">
+                              {t('settings.dnsServerRunning', { address: dnsServerStatus.address ?? '' })}
+                            </span>
+                          ) : (
+                            <span className="text-[var(--app-text-tertiary)]">{t('settings.dnsServerStopped')}</span>
+                          )}
+                        </div>
                       </div>
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={handleReinstallRoverService}
-                        disabled={roverserviceInstalling}
-                      >
-                        {roverserviceInstalling ? t('settings.installing') : t('settings.reinstall')}
-                      </Button>
                     </ListRow>
                   )}
 

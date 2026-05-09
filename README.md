@@ -20,6 +20,7 @@
 ## ✨ Key Features
 
 - 🎨 **Fully Visualized**: Graphical editing of **routing rules** and **custom DNS**, with support for multiple protocols and ad blocking.
+- 🚀 **Enhanced DNS Engine**: Built-in high-performance concurrent DNS resolver — queries multiple upstream DNS servers simultaneously and automatically adopts the fastest response, drastically reducing DNS latency. Supports UDP / TCP / DoT / DoH protocol mixing, SOCKS5 proxy forwarding, Bootstrap pre-resolution, and Fallback failover — say goodbye to DNS loops and hijacking.
 - 🛡️ **TUN Mode**: Native support for TUN virtual network interfaces, enabling one-click takeover of system-wide traffic.
 - 🔄 **Seamless Clash Compatibility**: Fully compatible with Clash / Mihomo subscriptions and rule sets, allowing zero-cost migration for existing users.
 - 📦 **Out-of-the-box**: Built-in classic routing templates (e.g., domestic whitelist / global mode), eliminating complex setup.

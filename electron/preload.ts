@@ -98,7 +98,7 @@ contextBridge.exposeInMainWorld('ipcRenderer', {
         openUserDataPath: () => ipcRenderer.invoke('core:openUserDataPath'),
         openExternalUrl: (url: string) => ipcRenderer.invoke('core:openExternalUrl', url),
         getActiveConfig: () => ipcRenderer.invoke('core:getActiveConfig'),
-        generateConfig: () => ipcRenderer.invoke('core:generateConfig'),
+        generateConfig: (scene?: string) => ipcRenderer.invoke('core:generateConfig', scene),
         getSelectedProfile: () => ipcRenderer.invoke('core:getSelectedProfile'),
         isServiceInstalled: () => ipcRenderer.invoke('core:isServiceInstalled'),
         updateTrayMenu: () => ipcRenderer.invoke('core:updateTrayMenu'),
@@ -158,11 +158,12 @@ contextBridge.exposeInMainWorld('ipcRenderer', {
     },
 
     // RoverService APIs (macOS and Windows)
-    roverservice: {
-        getInstallationStatus: () => ipcRenderer.invoke('roverservice:getInstallationStatus'),
-        install: (helperPath?: string) => ipcRenderer.invoke('roverservice:install', helperPath),
-        uninstall: () => ipcRenderer.invoke('roverservice:uninstall'),
-    },
+roverservice: {
+getInstallationStatus: () => ipcRenderer.invoke('roverservice:getInstallationStatus'),
+getDnsStatus: () => ipcRenderer.invoke('roverservice:getDnsStatus'),
+install: (helperPath?: string) => ipcRenderer.invoke('roverservice:install', helperPath),
+uninstall: () => ipcRenderer.invoke('roverservice:uninstall'),
+},
 
     // You can expose other apts you need here.
     // ...

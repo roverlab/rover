@@ -1,63 +1,57 @@
 {
-  "dns_servers": [
+  "dnsServers": [
     {
-      "name": "Google",
-      "type": "tls",
-      "server": "8.8.8.8",
-      "detour": "selector_out"
+      "type": "rover",
+      "name": "聚合DNS",
+      "upstreams": "https://cloudflare-dns.com/dns-query, https://dns.google/dns-query",
+      "use_proxy": true,
+      "bootstrap_addrs": "tls://223.5.5.5, tls://120.53.53.53",
+      "fallback_addrs": "https://doh.pub/dns-query, https://dns.alidns.com/dns-query",
+      "id": "Rover",
+      "enabled": true
     },
     {
-      "name": "Cloudflare",
-      "type": "tls",
-      "server": "1.1.1.1"
-    },
-    {
+      "id": "Aliyun",
       "name": "Aliyun",
       "type": "udp",
-      "server": "223.5.5.5"
+      "server": "223.5.5.5",
+      "enabled": true
     },
     {
-      "name": "阿里云",
-      "type": "https",
-      "server": "dns.alidns.com",
-      "domain_resolver": "local"
-    },
-    {
-      "name": "腾讯云",
-      "type": "https",
-      "server": "doh.pub",
-      "domain_resolver": "local"
-    },
-    {
-      "name": "local",
-      "type": "local"
-    },
-    {
+      "id": "fakeip",
       "name": "fakeip",
+      "type": "raw",
+      "enabled": true,
       "raw_data": {
         "tag": "fakeip",
         "type": "fakeip",
         "inet4_range": "198.18.0.0/15",
         "inet6_range": "fc00::/18"
       }
-  
     }
   ],
-  "dns_rules": [
+  "dnsPolicies": [
     {
+      "type": "default",
       "name": "🎯 国内域名解析",
-      "rule_set": [
-      "acl:Apple",
-      "acl:ChinaDomain",
-      "acl:UnBan",
-      "acl:SteamCN",
-      "acl:ChinaMedia",
-      "acl:Download"
-    ],
-      "server": "Aliyun"
+      "server": "Aliyun",
+      "enabled": true,
+      "order": 0,
+      "ruleSet": [
+        "acl:Apple",
+        "acl:ChinaDomain",
+        "acl:UnBan",
+        "acl:SteamCN",
+        "acl:ChinaMedia",
+        "acl:Download"
+      ]
     },
     {
+      "type": "raw",
       "name": "🌏 其它域名IP伪装",
+      "server": "fakeip",
+      "enabled": true,
+      "order": 1,
       "raw_data": {
         "server": "fakeip",
         "query_type": [
@@ -67,62 +61,85 @@
       }
     }
   ],
-  "rules": [
-     {
+  "policies": [
+    {
+      "type": "raw",
       "name": "🏠 私有网络",
+      "enabled": true,
+      "order": 0,
+      "outbound": "",
       "raw_data": {
         "ip_is_private": true,
         "outbound": "direct_out"
       }
     },
     {
-      "rule_set_build_in": [
-        "acl:Apple"
-      ],
+      "type": "default",
+      "name": "🍎 苹果服务",
       "outbound": "direct_out",
-      "name": "🍎 苹果服务"
+      "enabled": true,
+      "order": 1,
+      "ruleSet": [
+        "acl:Apple"
+      ]
     },
     {
-      "rule_set_build_in": [
+      "type": "default",
+      "name": "🎯 国内域名直连",
+      "outbound": "direct_out",
+      "enabled": true,
+      "order": 2,
+      "ruleSet": [
         "acl:ChinaDomain",
         "acl:UnBan",
         "acl:SteamCN",
         "acl:ChinaMedia",
         "acl:Download"
-      ],
-      "outbound": "direct_out",
-      "name": "🎯 国内域名直连"
+      ]
     },
     {
+      "type": "default",
       "name": "🌏 国外穿墙",
-      "rule_set_build_in": [
+      "outbound": "selector_out",
+      "enabled": true,
+      "order": 3,
+      "ruleSet": [
         "geosite:geolocation-!cn",
         "geosite:google",
         "geoip:google",
         "acl:ProxyGFWlist",
         "acl:ProxyMedia"
-      ],
-      "outbound": "selector_out"
+      ]
     },
     {
+      "type": "raw",
       "name": "🔍 未匹配域名DNS解析",
+      "enabled": true,
+      "order": 4,
+      "outbound": "",
       "raw_data": {
         "action": "resolve"
       }
     },
     {
+      "type": "default",
       "name": "🎯国内IP直连",
-      "rule_set_build_in": [
+      "outbound": "direct_out",
+      "enabled": true,
+      "order": 5,
+      "ruleSet": [
         "acl:ChinaIp",
         "acl:ChinaCompanyIp",
         "geoip:cn"
-      ],
-      "outbound": "direct_out"
+      ]
     }
   ],
-  "rule_unmatched_outbound": "selector_out",
-  "tun": true,
-  "dns-unmatched-server": "Google",
-  "dns-resolve-server": "Google",
-  "dns-proxy-server": "Cloudflare"
+  "settings": {
+    "policy-final-outbound": "selector_out",
+    "dns-unmatched-server": "Rover",
+    "dns-resolve-server": "Rover",
+    "dns-proxy-server": "Aliyun",
+    "dns-server-enabled": "true",
+    "dashboard-tun-mode": "true"
+  }
 }

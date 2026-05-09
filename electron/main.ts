@@ -58,8 +58,9 @@ import {
     getBuildInfo,
     handleAppQuit,
     getWindowIconPath,
-    getSelectedProfileWithConfig
+    getSelectedProfileWithConfig,
 } from './app-utils';
+import { startRoverDns, stopRoverDns } from './dns-server';
 import { clearAllDns } from './dns-macos';
 import { initMainI18n, setMainLanguage, t } from './i18n-main';
 
@@ -181,6 +182,17 @@ ipcMain.handle('db:setSetting', async (_, key, value) => {
     if (key === 'dashboard-tun-mode') {
         await singbox.resetController();
         log.info(`[DB] TUN mode ${value === 'true' ? 'enabled' : 'disabled'}, controller reset`);
+    }
+    // DNS 服务开关变化：启停 Rover DNS 端口
+    if (key === 'dns-server-enabled') {
+        log.info(`[DB] dns-server-enabled changed to: ${value}, will ${value === 'true' ? 'start' : 'stop'} DNS server`);
+        if (value === 'true') {
+            await startRoverDns();
+            log.info('[DB] startRoverDns() completed');
+        } else {
+            await stopRoverDns();
+            log.info('[DB] stopRoverDns() completed');
+        }
     }
 });
 ipcMain.handle('db:setPolicyFinalOutbound', async (_, value: string) => {
@@ -331,23 +343,24 @@ ipcMain.handle('core:getTemplates', async () => {
     }
 });
 
-// 获取指定模板的策略列表（包含 dns 和 rule_unmatched_outbound）
+// 获取指定模板的策略列表（与 database.json 统一格式）
 ipcMain.handle('core:getTemplatePolicies', async (_, templatePath: string) => {
     try {
         const fullPath = path.join(getPresetTemplatesPath(), templatePath);
         if (!fs.existsSync(fullPath)) {
-            return { rules: [] };
+            return { policies: [], dnsServers: [], dnsPolicies: [], settings: {} };
         }
         const content = fs.readFileSync(fullPath, 'utf8');
         const data = JSON.parse(content);
         return {
-            rules: data.rules || [],
-            dns: data.dns,
-            rule_unmatched_outbound: data.rule_unmatched_outbound
+            policies: data.policies || [],
+            dnsServers: data.dnsServers || [],
+            dnsPolicies: data.dnsPolicies || [],
+            settings: data.settings || {}
         };
     } catch (e) {
         console.error('Failed to load template:', templatePath, e);
-        return { rules: [] };
+        return { policies: [], dnsServers: [], dnsPolicies: [], settings: {} };
     }
 });
 
@@ -390,13 +403,16 @@ ipcMain.handle('core:isRunning', async () => {
 ipcMain.handle('core:getStartTime', () => singbox.getSingboxStartTime());
 ipcMain.handle('core:stop', async () => {
     log.info('IPC core:stop');
-    
+
+    // 停止 rover DNS 服务
+    await stopRoverDns();
+
     // macOS: 在停止内核前先清除 DNS 设置
     if (process.platform === 'darwin') {
         log.info('[core:stop] macOS: clearing DNS settings...');
         await clearAllDns();
     }
-    
+
     return singbox.stopSingbox();
 });
 
@@ -469,7 +485,7 @@ ipcMain.handle('core:getAvailableOutbounds', async () => {
 
 ipcMain.handle('core:getSelectedProfile', async () => getSelectedProfileWithConfig());
 
-ipcMain.handle('core:generateConfig', async () => generateConfig(sendToRenderer));
+ipcMain.handle('core:generateConfig', async (_, scene?: string) => generateConfig(sendToRenderer, scene));
 
 ipcMain.handle('core:start', async () => startSingbox());
 
@@ -847,6 +863,10 @@ ipcMain.handle('roverservice:getInstallationStatus', async () => {
     return roverservice.getInstallationStatus();
 });
 
+ipcMain.handle('roverservice:getDnsStatus', async () => {
+    return roverservice.getDnsStatus();
+});
+
 ipcMain.handle('roverservice:install', async () => {
     const result = await roverservice.installHelper();
     // 安装成功后更新缓存
@@ -860,11 +880,9 @@ ipcMain.handle('roverservice:install', async () => {
 
 ipcMain.handle('roverservice:uninstall', async () => {
     const result = await roverservice.uninstallHelper();
-    // 卸载成功后更新缓存并重置控制器
+    // 卸载成功后更新缓存
     if (result.success) {
         setCachedIsServiceInstalled(false);
-        // 重置控制器，下次启动时将根据 TUN 模式自动选择
-        await singbox.resetController();
         log.info('[RoverService] Uninstall complete, service status cached: service not installed');
     }
     return result;
@@ -1009,6 +1027,12 @@ dbUtils.cleanupProfileDnsServerDetours();
                 }
                 await singbox.startSingbox(configPath, binaryPath);
                 log.info('Kernel auto started');
+
+                // 同步 DNS 服务状态：根据设置启停 Rover DNS 端口
+                const dnsServerEnabled = dbUtils.getSetting('dns-server-enabled') !== 'false';
+                if (dnsServerEnabled) {
+                    await startRoverDns();
+                }
             } catch (err: any) {
                 log.error(`Auto start kernel failed: ${err?.message || err}`);
             }

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Policy, SingboxRouteRuleWithOutbound } from '../../types/policy';
-import { cnJsonRuleToPolicy, configRouteRuleToPolicy, getPolicyRuleSet } from '../../services/policy';
+import { configRouteRuleToPolicy, getPolicyRuleSet } from '../../services/policy';
 import type { RuleProvider } from '../../types/rule-providers';
 import { normalizeRuleSetBuildInToAclIds } from './utils';
 import { PolicyImportModal } from './PolicyImportModal';
@@ -86,18 +86,53 @@ export function PolicyImportModalContainer({
 
             addNotification(result.message, 'success');
 
-            // 处理 TUN 模式需要管理员权限的情况（只有开启 TUN 时才提示）
-            if (result.tunNeedsAdmin && result.tunValue === true) {
-                addNotification(t('policies.tunNeedsAdmin'), 'error');
-            }
-
-            // 异步生成配置，不阻塞UI
-            window.ipcRenderer.core.generateConfig().catch(console.error);
-
             // 获取更新后的策略列表和兜底出站设置
             const updatedPolicies = await window.ipcRenderer.db.getPolicies() as Policy[];
             onImportComplete(updatedPolicies || [], result.finalOutbound);
+
+            // 先关闭导入弹窗，避免后续 UAC 授权弹窗被导入弹窗遮挡
             onClose();
+
+            // 处理 TUN 模式需要安装服务的情况：弹确认框，用户确认后再触发 UAC 安装
+            // 注意：tunNeedsAdmin=true 表示服务未安装，必须等 TUN 弹窗结束后再生成配置
+            if (result.tunNeedsAdmin && result.tunValue === true) {
+                const tunConfirmed = await confirm({
+                    title: t('policies.tunNeedsInstallTitle'),
+                    message: t('policies.tunNeedsInstallMessage'),
+                    confirmText: t('policies.tunInstallNow'),
+                    hideCancel: true,
+                    variant: 'info'
+                });
+
+                if (tunConfirmed) {
+                    // 用户确认安装服务
+                    addNotification(t('dashboard.installingService'), 'info');
+                    try {
+                        const installResult = await window.ipcRenderer.roverservice.install();
+                        if (installResult.success) {
+                            addNotification(t('dashboard.serviceInstalled'), 'success');
+                        } else {
+                            if (!installResult.isUserCanceled) {
+                                addNotification(t('dashboard.serviceInstallFailed', { error: installResult.error || 'Unknown' }), 'error');
+                            } else {
+                                // 用户在UAC弹窗中拒绝了
+                                await confirm({
+                                    title: t('policies.tunInstallRefusedTitle'),
+                                    message: t('policies.tunInstallRefusedMessage'),
+                                    confirmText: t('common.confirm'),
+                                    hideCancel: true,
+                                    variant: 'warning'
+                                });
+                            }
+                        }
+                    } catch (installErr: unknown) {
+                        addNotification(t('dashboard.serviceInstallFailed', { error: (installErr as Error).message }), 'error');
+                    }
+                }
+            }
+
+            // TUN 弹窗结束后再生成配置，传入场景值以同步 DNS 服务状态
+            window.ipcRenderer.core.generateConfig('template-import').catch(console.error);
         } catch (err: unknown) {
             console.log(err);
             addNotification(t('policies.importFailedWithError', { error: (err as Error).message }), 'error');

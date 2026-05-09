@@ -13,17 +13,21 @@ import * as configBackup from './config-backup';
 import * as subscription from './subscription';
 import { createLogger } from './logger';
 import { getConfigPath, readConfig, generateConfigFile } from './config-file';
-import { getProfilesDir, resolveDataPath, getBuildInfoPath } from './paths';
+import { getProfilesDir, resolveDataPath, getBuildInfoPath, getDataDir } from './paths';
 import { validateProfileContent } from './validation';
-import { setCachedIsServiceInstalled, getCachedIsServiceInstalled } from './roverservice-cache';
+import { getCachedIsServiceInstalled } from './roverservice-cache';
 import { clearAllDns } from './dns-macos';
 import type { LogLevel, LogEntry } from './logger';
 import { t } from './i18n-main';
+import { startRoverDns, stopRoverDns } from './dns-server';
 
 const log = createLogger('AppUtils');
 
+// startRoverDns / stopRoverDns 已移至 dns-server.ts，此处重新导出以保持向后兼容
+export { startRoverDns, stopRoverDns } from './dns-server';
+
 // 从 subscription 模块重新导出辅助函数
-const { saveProfileFile, readProfileContent } = subscription;
+const { saveProfileFile } = subscription;
 
 /**
  * 处理应用退出时的内核关闭逻辑
@@ -32,6 +36,9 @@ const { saveProfileFile, readProfileContent } = subscription;
  * macOS: 清除 DNS 设置让系统使用 DHCP
  */
 export async function handleAppQuit(): Promise<void> {
+    // 停止 rover DNS 服务
+    await stopRoverDns();
+
     if (singbox.isTunModeEnabled()) {
         log.info('[AppQuit] TUN mode is enabled, skipping stopSingbox');
     } else {
@@ -271,16 +278,34 @@ export async function startSingbox(): Promise<boolean> {
  * 生成配置文件
  */
 export async function generateConfig(
-    sendToRendererFn: (channel: string, ...args: any[]) => void
+    sendToRendererFn: (channel: string, ...args: any[]) => void,
+    scene?: string
 ): Promise<string> {
     try {
         const selectedProfile = dbUtils.getSelectedProfile();
-        log.info(`IPC core:generateConfig profile=${selectedProfile?.id ?? 'none'}`);
+        log.info(`IPC core:generateConfig profile=${selectedProfile?.id ?? 'none'} scene=${scene ?? 'default'}`);
         if (!selectedProfile) {
             throw new Error(t('main.errors.noProfileSelected'));
         }
+
+        // 默认场景：使用标准流程（generateConfigFile 内部会自动重启运行中的内核）
         const result = await generateConfigFile(selectedProfile.id, sendToRendererFn);
         log.info(`Config generated successfully at ${result}`);
+
+        // 策略导入场景：额外同步 DNS 服务状态（独立于内核，根据设置决定启停）
+        if (scene === 'template-import') {
+            const dnsServerEnabled = dbUtils.getSetting('dns-server-enabled') !== 'false';
+            try {
+                if (dnsServerEnabled) {
+                    await startRoverDns();
+                } else {
+                    await stopRoverDns();
+                }
+            } catch (e) {
+                console.error('Failed to sync DNS server state after template import:', e);
+            }
+        }
+
         return result;
     } catch (err: any) {
         log.error(`Failed to generate config: ${err.message}`);

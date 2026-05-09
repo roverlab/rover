@@ -107,7 +107,7 @@ const MemoizedSettings = React.memo(Settings);
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState<Page>('Dashboard');
-  const [settingsInitialTab, setSettingsInitialTab] = useState<'basic' | 'advanced' | 'dns' | 'about' | null>(null);
+  const [settingsInitialTab, setSettingsInitialTab] = useState<'basic' | 'advanced' | 'about' | null>(null);
 
   const goToAdvancedSettings = useCallback(() => {
     setSettingsInitialTab('advanced');

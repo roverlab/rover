@@ -8,4 +8,5 @@ export { DnsPolicyDeleteConfirmModal } from './DnsPolicyDeleteConfirmModal';
 export { DnsPolicyBatchDeleteConfirmModal } from './DnsPolicyBatchDeleteConfirmModal';
 export { DnsPolicySettingsModal } from './DnsPolicySettingsModal';
 export { DnsPolicyRowDropdown } from './DnsPolicyRowDropdown';
+export { DnsServersModal, type DnsServerType, type DnsServerConfig } from './DnsServersModal';
 export * from './utils';

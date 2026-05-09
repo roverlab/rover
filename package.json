@@ -14,7 +14,8 @@
     "gen:icon": "node --input-type=module -e \"import pngToIco from 'png-to-ico'; import { writeFileSync } from 'node:fs'; const buf = await pngToIco('public/icon.png'); writeFileSync('public/icon.ico', buf);\"",
     "pack:win": "npm run clean && npm run gen:icon && npm run build && node scripts/pack-win.cjs",
     "release": "node scripts/release-tag.cjs",
-    "download:rulesets": "npx tsx scripts/download-rulesets.js"
+    "download:rulesets": "npx tsx scripts/download-rulesets.js",
+    "test:dns": "cd roverservice && go test -v -count=1 -timeout 120s ./resolver/"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.2.4",

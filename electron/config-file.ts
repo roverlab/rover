@@ -251,12 +251,15 @@ export function writeConfig(config: any): void {
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8');
 }
 
-/** 若内核运行中则重启，使新配置生效 */
-async function restartKernelIfRunning(): Promise<void> {
+/** 若内核运行中则重启，使新配置生效
+ *  使用 resetController 代替 stopSingbox，确保：
+ *  1. 清空 controllerInstance，下次 startSingbox 时根据最新 TUN 设置创建正确的 Controller
+ *  2. 等待端口释放（600ms），避免 "address already in use" 错误
+ */
+export async function restartKernelIfRunning(): Promise<void> {
     const isRunning = await isSingboxRunningAsync();
     if (!isRunning) return;
-    await singbox.stopSingbox();
-    await new Promise((r) => setTimeout(r, 500));
+    await singbox.resetController();
     const configPath = getConfigPath();
     const binaryPath = singbox.getSingboxBinaryPath();
     if (fs.existsSync(configPath) && fs.existsSync(binaryPath)) {
@@ -389,6 +392,7 @@ export function mergeSettingsIntoConfig(config: SingboxConfig): SingboxConfig {
     const mixedPort = parseInt(settings['mixed-port'], 10) || 7890;
     const logLevelSetting = settings['log-level'] || 'warn'
     const tunModeEnabled = settings['dashboard-tun-mode'] === 'true';
+    const dnsProxyPort = parseInt(settings['dns-proxy-port'], 10) || 0;
 
     let apiUrl = settings['api-url'] || '127.0.0.1:9090';
     apiUrl = apiUrl.replace(/^https?:\/\//, '');
@@ -402,6 +406,17 @@ export function mergeSettingsIntoConfig(config: SingboxConfig): SingboxConfig {
         listen: isAllowLan ? '0.0.0.0' : '127.0.0.1',
         listen_port: mixedPort
     }];
+
+    // DNS 专用代理端口（可选）
+    if (dnsProxyPort > 0) {
+        inbounds.push({
+            type: 'mixed',
+            tag: 'dns_proxy_in',
+            listen: isAllowLan ? '0.0.0.0' : '127.0.0.1',
+            listen_port: dnsProxyPort
+        });
+        console.log(`[Config] DNS proxy inbound added on port ${dnsProxyPort}`);
+    }
 
     if (tunModeEnabled) {
         console.log('[Config] TUN mode enabled, adding TUN inbound');
@@ -465,6 +480,38 @@ export function mergeSettingsIntoConfig(config: SingboxConfig): SingboxConfig {
             // raw 类型使用 raw_data，但需要覆盖 tag 字段为数据库中的 id
             if (s.type === 'raw' && s.raw_data) {
                 return { ...s.raw_data, tag: s.id } as DnsServer;
+            }
+            
+            // rover 类型：生成一个指向 roverservice 本地 HTTPS DoH 服务的 https server
+            if (s.type === 'rover') {
+                const dnsPort = settings['dns-server-port'] || '5353';
+                const port = parseInt(dnsPort, 10);
+                // Pass upstream config via headers (sing-box supports custom headers)
+                const headers: Record<string, string> = {};
+                if (s.upstreams) headers['X-Upstreams'] = s.upstreams;
+                // use_proxy: 当开启时，使用 dns-proxy-port
+                if (s.use_proxy) {
+                    const dnsProxyPort = parseInt(settings['dns-proxy-port'], 10) || 17890;
+                    headers['X-Proxy'] = 'socks5';
+                    headers['X-Proxy-Addr'] = `127.0.0.1:${dnsProxyPort}`;
+                }
+                if (s.bootstrap_addrs) headers['X-Bootstrap-Addrs'] = s.bootstrap_addrs;
+                if (s.fallback_addrs) headers['X-Fallback-Addrs'] = s.fallback_addrs;
+                const obj: DnsServer = {
+                    type: 'https',
+                    tag: s.id,
+                    server: '127.0.0.1',
+                    server_port: port,
+                    path: '/dns-query',
+                    headers,
+                    // Self-signed cert: skip TLS verification
+                    tls: {
+                        enabled: true,
+                        insecure: true,
+                    },
+                };
+                if (s.detour) obj.detour = s.detour;
+                return obj;
             }
             
             const obj: DnsServer = { type: s.type, tag: s.id };
@@ -886,6 +933,17 @@ function addSystemRouteRules(config: SingboxConfig, settings: Record<string, str
         ]
             
     }
+
+    // DNS 专用代理端口：所有流量直接走代理（selector_out）
+    const dnsProxyPort = parseInt(settings['dns-proxy-port'], 10) || 0;
+    if (dnsProxyPort > 0) {
+        appendRules.push({
+            "inbound": "dns_proxy_in",
+            "outbound": "selector_out"
+        });
+        console.log('[Config] Route rule: dns_proxy_in -> selector_out (proxy all DNS inbound traffic)');
+    }
+
     config.route.rules = [
         ...appendRules,
         ...(config.route.rules || []),

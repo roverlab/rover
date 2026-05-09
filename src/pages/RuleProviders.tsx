@@ -422,9 +422,11 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
                 );
             case 'type':
                 return (
-                    <span className="policy-type-badge">
-                        {provider.type || 'clash'}
-                    </span>
+                    <div className="flex items-center justify-center h-full">
+                        <span className="inline-flex items-center rounded-md border border-[var(--app-stroke)]/70 px-1.5 py-0.5 text-[11px] font-semibold text-[var(--app-text-secondary)] tracking-wide">
+                            {provider.type || 'clash'}
+                        </span>
+                    </div>
                 );
             case 'lastUpdate':
                 return (

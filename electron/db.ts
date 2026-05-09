@@ -115,6 +115,14 @@ export interface DnsServer {
     prefer_go?: boolean;
     domain_resolver?: string;
     raw_data?: object;
+    /** rover: 上游DNS地址列表（逗号分隔） */
+    upstreams?: string;
+    /** rover: 是否使用代理（使用DNS代理端口） */
+    use_proxy?: boolean;
+    /** rover: Bootstrap DNS 地址列表（逗号分隔，IP:port 格式） */
+    bootstrap_addrs?: string;
+    /** rover: Fallback DNS 地址列表（逗号分隔，IP:port 格式） */
+    fallback_addrs?: string;
 }
 
 interface DbData {
@@ -298,6 +306,15 @@ export function setSetting(key: string, value: string) {
 
 export function getDnsServers(): DnsServer[] {
     return withDb((data) => [...(data.dnsServers ?? [])]);
+}
+
+/**
+ * 直接设置 DNS 服务器列表（用于模板导入时一次性替换）
+ */
+export function setDnsServers(servers: DnsServer[]): void {
+    withDb((data) => {
+        data.dnsServers = servers;
+    });
 }
 
 export function addDnsServer(server: Omit<DnsServer, 'order' | 'id'> & { id?: string }): string {
@@ -1274,6 +1291,7 @@ export function clearAllProfileDnsServerDetours(): void {
 
 /**
  * 清空所有策略相关数据（用于导入模板前清理）
+ * 保留：profiles（订阅）、ruleProviders（规则集）、settings（仅覆盖重名）、dnsServers（由导入逻辑自行处理禁用）
  */
 export function clearAllPolicyData(): void {
     withDb((data) => {

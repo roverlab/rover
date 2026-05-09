@@ -195,12 +195,14 @@ interface ConfirmOptions {
     confirmText?: string;
     cancelText?: string;
     variant?: 'danger' | 'warning' | 'info';
+    hideCancel?: boolean;
 }
 
 interface ConfirmState extends ConfirmOptions {
     isOpen: boolean;
     onConfirm: () => void;
     onCancel: () => void;
+    hideCancel?: boolean;
 }
 
 // 确认对话框组件
@@ -211,6 +213,7 @@ function ConfirmDialog({
     confirmText = '确定', 
     cancelText = '取消',
     variant = 'warning',
+    hideCancel = false,
     onConfirm, 
     onCancel 
 }: ConfirmState) {
@@ -235,7 +238,7 @@ function ConfirmDialog({
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.15 }}
                     className="absolute inset-0 z-0 bg-black/40 backdrop-blur-sm"
-                    onClick={onCancel}
+                    onClick={hideCancel ? onConfirm : onCancel}
                 />
                 <motion.div
                     initial={{ opacity: 0, scale: 0.95, y: 10 }}
@@ -270,12 +273,14 @@ function ConfirmDialog({
                         </p>
                     </div>
                     <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-border bg-muted/30">
+                        {!hideCancel && (
                         <button
                             onClick={onCancel}
                             className="px-4 py-2 text-[13px] font-medium text-muted-foreground hover:text-foreground hover:bg-accent rounded-md transition-colors"
                         >
                             {cancelText}
                         </button>
+                        )}
                         <button
                             onClick={onConfirm}
                             className={cn(

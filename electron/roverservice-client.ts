@@ -15,6 +15,44 @@ import { getBuiltinResourcesPath } from './paths';
 
 const log = createLogger('RoverService');
 
+// Expected API version - must match roverservice/main.go APIVersion
+// When this version is higher than the running service, user needs to reinstall
+const EXPECTED_API_VERSION = '1.1.0';
+
+/**
+ * Compare two semver version strings.
+ * Returns: 1 if a > b, -1 if a < b, 0 if equal.
+ */
+function compareVersions(a: string, b: string): number {
+    const pa = a.split('.').map(Number);
+    const pb = b.split('.').map(Number);
+    const len = Math.max(pa.length, pb.length);
+    for (let i = 0; i < len; i++) {
+        const na = pa[i] || 0;
+        const nb = pb[i] || 0;
+        if (na > nb) return 1;
+        if (na < nb) return -1;
+    }
+    return 0;
+}
+
+/**
+ * Check if the running RoverService version meets the expected version.
+ * Call this before using new APIs like /dns/start.
+ * Returns true if version is sufficient, false if upgrade is needed.
+ */
+export async function isVersionSufficient(): Promise<boolean> {
+    try {
+        const response = await getStatus();
+        if (!response.success || !response.data?.version) {
+            return false;
+        }
+        return compareVersions(response.data.version, EXPECTED_API_VERSION) >= 0;
+    } catch {
+        return false;
+    }
+}
+
 // Platform-specific socket path
 // Must match the path defined in roverservice/main.go
 const SOCKET_PATH = process.platform === 'win32'
@@ -43,6 +81,10 @@ const API = {
     SINGBOX_RESTART: '/singbox/restart',
     PROCESSES_LIST: '/processes',
     PROCESSES_KILL: '/processes/kill',
+    DNS_QUERY: '/dns/query',
+    DNS_START: '/dns/start',
+    DNS_STOP: '/dns/stop',
+    DNS_STATUS: '/dns/status',
 } as const;
 
 // Types
@@ -447,6 +489,8 @@ export interface InstallationStatus {
     running: boolean;
     pid?: number;
     version?: string;
+    /** Whether the running service version meets EXPECTED_API_VERSION */
+    needsUpgrade?: boolean;
 }
 
 export async function getInstallationStatus(): Promise<InstallationStatus> {
@@ -474,6 +518,12 @@ export async function getInstallationStatus(): Promise<InstallationStatus> {
             status.running = true;
             status.pid = response.data.pid;
             status.version = response.data.version;
+            // Check if version is sufficient
+            if (response.data.version) {
+                status.needsUpgrade = compareVersions(response.data.version, EXPECTED_API_VERSION) < 0;
+            } else {
+                status.needsUpgrade = true;
+            }
         }
     } catch {
         // Ignore errors
@@ -883,6 +933,139 @@ Write-Host "Uninstallation completed successfully"
     });
 }
 
+// ---------------------------------------------------------------
+// DNS Query API
+// ---------------------------------------------------------------
+
+/** DNS query request */
+export interface DnsQueryRequest {
+    /** Domain name to query (e.g. "google.com") */
+    name: string;
+    /** DNS query type: "A", "AAAA", "CNAME", "MX", "TXT", etc. (default: "A") */
+    type?: string;
+    /** DNS upstream addresses to query concurrently. If empty, uses defaults. */
+    upstreams?: string[];
+    /** Proxy type: "" | "socks5" */
+    proxy?: string;
+    /** Proxy address, e.g. "127.0.0.1:1080" */
+    proxy_addr?: string;
+    /** Proxy username */
+    proxy_user?: string;
+    /** Proxy password */
+    proxy_pass?: string;
+    /** Query timeout in milliseconds (default: 10000) */
+    timeout?: number;
+}
+
+/** Single DNS answer record */
+export interface DnsQueryAnswer {
+    name: string;
+    type: string;
+    ttl: number;
+    value: string;
+}
+
+/** DNS query response */
+export interface DnsQueryResponse {
+    answers: DnsQueryAnswer[];
+    rcode: string;
+    server?: string;
+}
+
+/**
+ * Perform a concurrent DNS query via RoverService
+ * Queries multiple DoH upstreams simultaneously and returns the fastest response.
+ * Supports optional SOCKS5 proxy for all upstreams.
+ */
+export async function dnsQuery(req: DnsQueryRequest): Promise<ApiResponse<DnsQueryResponse>> {
+    log.info(`DNS query: ${req.name} (${req.type || 'A'})`);
+
+    try {
+        const response = await request<DnsQueryResponse>('POST', API.DNS_QUERY, req, 15000);
+        if (response.success) {
+            log.info(`DNS query succeeded: ${req.name} -> ${response.data?.answers?.length ?? 0} answers`);
+        } else {
+            log.error(`DNS query failed: ${response.error}`);
+        }
+        return response;
+    } catch (err: any) {
+        log.error(`DNS query error: ${err.message}`);
+        return { success: false, error: err.message };
+    }
+}
+
+/**
+ * Start a local HTTPS DoH DNS server via RoverService
+ * The server uses a self-signed TLS certificate and forwards queries
+ * to concurrent DoH upstreams (optionally through a SOCKS5 proxy).
+ * Upstreams are specified per-query via request headers.
+ */
+export interface DnsStartRequest {
+    /** Local address to bind, e.g. "127.0.0.1:5353" */
+    address?: string;
+    /** Directory to store TLS certificate and key. If empty, system temp dir is used. */
+    cert_dir?: string;
+    /** Enable DNS query logging to cert_dir/dns-query.log */
+    enable_log?: boolean;
+}
+
+export async function startDnsServer(req: DnsStartRequest): Promise<ApiResponse<{ address: string; status: string; cert_path?: string }>> {
+    log.info(`Starting DNS server on ${req.address || '127.0.0.1:5353'}`);
+
+    try {
+        const response = await request<{ address: string; status: string; cert_path: string }>('POST', API.DNS_START, req, 15000);
+        if (response.success) {
+            log.info(`DNS server started: ${response.data?.address}`);
+        } else {
+            log.error(`DNS server start failed: ${response.error}`);
+        }
+        return response;
+    } catch (err: any) {
+        log.error(`DNS server start error: ${err.message}`);
+        return { success: false, error: err.message };
+    }
+}
+
+/**
+ * Stop the local HTTPS DoH DNS server
+ */
+export async function stopDnsServer(): Promise<ApiResponse<{ address: string; status: string }>> {
+    log.info('Stopping DNS server');
+
+    try {
+        const response = await request<{ address: string; status: string }>('POST', API.DNS_STOP, {}, 15000);
+        if (response.success) {
+            log.info('DNS server stopped');
+        } else {
+            log.error(`DNS server stop failed: ${response.error}`);
+        }
+        return response;
+    } catch (err: any) {
+        log.error(`DNS server stop error: ${err.message}`);
+        return { success: false, error: err.message };
+    }
+}
+
+/** DNS server status response */
+export interface DnsServerStatus {
+    running: boolean;
+    address?: string;
+    cert_path?: string;
+}
+
+/**
+ * Get the current DNS server status via RoverService
+ */
+export async function getDnsStatus(): Promise<ApiResponse<DnsServerStatus>> {
+    try {
+        const response = await request<DnsServerStatus>('GET', API.DNS_STATUS, undefined, 5000);
+        return response;
+    } catch (err: any) {
+        log.error(`DNS status check error: ${err.message}`);
+        return { success: false, error: err.message };
+    }
+}
+
 // Export all functions
 export default {
     isSupported,
@@ -902,4 +1085,9 @@ export default {
     getInstallationStatus,
     installHelper,
     uninstallHelper,
+    dnsQuery,
+    startDnsServer,
+    stopDnsServer,
+    getDnsStatus,
+    isVersionSufficient,
 };

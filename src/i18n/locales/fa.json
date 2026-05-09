@@ -587,6 +587,11 @@
     "presetAdded": "{{count}} اضافه شد",
     "presetUpdated": "{{count}} به‌روزرسانی شد",
     "tunNeedsAdmin": "TUN نمی‌تواند فعال شود. برای اعمال آن سرویس سیستم را در تنظیمات نصب کنید.",
+    "tunNeedsInstallTitle": "حالت TUN لازم است",
+    "tunNeedsInstallMessage": "این الگو به حالت TUN نیاز دارد، اما سرویس سیستم نصب نشده است. آیا می‌خواهید الان نصب کنید؟",
+    "tunInstallNow": "همین الان نصب کنید",
+    "tunInstallRefusedTitle": "حالت TUN فعال نشد",
+    "tunInstallRefusedMessage": "شما از نصب سرویس سیستم امتناع کردید. حالت TUN نمی‌تواند فعال شود. می‌توانید از تنظیمات کارت شبکه مجازی آن را دوباره فعال کنید.",
     "ruleSetPickerTitle": "انتخاب مجموعه قوانین",
     "ruleSetPickerSearch": "جستجوی نام یا ID مجموعه قوانین...",
     "ruleSetPickerEmpty": "بدون مجموعه قوانین",
@@ -873,6 +878,7 @@
     "valResolverRequired": "هنگام استفاده از یک دامنه به عنوان سرور، یک تفکیک‌کننده دامنه مشخص کنید",
     "valRawEmpty": "JSON خام نمی‌تواند خالی باشد",
     "valRawInvalid": "JSON خام نامعتبر",
+  "valBootstrapRequired": "برای نوع rover بدون پروکسی، Bootstrap DNS الزامی است",
     "refBlockDelete": "\"{{id}}\" توسط قوانین زیر ارجاع داده شده و نمی‌تواند حذف شود:\n\n{{lines}}\n\nابتدا ارجاع‌ها را حذف کنید.",
     "refBlockDisable": "\"{{id}}\" توسط قوانین زیر ارجاع داده شده و نمی‌تواند غیرفعال شود:\n\n{{lines}}\n\nابتدا ارجاع‌ها را حذف کنید.",
     "refTypeDns": "سیاست DNS",
@@ -1005,11 +1011,8 @@
         "ruleNameRequired": "نام ارائه‌دهنده قوانین نمی‌تواند خالی باشد",
         "localRuleRequiresRule": "ارائه‌دهنده قوانین محلی باید حداقل یک قانون داشته باشد",
         "remoteUrlRequired": "URL ارائه‌دهنده قوانین راه دور نمی‌تواند خالی باشد",
-        "templateImportSuccess": "{{count}} سیاست وارد شد",
-        "suffixDns": "؛ تنظیمات DNS اعمال شد",
-        "suffixFinalOutbound": "؛ خروجی نهایی پیش‌فرض تنظیم شد",
-        "suffixTun": "؛ حالت TUN تنظیم شد",
-        "templateImportFailed": "وارد کردن ناموفق: {{message}}"
+        "templateImportSuccess": "وارد کردن موفق",
+        "templateImportFailed": "وارد کردن ناموفق"
       },
       "core": {
         "portNotReleased": "پورت {{host}}:{{port}} در {{timeoutMs}}ms آزاد نشد، لطفاً بعداً دوباره امتحان کنید",

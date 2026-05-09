@@ -23,11 +23,13 @@ import (
 	"time"
 
 	"github.com/kardianos/service"
+
+	"roverservice/resolver"
 )
 
 const (
-	// API version
-	APIVersion = "1.0.0"
+// API version
+APIVersion = "1.1.0"
 	// Default HTTP timeout
 	DefaultTimeout = 30 * time.Second
 	// Service name
@@ -57,9 +59,10 @@ func init() {
 }
 
 var (
-	singboxMu     sync.Mutex
-	svcLogger     service.Logger
+	singboxMu      sync.Mutex
+	svcLogger      service.Logger
 	isUninstalling bool
+	dnsManager     = resolver.NewServerManager()
 )
 
 // Response represents a standard API response
@@ -180,6 +183,12 @@ func (p *program) run() {
 func (p *program) Stop(s service.Service) error {
 	// Stop should not block. Return with a few seconds.
 	logInfo("Service stopping...")
+
+	// Stop DNS server if running
+	if running, _, _ := dnsManager.Status(); running {
+		logInfo("Stopping DNS server during service stop")
+		dnsManager.Stop()
+	}
 
 	// Stop sing-box if running
 	singboxMu.Lock()
@@ -969,6 +978,12 @@ func createHTTPServer() *http.Server {
 	mux.HandleFunc("/check-path", handleCheckPath)
 	mux.HandleFunc("/read-file", handleReadFile)
 
+	// DNS resolver
+	mux.Handle("/dns/query", dnsManager.ServeDNS())
+	mux.HandleFunc("/dns/start", handleDNSStart)
+	mux.HandleFunc("/dns/stop", handleDNSStop)
+	mux.HandleFunc("/dns/status", handleDNSStatus)
+
 	server := &http.Server{
 		Handler:      mux,
 		ReadTimeout:  DefaultTimeout,
@@ -1240,3 +1255,83 @@ func isWindowsAdmin() bool {
 	return err == nil
 }
 
+// ---------------------------------------------------------------
+// ---------------------------------------------------------------
+// DNS Server Start/Stop API
+// ---------------------------------------------------------------
+
+// handleDNSStart handles POST /dns/start
+func handleDNSStart(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		sendError(w, http.StatusMethodNotAllowed, "Method not allowed", nil)
+		return
+	}
+
+	var req resolver.StartRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		sendError(w, http.StatusBadRequest, "Invalid request body", err)
+		return
+	}
+
+	logInfo("[DNS] Starting DNS server on %s", req.Address)
+
+	srv, err := dnsManager.Start(req.Address, req.CertDir, req.LogEnabled)
+	if err != nil {
+		logError("[DNS] Failed to start DNS server: %v", err)
+		sendError(w, http.StatusInternalServerError, "Failed to start DNS server", err)
+		return
+	}
+	logInfo("[DNS] DNS server started successfully on %s", srv.Addr())
+
+	sendSuccess(w, map[string]string{
+		"address":   srv.Addr(),
+		"status":    "running",
+		"cert_path": srv.CertPath(),
+	}, "DNS server started")
+}
+
+// handleDNSStop handles POST /dns/stop
+func handleDNSStop(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		sendError(w, http.StatusMethodNotAllowed, "Method not allowed", nil)
+		return
+	}
+
+	running, addr, _ := dnsManager.Status()
+	if !running {
+		sendSuccess(w, nil, "DNS server is not running")
+		return
+	}
+
+	if err := dnsManager.Stop(); err != nil {
+		sendError(w, http.StatusInternalServerError, "Failed to stop DNS server", err)
+		return
+	}
+
+	sendSuccess(w, map[string]string{
+		"address": addr,
+		"status":  "stopped",
+	}, "DNS server stopped")
+}
+
+// handleDNSStatus handles GET /dns/status
+func handleDNSStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		sendError(w, http.StatusMethodNotAllowed, "Method not allowed", nil)
+		return
+	}
+
+	running, addr, certPath := dnsManager.Status()
+	if !running {
+		sendSuccess(w, map[string]interface{}{
+			"running": false,
+		}, "DNS server is not running")
+		return
+	}
+
+	sendSuccess(w, map[string]interface{}{
+		"running":   true,
+		"address":   addr,
+		"cert_path": certPath,
+	}, "DNS server is running")
+}

@@ -542,7 +542,7 @@
     }
 
     .page-header {
-        @apply flex items-start justify-between gap-5 pt-12 pb-5 px-10 shrink-0;
+        @apply flex items-center justify-between gap-5 pt-10 pb-2 px-10 shrink-0;
     }
 
     .page-content {
