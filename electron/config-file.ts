@@ -400,7 +400,8 @@ export function mergeSettingsIntoConfig(config: SingboxConfig): SingboxConfig {
     const mixedPort = parseInt(settings['mixed-port'], 10) || 7890;
     const logLevelSetting = settings['log-level'] || 'warn'
     const tunModeEnabled = settings['dashboard-tun-mode'] === 'true';
-    const dnsProxyPort = parseInt(settings['dns-proxy-port'], 10) || 0;
+    const dnsServerEnabled = settings['dns-server-enabled'] !== 'false';
+    const dnsProxyPort = parseInt(settings['dns-proxy-port'], 10) || 17890;
 
     let apiUrl = settings['api-url'] || '127.0.0.1:9090';
     apiUrl = apiUrl.replace(/^https?:\/\//, '');
@@ -415,8 +416,8 @@ export function mergeSettingsIntoConfig(config: SingboxConfig): SingboxConfig {
         listen_port: mixedPort
     }];
 
-    // DNS 专用代理端口（可选）
-    if (dnsProxyPort > 0) {
+    // DNS 专用代理端口：dns-server-enabled 开启时自动启用，默认 17890
+    if (dnsServerEnabled) {
         inbounds.push({
             type: 'mixed',
             tag: 'dns_proxy_in',
@@ -943,8 +944,9 @@ function addSystemRouteRules(config: SingboxConfig, settings: Record<string, str
     }
 
     // DNS 专用代理端口：所有流量直接走代理（selector_out）
-    const dnsProxyPort = parseInt(settings['dns-proxy-port'], 10) || 0;
-    if (dnsProxyPort > 0) {
+    const dnsServerEnabled = settings['dns-server-enabled'] !== 'false';
+    const dnsProxyPort = parseInt(settings['dns-proxy-port'], 10) || 17890;
+    if (dnsServerEnabled) {
         appendRules.push({
             "inbound": "dns_proxy_in",
             "outbound": "selector_out"
