@@ -251,14 +251,22 @@ export function writeConfig(config: any): void {
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8');
 }
 
-/** 若内核运行中则重启，使新配置生效
+/** 若内核运行中则重启，使新配置生效；否则仅重置 Controller 缓存
  *  使用 resetController 代替 stopSingbox，确保：
  *  1. 清空 controllerInstance，下次 startSingbox 时根据最新 TUN 设置创建正确的 Controller
  *  2. 等待端口释放（600ms），避免 "address already in use" 错误
+ *
+ *  重要：即使内核未运行也要重置 controllerInstance，因为配置生成可能改变了 TUN 模式设置，
+ *  如果不复用旧 Controller，下次启动时会用错误的 Controller（如 TUN 开启但用的是 LocalSingboxController）
+ *  导致 "Access is denied" 错误。
  */
 export async function restartKernelIfRunning(): Promise<void> {
     const isRunning = await isSingboxRunningAsync();
-    if (!isRunning) return;
+    if (!isRunning) {
+        // 内核未运行，但仍需重置 Controller 缓存，确保下次启动使用正确的 Controller 类型
+        await singbox.resetController();
+        return;
+    }
     await singbox.resetController();
     const configPath = getConfigPath();
     const binaryPath = singbox.getSingboxBinaryPath();
@@ -1125,12 +1133,7 @@ export async function generateConfigFile(
         // 使用新的纯净函数处理配置的转换和写入
         const configPath = await writeConfigFileOnly(profileId);
         
-        // 记录生成配置时的 TUN 模式状态到数据库（用于启动时判断是否需要重新生成）
-        const settings = dbUtils.getAllSettings();
-        const tunModeEnabled = settings['dashboard-tun-mode'] === 'true';
-        dbUtils.setSetting('last-config-tun-mode', tunModeEnabled ? 'true' : 'false');
-        
-        console.log(`Generated config.json for profile ${profileId} (TUN: ${tunModeEnabled})`);
+        console.log(`Generated config.json for profile ${profileId}`);
         await restartKernelIfRunning();
         return configPath;
     } finally {

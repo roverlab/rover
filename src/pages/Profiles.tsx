@@ -44,8 +44,6 @@ interface Profile {
   updateInterval?: number;
   /** 订阅用户信息（流量、过期时间） */
   subscriptionUserinfo?: SubscriptionUserinfo;
-  /** 代理节点列表 */
-  nodes?: Array<{ name: string; type: string }>;
 }
 
 /** 格式化字节为可读字符串 */
@@ -76,6 +74,7 @@ interface ProfilesProps {
 export function Profiles({ isActive = true }: ProfilesProps) {
 const { t } = useTranslation();
 const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [nodeCounts, setNodeCounts] = useState<Record<string, number>>({});
   const [urlInput, setUrlInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
@@ -143,6 +142,17 @@ const [profiles, setProfiles] = useState<Profile[]>([]);
     try {
       const data = await window.ipcRenderer.db.getProfiles();
       setProfiles(data);
+      // 异步加载每个 profile 的节点数
+      const counts: Record<string, number> = {};
+      await Promise.all(data.map(async (p: Profile) => {
+        try {
+          const nodes = await window.ipcRenderer.db.getProfileNodes(p.id);
+          counts[p.id] = nodes.length;
+        } catch {
+          counts[p.id] = 0;
+        }
+      }));
+      setNodeCounts(counts);
     } catch (err) {
       console.error('Failed to load profiles', err);
     }
@@ -662,7 +672,7 @@ const [profiles, setProfiles] = useState<Profile[]>([]);
                     <div className="flex items-center gap-4">
                       <div className="profile-info-row">
                         <Link className="w-3 h-3" />
-                        <span className="profile-info-value font-medium text-[var(--app-text-secondary)]">{profile.nodes?.length ?? 0}</span>
+                        <span className="profile-info-value font-medium text-[var(--app-text-secondary)]">{nodeCounts[profile.id] ?? 0}</span>
                         <span className="text-[10px] text-[var(--app-text-quaternary)]">{t('profiles.nodes')}</span>
                       </div>
                       {profile.type === 'remote' && profile.updateInterval ? (

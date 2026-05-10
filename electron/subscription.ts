@@ -524,9 +524,6 @@ export async function processProfileContent(content: string, profileId: string):
         console.warn(`[RuleProviders] Some rule providers failed to download for profile ${profileId}: ${failedItems}`);
     }
 
-    // 解析并保存代理节点列表
-    const nodes = parseProxyNodes(content);
-    dbUtils.updateProfileNodes(profileId, nodes);
 }
 
 /**

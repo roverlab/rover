@@ -480,10 +480,20 @@ export function Connections({ isActive = true }: ConnectionsProps) {
 
                   {/* 链路 */}
                   <div className="conn-list-col-chain">
-                    <div className="flex items-center gap-1 min-w-0 flex-wrap">
-                      {conn.chains.length > 0 ? conn.chains.map((chain) => (
-                        <span key={chain} className="conn-chain-chip" title={chain}>{chain}</span>
-                      )) : <span className="conn-subtle">-</span>}
+                    <div className="flex items-center gap-1 min-w-0 flex-wrap conn-chain-wrap">
+                      {conn.chains.length > 0 ? conn.chains.map((chain, idx) => {
+                        const isLast = idx === conn.chains.length - 1;
+                        const displayChain = isLast
+                          ? (chain === 'selector_out' ? t('outbound.proxy')
+                            : chain === 'direct_out' ? t('outbound.directOut')
+                            : chain === 'block_out' ? t('outbound.blockOut')
+                            : chain === 'final' ? t('outbound.finalSelector')
+                            : chain)
+                          : chain;
+                        return (
+                          <span key={chain + idx} className="conn-chain-chip" title={chain}>{displayChain}</span>
+                        );
+                      }) : <span className="conn-subtle">-</span>}
                     </div>
                   </div>
 

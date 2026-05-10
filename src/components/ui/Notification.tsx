@@ -78,7 +78,7 @@ function NotificationContainer({ notifications, removeNotification }: Notificati
                         animate={{ opacity: 1, x: 0, scale: 1 }}
                         exit={{ opacity: 0, x: 20, scale: 0.95 }}
                         className={cn(
-                            "px-3.5 py-2.5 rounded-lg shadow-sm flex items-center space-x-2.5 text-[13px] font-medium min-w-[180px] max-w-[360px] border bg-background",
+                            "px-3.5 py-2.5 rounded-lg shadow-sm flex items-start space-x-2.5 text-[13px] font-medium min-w-[180px] max-w-[360px] border bg-background overflow-hidden",
                             n.type === 'success' && "border-green-200 text-foreground",
                             n.type === 'error' && "border-destructive/30 text-foreground",
                             n.type === 'info' && "border-blue-200 text-foreground",
@@ -86,21 +86,21 @@ function NotificationContainer({ notifications, removeNotification }: Notificati
                         )}
                     >
                         {n.type === 'success' && (
-                            <CheckCircle className="w-4 h-4 text-[var(--app-success)] shrink-0" />
+                            <CheckCircle className="w-4 h-4 text-[var(--app-success)] shrink-0 mt-0.5" />
                         )}
                         {n.type === 'error' && (
-                            <AlertCircle className="w-4 h-4 text-destructive shrink-0" />
+                            <AlertCircle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
                         )}
                         {n.type === 'info' && (
-                            <AlertCircle className="w-4 h-4 text-blue-500 shrink-0" />
+                            <AlertCircle className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
                         )}
                         {n.type === 'warning' && (
-                            <AlertCircle className="w-4 h-4 text-yellow-500 shrink-0" />
+                            <AlertCircle className="w-4 h-4 text-yellow-500 shrink-0 mt-0.5" />
                         )}
-                        <span className="flex-1 break-words">{n.message}</span>
-                        <button 
+                        <span className="flex-1 break-all leading-relaxed min-w-0">{n.message}</span>
+                        <button
                             onClick={() => removeNotification(n.id)}
-                            className="shrink-0 p-0.5 hover:bg-accent rounded transition-colors"
+                            className="shrink-0 p-0.5 hover:bg-accent rounded transition-colors mt-0.5"
                         >
                             <X className="w-3.5 h-3.5 text-muted-foreground" />
                         </button>
@@ -151,7 +151,7 @@ export function NotificationList({
                         animate={{ opacity: 1, x: 0, scale: 1 }}
                         exit={{ opacity: 0, x: 20, scale: 0.95 }}
                         className={cn(
-                            "px-3.5 py-2.5 rounded-lg shadow-sm flex items-center space-x-2.5 text-[13px] font-medium min-w-[180px] max-w-[360px] border bg-background",
+                            "px-3.5 py-2.5 rounded-lg shadow-sm flex items-start space-x-2.5 text-[13px] font-medium min-w-[180px] max-w-[360px] border bg-background overflow-hidden",
                             n.type === 'success' && "border-green-200 text-foreground",
                             n.type === 'error' && "border-destructive/30 text-foreground",
                             n.type === 'info' && "border-blue-200 text-foreground",
@@ -159,22 +159,22 @@ export function NotificationList({
                         )}
                     >
                         {n.type === 'success' && (
-                            <CheckCircle className="w-4 h-4 text-[var(--app-success)] shrink-0" />
+                            <CheckCircle className="w-4 h-4 text-[var(--app-success)] shrink-0 mt-0.5" />
                         )}
                         {n.type === 'error' && (
-                            <AlertCircle className="w-4 h-4 text-destructive shrink-0" />
+                            <AlertCircle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
                         )}
                         {n.type === 'info' && (
-                            <AlertCircle className="w-4 h-4 text-blue-500 shrink-0" />
+                            <AlertCircle className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
                         )}
                         {n.type === 'warning' && (
-                            <AlertCircle className="w-4 h-4 text-yellow-500 shrink-0" />
+                            <AlertCircle className="w-4 h-4 text-yellow-500 shrink-0 mt-0.5" />
                         )}
-                        <span className="flex-1 break-words">{n.message}</span>
+                        <span className="flex-1 break-all leading-relaxed min-w-0">{n.message}</span>
                         {onRemove && (
-                            <button 
+                            <button
                                 onClick={() => onRemove(n.id)}
-                                className="shrink-0 p-0.5 hover:bg-accent rounded transition-colors"
+                                className="shrink-0 p-0.5 hover:bg-accent rounded transition-colors mt-0.5"
                             >
                                 <X className="w-3.5 h-3.5 text-muted-foreground" />
                             </button>

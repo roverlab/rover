@@ -127,6 +127,111 @@ import { getSingboxLogPath } from './paths';
 const log = createLogger('SingboxController');
 
 /**
+ * 从 sing-box stderr 行中提取 FATAL/ERROR 错误描述
+ * 去除 ANSI 转义序列和日志前缀，只保留错误描述部分
+ * 例如: "FATAL[0000] decode config at ...: outbounds[0]: unknown outbound type: vmess2"
+ *   → "outbounds[0]: unknown outbound type: vmess2"
+ */
+function extractFatalDetail(line: string): string | null {
+    log.debug(`[extractFatalDetail] raw line: ${JSON.stringify(line)}`);
+
+    // 去除 ANSI 转义序列
+    const noAnsi = line.replace(/\x1B\[[0-9;]*m/g, '');
+    const cleaned = noAnsi.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '').trim();
+
+    log.debug(`[extractFatalDetail] cleaned: ${JSON.stringify(cleaned)}`);
+
+    if (!cleaned) return null;
+
+    // 匹配 FATAL 或 ERROR 级别日志
+    const hasFatal = /\b(FATAL|ERROR)\b/i.test(cleaned);
+    log.debug(`[extractFatalDetail] hasFatal=${hasFatal}`);
+    if (!hasFatal) return null;
+
+    // 去掉日志前缀，提取错误描述
+    // 格式: "FATAL[0000] <context>: <detail>"
+    const match = cleaned.match(/\b(?:FATAL|ERROR)\b\s*\[\d+\]\s*(.*)/i);
+    log.debug(`[extractFatalDetail] prefix match: ${JSON.stringify(match)}`);
+
+    if (match) {
+        const afterPrefix = match[1].trim();
+        // 去掉 "at <path>: " 这类前缀，取最后的错误描述
+        // Windows 路径含有冒号（C:），所以需要匹配 "at <path>: " 模式
+        const pathPrefixMatch = afterPrefix.match(/^(?:at\s+)?[^\s:]+(?:[\\/][^\s:]+)*:\s(.+)/);
+        log.debug(`[extractFatalDetail] path match: ${JSON.stringify(pathPrefixMatch)}`);
+        if (pathPrefixMatch) {
+            const detail = pathPrefixMatch[1].trim();
+            if (detail) {
+                log.debug(`[extractFatalDetail] returning detail: ${JSON.stringify(detail)}`);
+                return detail;
+            }
+        }
+        if (afterPrefix) {
+            log.debug(`[extractFatalDetail] returning afterPrefix: ${JSON.stringify(afterPrefix)}`);
+            return afterPrefix;
+        }
+    }
+
+    log.debug(`[extractFatalDetail] returning cleaned: ${JSON.stringify(cleaned)}`);
+    return cleaned;
+}
+
+/**
+ * 从 sing-box 日志文件中读取最后一条 FATAL/ERROR 错误描述
+ * 用于 Service 模式下启动失败时获取错误详情
+ */
+async function readLastFatalFromLog(): Promise<string | null> {
+    try {
+        const logPath = getSingboxLogPath();
+        if (!fs.existsSync(logPath)) return null;
+
+        const stat = fs.statSync(logPath);
+        if (stat.size === 0) return null;
+
+        // 从文件末尾倒读
+        const fd = fs.openSync(logPath, 'r');
+        const chunkSize = 4 * 1024;
+        const buffer = Buffer.alloc(chunkSize);
+        let pos = stat.size;
+        let carry = '';
+
+        while (pos > 0) {
+            const readSize = Math.min(chunkSize, pos);
+            pos -= readSize;
+            const bytesRead = fs.readSync(fd, buffer, 0, readSize, pos);
+            if (bytesRead === 0) break;
+
+            const chunk = buffer.toString('utf8', 0, bytesRead) + carry;
+            const parts = chunk.split(/\r?\n/);
+            carry = parts[0];
+
+            // 从新到旧遍历，找第一条 FATAL/ERROR
+            for (let i = parts.length - 1; i >= 1; i--) {
+                const detail = extractFatalDetail(parts[i]);
+                if (detail) {
+                    fs.closeSync(fd);
+                    return detail;
+                }
+            }
+        }
+
+        // 处理剩余的 carry
+        if (carry) {
+            const detail = extractFatalDetail(carry);
+            if (detail) {
+                fs.closeSync(fd);
+                return detail;
+            }
+        }
+
+        fs.closeSync(fd);
+        return null;
+    } catch {
+        return null;
+    }
+}
+
+/**
  * 检查进程是否存活
  */
 function isProcessAlive(pid: number | null | undefined): boolean {
@@ -590,35 +695,40 @@ export class LocalSingboxController implements CoreController {
                 proc.off('error', onEarlyError);
             };
 
-            const onEarlyExit = (code: number | null, signal: string | null) => {
+            const onEarlyExit = async (code: number | null, signal: string | null) => {
                 if (settled) return;
                 settled = true;
                 cleanup();
-                reject(
-                    new Error(
-                        t('main.errors.core.exitedImmediately', {
-                            code: String(code ?? 'null'),
-                            signal: String(signal ?? 'null')
-                        })
-                    )
-                );
+                // 统一从日志文件读取错误详情
+                await new Promise(r => setTimeout(r, 100));
+                const lastLog = await readLastFatalFromLog();
+                reject(new Error(lastLog || t('main.errors.core.exitedImmediately', {
+                    code: String(code ?? 'null'),
+                    signal: String(signal ?? 'null')
+                })));
             };
 
-            const onEarlyError = (err: Error) => {
+            const onEarlyError = async (err: Error) => {
                 if (settled) return;
                 settled = true;
                 cleanup();
-                reject(new Error(t('main.errors.core.failedToStart', { message: err.message })));
+                // 统一从日志文件读取错误详情
+                await new Promise(r => setTimeout(r, 100));
+                const lastLog = await readLastFatalFromLog();
+                reject(new Error(lastLog || t('main.errors.core.failedToStart', { message: err.message })));
             };
 
-            const timer = setTimeout(() => {
+            const timer = setTimeout(async () => {
                 if (settled) return;
                 const currentPid = proc.pid ?? null;
                 const alive = currentPid ? isProcessAlive(currentPid) : true;
                 if (!alive) {
                     settled = true;
                     cleanup();
-                    reject(new Error(t('main.errors.core.exitedImmediatelyShort')));
+                    // 统一从日志文件读取错误详情
+                    await new Promise(r => setTimeout(r, 100));
+                    const lastLog = await readLastFatalFromLog();
+                    reject(new Error(lastLog || t('main.errors.core.exitedImmediatelyShort')));
                     return;
                 }
                 settled = true;
@@ -687,20 +797,18 @@ export class ServiceSingboxController implements CoreController {
                 // 重试启动
                 const retryResponse = await roverservice.startSingbox(configPath, binaryPath);
                 if (!retryResponse.success) {
-                    throw new Error(
-                        t('main.errors.core.roverServiceStartFailed', {
-                            detail: String(retryResponse.error || retryResponse.message || 'unknown error')
-                        })
-                    );
+                    const lastLog = await readLastFatalFromLog();
+                    throw new Error(lastLog || t('main.errors.core.roverServiceStartFailed', {
+                        detail: String(retryResponse.error || retryResponse.message || 'unknown error')
+                    }));
                 }
                 this.pid = retryResponse.data?.pid ?? null;
                 this.startTime = retryResponse.data?.startTime ? retryResponse.data.startTime * 1000 : Date.now();
             } else {
-                throw new Error(
-                    t('main.errors.core.roverServiceStartFailed', {
-                        detail: String(response.error || response.message || 'unknown error')
-                    })
-                );
+                const lastLog = await readLastFatalFromLog();
+                throw new Error(lastLog || t('main.errors.core.roverServiceStartFailed', {
+                    detail: String(response.error || response.message || 'unknown error')
+                }));
             }
         } else {
             // 更新本地状态

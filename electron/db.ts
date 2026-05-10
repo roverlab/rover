@@ -80,8 +80,6 @@ export interface Profile {
     dnsServerDetours?: ProfileDnsServerItem[];
     /** 自定义代理分组（用户自定义的分组，会替换订阅中的原始分组） */
     customGroups?: CustomProxyGroup[];
-    /** 代理节点列表（从订阅解析的真实节点，不包含分组） */
-    nodes?: ProxyNode[];
 }
 
 /** @deprecated 使用 ProfilePolicyItem，保留用于兼容返回格式 */
@@ -189,10 +187,14 @@ function loadDb(): DbData {
     try {
         const raw = fs.readFileSync(dbPath, 'utf8');
         const data = JSON.parse(raw) as DbData;
-        const profiles = (data.profiles ?? []).map((p: Profile & { id?: number | string }) => ({
-            ...p,
-            id: typeof p.id === 'number' ? String(p.id) : String(p.id ?? ''),
-        }));
+        const profiles = (data.profiles ?? []).map((p: Profile & { id?: number | string; nodes?: ProxyNode[] }) => {
+            // 迁移：移除 nodes 字段（不再存储在数据库中）
+            const { nodes: _nodes, ...rest } = p as Profile & { id?: number | string; nodes?: ProxyNode[] };
+            return {
+                ...rest,
+                id: typeof p.id === 'number' ? String(p.id) : String(p.id ?? ''),
+            };
+        });
 
         const result: DbData = {
             profiles,
@@ -1574,23 +1576,4 @@ export function clearProfileCustomGroups(profileId: string): void {
     });
 }
 
-/**
- * 更新 profile 的代理节点列表
- */
-export function updateProfileNodes(profileId: string, nodes: ProxyNode[]): void {
-    withDb((data) => {
-        const profile = data.profiles.find((p) => p.id === profileId);
-        if (profile) {
-            profile.nodes = nodes;
-            console.log(`[DB] Updated ${nodes.length} nodes for profile ${profileId}`);
-        }
-    });
-}
 
-/**
- * 获取 profile 的代理节点列表
- */
-export function getProfileNodes(profileId: string): ProxyNode[] {
-    const profile = getProfileById(profileId);
-    return profile?.nodes ?? [];
-}

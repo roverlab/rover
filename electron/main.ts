@@ -70,7 +70,7 @@ const log = createLogger('Main');
 let singboxLogInitialLineCount = 0;
 
 // 从 subscription 模块重新导出辅助函数
-const { readProfileContent } = subscription;
+const { readProfileContent, parseProxyNodes } = subscription;
 
 registerRuleProviderIpcHandlers(ipcMain, sendToRenderer, log);
 
@@ -289,7 +289,14 @@ ipcMain.handle('db:updateProfileCustomGroup', (_, profileId: string, groupName: 
 ipcMain.handle('db:deleteProfileCustomGroup', (_, profileId: string, groupName: string) => dbUtils.deleteProfileCustomGroup(profileId, groupName));
 ipcMain.handle('db:updateProfileCustomGroupsOrder', (_, profileId: string, orders: any[]) => dbUtils.updateProfileCustomGroupsOrder(profileId, orders));
 ipcMain.handle('db:clearProfileCustomGroups', (_, profileId: string) => dbUtils.clearProfileCustomGroups(profileId));
-ipcMain.handle('db:getProfileNodes', (_, profileId: string) => dbUtils.getProfileNodes(profileId));
+ipcMain.handle('db:getProfileNodes', (_, profileId: string) => {
+    const profile = dbUtils.getProfileById(profileId);
+    if (!profile) return [];
+    const profilePath = profile.path ? resolveDataPath(profile.path) : undefined;
+    const content = readProfileContent(profileId, profilePath);
+    if (!content) return [];
+    return parseProxyNodes(content);
+});
 
 // New API: set database and regenerate config together
 ipcMain.handle('db:setTunModeWithConfigGeneration', async (_, key, value) => {
