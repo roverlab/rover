@@ -7,7 +7,7 @@ import axios from 'axios';
 import yaml from 'js-yaml';
 import * as dbUtils from './db';
 import { validateProfileContent } from './validation';
-import { getProfilesDir } from './paths';
+import { getProfilesDir, resolveDataPath } from './paths';
 import { downloadAndConvertRuleSet } from './ruleset-utils';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -17,6 +17,38 @@ import { convertClashToSingbox } from '../src/services/singbox';
 import { t } from './i18n-main';
 
 const DEFAULT_SUBSCRIPTION_USER_AGENT = 'clash-verge/v2.4.2';
+
+/** 内存缓存：profileId -> 节点数组，写入时缓存，避免每次进入 Profiles 页面重复解析 */
+const nodeCache = new Map<string, ProxyNode[]>();
+
+/** 缓存节点数组（写入时调用） */
+export function cacheProfileNodes(profileId: string, nodes: ProxyNode[]): void {
+    nodeCache.set(profileId, nodes);
+}
+
+/** 获取缓存的节点数组（未命中返回 undefined） */
+export function getCachedProfileNodes(profileId: string): ProxyNode[] | undefined {
+    return nodeCache.get(profileId);
+}
+
+/** 删除缓存（删除 profile 时调用） */
+export function deleteCachedProfileNodes(profileId: string): void {
+    nodeCache.delete(profileId);
+}
+
+/** 启动时初始化缓存：遍历所有 profile 解析并缓存节点数 */
+export function initProfileNodeCache(): void {
+    const profiles = dbUtils.getProfiles();
+    for (const p of profiles) {
+        const profilePath = p.path ? resolveDataPath(p.path) : undefined;
+        const content = readProfileContent(p.id, profilePath);
+        if (content) {
+            const nodes = parseProxyNodes(content);
+            nodeCache.set(p.id, nodes);
+        }
+    }
+    console.log(`[Nodes] Initialized cache for ${profiles.length} profiles`);
+}
 
 /**
  * 从 Subscription-Userinfo 响应头解析订阅用户信息
@@ -512,6 +544,10 @@ export async function downloadProfile(profileId: string): Promise<string> {
  * @param profileId 配置文件 ID
  */
 export async function processProfileContent(content: string, profileId: string): Promise<void> {
+    // 写入时解析并缓存节点数
+    const nodes = parseProxyNodes(content);
+    cacheProfileNodes(profileId, nodes);
+
     // 解析并下载 rule-providers（等待完成）
     console.log(`[RuleProviders] Starting rule providers download for profile ${profileId}...`);
     const downloadResults = await parseAndDownloadRuleProvidersWithConcurrency(content, profileId, 10);

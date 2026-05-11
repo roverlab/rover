@@ -142,7 +142,7 @@ const [profiles, setProfiles] = useState<Profile[]>([]);
     try {
       const data = await window.ipcRenderer.db.getProfiles();
       setProfiles(data);
-      // 异步加载每个 profile 的节点数
+      // 异步加载每个 profile 的节点数（后端有内存缓存，不会重复解析）
       const counts: Record<string, number> = {};
       await Promise.all(data.map(async (p: Profile) => {
         try {

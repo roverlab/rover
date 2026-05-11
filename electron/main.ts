@@ -273,6 +273,8 @@ ipcMain.handle('db:deleteProfileCustomGroup', (_, profileId: string, groupName: 
 ipcMain.handle('db:updateProfileCustomGroupsOrder', (_, profileId: string, orders: any[]) => dbUtils.updateProfileCustomGroupsOrder(profileId, orders));
 ipcMain.handle('db:clearProfileCustomGroups', (_, profileId: string) => dbUtils.clearProfileCustomGroups(profileId));
 ipcMain.handle('db:getProfileNodes', (_, profileId: string) => {
+    const cached = subscription.getCachedProfileNodes(profileId);
+    if (cached) return cached;
     const profile = dbUtils.getProfileById(profileId);
     if (!profile) return [];
     const profilePath = profile.path ? resolveDataPath(profile.path) : undefined;
@@ -914,6 +916,9 @@ app.whenReady().then(async () => {
 dbUtils.cleanupProfilePolicies();
 dbUtils.cleanupProfileDnsPolicies();
 dbUtils.cleanupProfileDnsServerDetours();
+
+// 初始化节点数量缓存（避免首次进入 Profiles 页面时逐个解析）
+subscription.initProfileNodeCache();
 
     // 简化逻辑：TUN 模式需要 RootService 服务
     // 如果开启 TUN 但 RootService 未安装，提示用户安装
