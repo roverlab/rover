@@ -82,7 +82,6 @@ export interface ElectronAPI {
             updateProfileCustomGroupsOrder(profileId: string, orders: Array<{ name: string; order: number }>): Promise<void>;
             clearProfileCustomGroups(profileId: string): Promise<void>;
             getProfileNodes(profileId: string): Promise<ProxyNode[]>;
-            setTunModeWithConfigGeneration(key: string, value: string): Promise<void>;
         };
         core: {
             start(): Promise<boolean>;
@@ -156,6 +155,9 @@ export interface ElectronAPI {
                 pid?: number;
                 version?: string;
                 needsUpgrade?: boolean;
+                singboxRunning?: boolean;
+                singboxPid?: number;
+                singboxStartTime?: number;
             }>;
             getDnsStatus(): Promise<{
                 success: boolean;
@@ -165,6 +167,18 @@ export interface ElectronAPI {
                     cert_path?: string;
                 };
                 error?: string;
+            }>;
+            getSingboxStatus(): Promise<{
+                success: boolean;
+                data?: {
+                    running: boolean;
+                    pid?: number;
+                    startTime?: number;
+                    configPath?: string;
+                    binaryPath?: string;
+                };
+                error?: string;
+                message?: string;
             }>;
             install(): Promise<{ success: boolean; error?: string; isUserCanceled?: boolean }>;
             uninstall(): Promise<{ success: boolean; error?: string; isUserCanceled?: boolean }>;

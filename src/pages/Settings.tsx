@@ -90,6 +90,9 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
     pid?: number;
     version?: string;
     needsUpgrade?: boolean;
+    singboxRunning?: boolean;
+    singboxPid?: number;
+    singboxStartTime?: number;
   } | null>(null);
   const [roverserviceInstalling, setRoverServiceInstalling] = useState(false);
   const [roverserviceUninstalling, setRoverServiceUninstalling] = useState(false);
@@ -98,6 +101,13 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
     running: boolean;
     address?: string;
     cert_path?: string;
+  } | null>(null);
+
+  // sing-box 内核状态 (通过 RoverService 查询)
+  const [singboxKernelStatus, setSingboxKernelStatus] = useState<{
+    running: boolean;
+    pid?: number;
+    startTime?: number;
   } | null>(null);
 
   // 数据加载状态
@@ -199,20 +209,29 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
       const status = await window.ipcRenderer.roverservice.getInstallationStatus();
       setRoverServiceStatus(status);
 
-      // 同时加载 DNS server 状态
+      // 同时加载 DNS server 状态和 sing-box 内核状态
       if (status.running) {
-        try {
-          const dnsResp = await window.ipcRenderer.roverservice.getDnsStatus();
-          if (dnsResp.success && dnsResp.data) {
-            setDnsServerStatus(dnsResp.data);
-          } else {
-            setDnsServerStatus({ running: false });
-          }
-        } catch {
+        const [dnsResp, singboxResp] = await Promise.allSettled([
+          window.ipcRenderer.roverservice.getDnsStatus(),
+          window.ipcRenderer.roverservice.getSingboxStatus(),
+        ]);
+
+        // DNS server 状态
+        if (dnsResp.status === 'fulfilled' && dnsResp.value.success && dnsResp.value.data) {
+          setDnsServerStatus(dnsResp.value.data);
+        } else {
           setDnsServerStatus({ running: false });
+        }
+
+        // sing-box 内核状态
+        if (singboxResp.status === 'fulfilled' && singboxResp.value.success && singboxResp.value.data) {
+          setSingboxKernelStatus(singboxResp.value.data);
+        } else {
+          setSingboxKernelStatus({ running: false });
         }
       } else {
         setDnsServerStatus({ running: false });
+        setSingboxKernelStatus({ running: false });
       }
     } catch (err: any) {
       console.error('Failed to load RoverService status:', err);
@@ -353,7 +372,7 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
       if (result.success) {
         await loadRoverServiceStatus();
 
-        window.ipcRenderer.core.generateConfig();
+        window.ipcRenderer.core.generateConfig('roverservice-install');
       } else {
         // 用户拒绝安装服务（取消 UAC 提示），不显示错误提示
         if (!result.isUserCanceled) {
@@ -379,7 +398,7 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
         // 重新生成配置
         await loadRoverServiceStatus();
 
-        window.ipcRenderer.core.generateConfig();
+        window.ipcRenderer.core.generateConfig('roverservice-install');
 
       } else {
         // 用户拒绝卸载服务（取消 UAC 提示），不显示错误提示
@@ -413,7 +432,7 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
         await loadRoverServiceStatus();
 
         // 重新生成配置以应用最新的服务状态
-        window.ipcRenderer.core.generateConfig();
+        window.ipcRenderer.core.generateConfig('roverservice-install');
       } else {
         // 用户拒绝安装服务（取消 UAC 提示），不显示错误提示
         if (!installResult.isUserCanceled) {
@@ -902,8 +921,8 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
               <Card>
                 <SectionHeader>
                   <div>
-                    <h2 className="settings-card-title">系统服务</h2>
-                    <p className="settings-card-subtitle">以系统权限运行，支持 TUN 模式等需要高级权限的功能。</p>
+                    <h2 className="settings-card-title">{t('settings.serviceSectionTitle')}</h2>
+                    <p className="settings-card-subtitle">{t('settings.serviceSectionDesc')}</p>
                   </div>
                 </SectionHeader>
                 <div className="panel-section">
@@ -932,16 +951,33 @@ roverserviceStatus.needsUpgrade ? (
                     <div className="flex items-center gap-2">
                       {roverserviceStatus.running ? (
                         <>
-                          {roverserviceStatus.binaryInstalled && (
-                            <Button
-                              variant="secondary"
-                              size="sm"
-                              onClick={handleReinstallRoverService}
-                              disabled={roverserviceInstalling}
-                            >
-                              {roverserviceInstalling ? t('settings.installing') : t('settings.reinstall')}
-                            </Button>
-                          )}
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={handleReinstallRoverService}
+                            disabled={roverserviceInstalling}
+                          >
+                            {roverserviceInstalling ? t('settings.installing') : t('settings.reinstall')}
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={handleUninstallRoverService}
+                            disabled={roverserviceUninstalling}
+                          >
+                            {roverserviceUninstalling ? t('settings.uninstalling') : t('settings.uninstall')}
+                          </Button>
+                        </>
+                      ) : roverserviceStatus.binaryInstalled ? (
+                        <>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={handleReinstallRoverService}
+                            disabled={roverserviceInstalling}
+                          >
+                            {roverserviceInstalling ? t('settings.installing') : t('settings.reinstall')}
+                          </Button>
                           <Button
                             variant="secondary"
                             size="sm"
@@ -963,6 +999,24 @@ roverserviceStatus.needsUpgrade ? (
                       )}
                     </div>
                   </ListRow>
+
+                  {/* sing-box 内核状态 (通过 RoverService) */}
+                  {roverserviceStatus.running && singboxKernelStatus && (
+                    <ListRow>
+                      <div>
+                        <div className="list-row-title">{t('settings.kernelStatus')}</div>
+                        <div className="list-row-description">
+                          {singboxKernelStatus.running ? (
+                            <span className="text-[var(--app-success)]">
+                              {t('settings.kernelRunningDetail', { pid: singboxKernelStatus.pid ?? 0 })}
+                            </span>
+                          ) : (
+                            <span className="text-[var(--app-text-tertiary)]">{t('settings.kernelStopped')}</span>
+                          )}
+                        </div>
+                      </div>
+                    </ListRow>
+                  )}
 
                   {/* DNS Server 状态 */}
                   {roverserviceStatus.running && dnsServerStatus && (

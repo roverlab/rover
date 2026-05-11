@@ -1,20 +1,7 @@
-
-// 抑制 axios 等第三方库使用 url.parse() 的弃用警告
-// process.removeAllListeners('warning');
-// process.on('warning', (warning) => {
-//     // 忽略 DEP0169 url.parse() 弃用警告
-//     if (warning.name === 'DeprecationWarning' && warning.message.includes('url.parse()')) {
-//         return;
-//     }
-//     console.warn(warning);
-// });
-
-import { app, BrowserWindow, ipcMain, shell, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import { setCachedIsServiceInstalled, getCachedIsServiceInstalled } from './roverservice-cache';
 
-// UAC 以管理员运行后白屏：Chromium 沙箱与提升权限冲突，需禁用沙箱
-// 见 https://github.com/electron/electron/issues/49167
-// 注意：管理员权限检测移到 app.whenReady() 中进行，以便使用日志系统
+
 
 import path from 'node:path';
 import fs from 'node:fs';
@@ -26,12 +13,11 @@ import { createTray, updateTrayMenu } from './tray';
 import * as scheduler from './scheduler';
 import { startSingboxLogMaintenance, stopSingboxLogMaintenance } from './singbox-log-maintenance';
 import { initLogger, createLogger, getLogDir, getLogFiles, clearAllLogs, redirectConsole, log as loggerLog, logBatch } from './logger';
-import { getDataDir, getProfilesDir,  resolveDataPath, getAppRootPath, getDistPath, getPublicPath, getPreloadPath, getTemplatesIndexPath, getPresetTemplatesPath, getBuildInfoPath, getSingboxLogPath, syncBuiltinRulesetsToUserData } from './paths';
+import { getDataDir, resolveDataPath, getAppRootPath, getDistPath, getPublicPath, getPreloadPath, getTemplatesIndexPath, getPresetTemplatesPath, getBuildInfoPath, getSingboxLogPath, syncBuiltinRulesetsToUserData } from './paths';
 import {
     getConfigPath,
     readConfig,
     generateConfigFile,
-    writeConfigFileOnly,
     getCurrentConfigRules,
     getAvailableOutbounds,
     POLICY_FINAL_OUTBOUND_VALUES
@@ -60,7 +46,7 @@ import {
     getWindowIconPath,
     getSelectedProfileWithConfig,
 } from './app-utils';
-import { startRoverDns, stopRoverDns } from './dns-server';
+import { startRoverDns, stopRoverDns, ensureRoverDns } from './dns-server';
 import { clearAllDns } from './dns-macos';
 import { initMainI18n, setMainLanguage, t } from './i18n-main';
 
@@ -178,11 +164,8 @@ ipcMain.handle('db:setSetting', async (_, key, value) => {
     if (key === 'rule-provider-update-interval') {
         scheduler.initSchedulers();
     }
-    // TUN mode toggle: reset controller, next start will choose correct controller based on new setting
-    if (key === 'dashboard-tun-mode') {
-        await singbox.resetController();
-        log.info(`[DB] TUN mode ${value === 'true' ? 'enabled' : 'disabled'}, controller reset`);
-    }
+    // TUN mode toggle: controller reset and kernel restart is handled by generateConfig/restartKernelIfRunning
+    // Do NOT reset controller here to avoid stopping kernel before generateConfig can restart it
     // DNS 服务开关变化：启停 Rover DNS 端口
     if (key === 'dns-server-enabled') {
         log.info(`[DB] dns-server-enabled changed to: ${value}, will ${value === 'true' ? 'start' : 'stop'} DNS server`);
@@ -298,34 +281,6 @@ ipcMain.handle('db:getProfileNodes', (_, profileId: string) => {
     return parseProxyNodes(content);
 });
 
-// New API: set database and regenerate config together
-ipcMain.handle('db:setTunModeWithConfigGeneration', async (_, key, value) => {
-    // 1. Save to database
-    dbUtils.setSetting(key, value);
-    
-    // 2. TUN mode toggle: reset controller
-    if (key === 'dashboard-tun-mode') {
-        await singbox.resetController();
-        log.info(`[DB] TUN mode ${value === 'true' ? 'enabled' : 'disabled'}, controller reset`);
-    }
-    
-    // 3. Regenerate config file (using pure function)
-    try {
-        // Get current selected profile
-        const selectedProfile = dbUtils.getSelectedProfile();
-        if (!selectedProfile) {
-            throw new Error(t('main.errors.noProfileSelected'));
-        }
-        
-        // Regenerate config using pure function
-        const configPath = await writeConfigFileOnly(selectedProfile.id);
-        log.info(`[DB] config.json updated (dashboard-tun-mode=${value}) -> ${configPath}`);
-    } catch (err: any) {
-        log.error(`[DB] Failed to regenerate config file: ${err.message}`);
-        throw err;
-    }
-});
-
 ipcMain.handle('core:getPresetRulesets', () => loadPresetRulesets());
 ipcMain.handle('core:getAllRuleSetsGrouped', () => getAllRuleSetsGrouped());
 
@@ -410,9 +365,6 @@ ipcMain.handle('core:isRunning', async () => {
 ipcMain.handle('core:getStartTime', () => singbox.getSingboxStartTime());
 ipcMain.handle('core:stop', async () => {
     log.info('IPC core:stop');
-
-    // 停止 rover DNS 服务
-    await stopRoverDns();
 
     // macOS: 在停止内核前先清除 DNS 设置
     if (process.platform === 'darwin') {
@@ -874,6 +826,10 @@ ipcMain.handle('roverservice:getDnsStatus', async () => {
     return roverservice.getDnsStatus();
 });
 
+ipcMain.handle('roverservice:getSingboxStatus', async () => {
+    return roverservice.getSingboxStatus();
+});
+
 ipcMain.handle('roverservice:install', async () => {
     const result = await roverservice.installHelper();
     // 安装成功后更新缓存
@@ -1034,17 +990,21 @@ dbUtils.cleanupProfileDnsServerDetours();
                 }
                 await singbox.startSingbox(configPath, binaryPath);
                 log.info('Kernel auto started');
-
-                // 同步 DNS 服务状态：根据设置启停 Rover DNS 端口
-                const dnsServerEnabled = dbUtils.getSetting('dns-server-enabled') !== 'false';
-                if (dnsServerEnabled) {
-                    await startRoverDns();
-                }
             } catch (err: any) {
                 log.error(`Auto start kernel failed: ${err?.message || err}`);
             }
         })();
     }
+
+    // 独立于内核启动，检查 DNS 服务状态
+    // 如果 dns-server-enabled 开启但实际 DNS 服务未运行，自动启动
+    (async () => {
+        try {
+            await ensureRoverDns();
+        } catch (err: any) {
+            log.warn(`DNS server ensure failed: ${err?.message || err}`);
+        }
+    })();
 
     log.info('Application startup complete');
 }).catch(err => {

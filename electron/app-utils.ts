@@ -13,11 +13,9 @@ import * as configBackup from './config-backup';
 import * as subscription from './subscription';
 import { createLogger } from './logger';
 import { getConfigPath, readConfig, generateConfigFile } from './config-file';
-import { getProfilesDir, resolveDataPath, getBuildInfoPath, getDataDir } from './paths';
+import { getProfilesDir, getBuildInfoPath } from './paths';
 import { validateProfileContent } from './validation';
 import { getCachedIsServiceInstalled } from './roverservice-cache';
-import { clearAllDns } from './dns-macos';
-import type { LogLevel, LogEntry } from './logger';
 import { t } from './i18n-main';
 import { startRoverDns, stopRoverDns } from './dns-server';
 
@@ -36,7 +34,8 @@ const { saveProfileFile } = subscription;
  * macOS: 清除 DNS 设置让系统使用 DHCP
  */
 export async function handleAppQuit(): Promise<void> {
-    // 停止 rover DNS 服务
+    // DNS 服务独立于内核运行，退出时不关闭，下次启动时 ensureRoverDns 会检查状态
+
     await stopRoverDns();
 
     if (singbox.isTunModeEnabled()) {
@@ -292,8 +291,8 @@ export async function generateConfig(
         const result = await generateConfigFile(selectedProfile.id, sendToRendererFn);
         log.info(`Config generated successfully at ${result}`);
 
-        // 策略导入场景：额外同步 DNS 服务状态（独立于内核，根据设置决定启停）
-        if (scene === 'template-import') {
+        // 策略导入或服务安装场景：额外同步 DNS 服务状态（独立于内核，根据设置决定启停）
+        if (scene === 'template-import' || scene === 'roverservice-install') {
             const dnsServerEnabled = dbUtils.getSetting('dns-server-enabled') !== 'false';
             try {
                 if (dnsServerEnabled) {
@@ -302,7 +301,7 @@ export async function generateConfig(
                     await stopRoverDns();
                 }
             } catch (e) {
-                console.error('Failed to sync DNS server state after template import:', e);
+                console.error(`Failed to sync DNS server state after ${scene}:`, e);
             }
         }
 

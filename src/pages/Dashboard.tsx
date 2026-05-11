@@ -382,6 +382,9 @@ export function Dashboard({ isActive }: DashboardProps) {
         });
 
         try {
+            // 记录安装前服务是否未安装（用于后续判断是否需要同步 DNS）
+            const wasServiceNotInstalled = enable && !isServiceInstalled;
+
             // 开启 TUN 模式时需要检查 RoverService 服务是否已安装
             if (enable && !isServiceInstalled) {
                 console.log('[Dashboard] RoverService not installed, starting auto install...');
@@ -409,30 +412,15 @@ export function Dashboard({ isActive }: DashboardProps) {
                 await wait(1000);
             }
 
-            // 2. 保存到本地数据库并重新生成配置（TUN 配置在 mergeSettingsIntoConfig 中生效）
-            await window.ipcRenderer.db.setTunModeWithConfigGeneration('dashboard-tun-mode', enable ? 'true' : 'false');
-            console.log('[Dashboard] TUN mode saved to database and config regenerated:', enable);
+            // 2. 保存 TUN 模式设置到数据库
+            await window.ipcRenderer.db.setSetting('dashboard-tun-mode', enable ? 'true' : 'false');
+            console.log('[Dashboard] TUN mode saved to database:', enable);
 
-            // 4. 如果内核正在运行，需要重新启动以应用新的 TUN 配置
-            // 使用 restart 而非 start：restart 会先 stop（清理可能残留的 sing-box 进程）、等待端口释放后再 start，
-            // 避免 9090 端口被旧进程占用导致 "address already in use" 错误
-            if (isRunning) {
-                console.log('[Dashboard] Restarting to apply TUN config change, pausing health check');
-                setPausingStatusCheck(true); // 暂停健康检测
-                
-                try {
-                    await window.ipcRenderer.core.start();
-                    // 更新启动时间
-                    const newStartTime = await window.ipcRenderer.core.getStartTime();
-                    setStartTime(newStartTime || Date.now());
-                    
-                    console.log('[Dashboard] TUN config restart complete, resuming health check');
-                } finally {
-                    setPausingStatusCheck(false); // 恢复健康检测
-                }
-            }
+            // 3. 重新生成配置并同步 DNS 状态（如果刚安装了服务，传入场景值同步 DNS）
+            const scene = wasServiceNotInstalled ? 'roverservice-install' : undefined;
+            await window.ipcRenderer.core.generateConfig(scene);
 
-            // 5. 操作完成后才更新 Switch 显示状态
+            // 4. 操作完成后才更新 Switch 显示状态
             setTunMode(enable);
             tunModeDisplayRef.current = enable;
 

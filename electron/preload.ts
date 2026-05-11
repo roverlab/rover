@@ -78,7 +78,6 @@ contextBridge.exposeInMainWorld('ipcRenderer', {
         updateProfileCustomGroupsOrder: (profileId: string, orders: any[]) => ipcRenderer.invoke('db:updateProfileCustomGroupsOrder', profileId, orders),
         clearProfileCustomGroups: (profileId: string) => ipcRenderer.invoke('db:clearProfileCustomGroups', profileId),
         getProfileNodes: (profileId: string) => ipcRenderer.invoke('db:getProfileNodes', profileId),
-        setTunModeWithConfigGeneration: (key: string, value: string) => ipcRenderer.invoke('db:setTunModeWithConfigGeneration', key, value),
     },
 
     // Sing-box APIs
@@ -161,6 +160,7 @@ contextBridge.exposeInMainWorld('ipcRenderer', {
 roverservice: {
 getInstallationStatus: () => ipcRenderer.invoke('roverservice:getInstallationStatus'),
 getDnsStatus: () => ipcRenderer.invoke('roverservice:getDnsStatus'),
+getSingboxStatus: () => ipcRenderer.invoke('roverservice:getSingboxStatus'),
 install: (helperPath?: string) => ipcRenderer.invoke('roverservice:install', helperPath),
 uninstall: () => ipcRenderer.invoke('roverservice:uninstall'),
 },

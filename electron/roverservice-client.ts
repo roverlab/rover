@@ -491,6 +491,10 @@ export interface InstallationStatus {
     version?: string;
     /** Whether the running service version meets EXPECTED_API_VERSION */
     needsUpgrade?: boolean;
+    /** sing-box kernel status via RoverService */
+    singboxRunning?: boolean;
+    singboxPid?: number;
+    singboxStartTime?: number;
 }
 
 export async function getInstallationStatus(): Promise<InstallationStatus> {
@@ -523,6 +527,20 @@ export async function getInstallationStatus(): Promise<InstallationStatus> {
                 status.needsUpgrade = compareVersions(response.data.version, EXPECTED_API_VERSION) < 0;
             } else {
                 status.needsUpgrade = true;
+            }
+
+            // Also get sing-box kernel status
+            try {
+                const singboxResponse = await getSingboxStatus();
+                if (singboxResponse.success && singboxResponse.data) {
+                    status.singboxRunning = singboxResponse.data.running;
+                    status.singboxPid = singboxResponse.data.pid;
+                    status.singboxStartTime = singboxResponse.data.startTime;
+                } else {
+                    status.singboxRunning = false;
+                }
+            } catch {
+                status.singboxRunning = false;
             }
         }
     } catch {
@@ -784,9 +802,10 @@ Write-Host "Installation completed successfully"
 /**
  * Uninstall the privileged helper (requires user to authorize)
  * Uses kardianos/service's built-in uninstall command
- * 
+ *
  * This will:
- * 1. Stop sing-box via RoverService API first
+ * 1. Stop sing-box via RoverService API first (only if TUN mode is enabled,
+ *    to avoid killing locally-started sing-box processes)
  * 2. Uninstall the service (which also stops sing-box as part of service shutdown)
  * 3. Remove all helper files
  */
@@ -797,21 +816,15 @@ export async function uninstallHelper(): Promise<{ success: boolean; error?: str
 
     log.info('Uninstalling RoverService...');
 
-    // Step 1: Try to stop sing-box via API first
-    // This ensures sing-box is stopped even if the service uninstall fails
-    try {
-        log.info('Stopping sing-box before uninstall...');
-        const stopResp = await stopSingbox();
-        if (stopResp.success) {
-            log.info('sing-box stopped successfully via API');
-        } else {
-            log.warn(`Failed to stop sing-box via API: ${stopResp.error}`);
-        }
-    } catch (err: any) {
-        log.warn(`Error stopping sing-box: ${err.message}`);
-    }
+    // Note: We intentionally do NOT stop sing-box here.
+    // When TUN is off, sing-box is started by LocalSingboxController (user process);
+    // RoverService's stopSingbox uses taskkill /F /IM sing-box.exe /T which kills
+    // ALL sing-box processes indiscriminately — we must avoid killing the local one.
+    // After uninstall, the caller (Settings.tsx) sets dashboard-tun-mode to false and
+    // calls generateConfig('roverservice-install'), whose restartKernelIfRunning()
+    // will automatically reset the controller and restart the kernel if needed.
 
-    // Step 2: Uninstall the service
+    // Step 1: Uninstall the service
     if (process.platform === 'win32') {
         return uninstallWindows();
     }
