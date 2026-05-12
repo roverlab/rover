@@ -11,7 +11,7 @@
   },
   {
     "name": "🚀 全能分流平衡方案",
-    "description": "- DNS 策略： 国内使用阿里云 UDP 快速解析；国外使用 Google DoT 加密并开启 FakeIP 模式，有效解决 DNS 污染。\n- 流量分配： 自动识别内网、国内域名及 IP，确保低延迟直连；国外目标自动调度至代理服务器。\n- 特性： 集成 DNS 劫持、流量嗅探与独立缓存，兼顾隐私安全与访问速度。",
+    "description": "- DNS 策略： 国内域名使用本地 DNS 解析；国外域名使用聚合 DNS（Cloudflare + Google DoH 经代理解析）并开启 FakeIP 模式，有效解决 DNS 污染。\n- 流量分配： 自动识别内网、国内域名及 IP 直连；国外目标自动走代理；未匹配域名先 DNS 解析再按 IP 判断，国内 IP 直连、其余走代理。\n- 特性： 开启 TUN 模式与 FakeIP，兼顾隐私安全与访问速度。",
     "path": "templates/3.json"
   }
 ]

@@ -122,7 +122,10 @@ export function DnsPolicyEditModalContainer({
                 React.useEffect(() => {
                     if (open) {
                         window.ipcRenderer.db.getDnsServers().then((servers) => {
-                            setDnsServers((servers as Array<{ id: string; name?: string; type: string }>) || []);
+                            setDnsServers(
+                                ((servers as Array<{ id: string; name?: string; type: string; enabled?: boolean }>) || [])
+                                    .filter(s => s.enabled !== false)
+                            );
                         });
                         // 加载已保存的dnsServerId
                         if (policy) {

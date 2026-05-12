@@ -10,11 +10,10 @@
       "id": "Rover",
       "enabled": true
     },
-    {
-      "id": "Aliyun",
-      "name": "Aliyun",
-      "type": "udp",
-      "server": "223.5.5.5",
+   {
+      "id": "local",
+      "name": "local",
+      "type": "local",
       "enabled": true
     },
     {
@@ -34,7 +33,7 @@
     {
       "type": "default",
       "name": "🎯 国内域名解析",
-      "server": "Aliyun",
+      "server": "local",
       "enabled": true,
       "order": 0,
       "ruleSet": [
@@ -138,7 +137,7 @@
     "policy-final-outbound": "selector_out",
     "dns-unmatched-server": "Rover",
     "dns-resolve-server": "Rover",
-    "dns-proxy-server": "Aliyun",
+    "dns-proxy-server": "local",
     "dns-server-enabled": "true",
     "dashboard-tun-mode": "true"
   }

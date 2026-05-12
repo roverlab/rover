@@ -50,7 +50,7 @@ const [policies, setPolicies] = useState<DnsPolicy[]>([]);
                 window.ipcRenderer.core.getSelectedProfile(),
             ]);
             setPolicies(data || []);
-            setDnsServers((servers || []).map((s: any) => ({ id: s.id, name: s.name })));
+            setDnsServers((servers || []).filter((s: any) => s.enabled !== false).map((s: any) => ({ id: s.id, name: s.name })));
             setAvailableOutbounds((outbounds as Array<{ tag: string; type: string }>) || []);
             
             // 加载未匹配DNS服务器设置
