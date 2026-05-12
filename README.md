@@ -10,7 +10,7 @@
   <img src="https://img.shields.io/github/stars/roverlab/rover?style=for-the-badge" alt="Stars">
   <img src="https://img.shields.io/badge/Platform-Win%20%7C%20Mac%20%7C%20Linux-blue?style=for-the-badge&logo=electron" alt="Platform">
 
-  <a href="./README.md">English</a> | <a href="./README_zh-CN.md">简体中文</a> | <a href="./README_zh-TW.md">繁體中文</a> | <a href="./README_ja.md">日本語</a> | <a href="./README_ko.md">한국어</a> | <a href="./README_ru.md">Русский</a> | <a href="./README_es.md">Español</a> | <a href="./README_fa.md">فارسی</a>
+  <a href="./README.md">English</a> | <a href="./docs/README_zh-CN.md">简体中文</a> | <a href="./docs/README_zh-TW.md">繁體中文</a> | <a href="./docs/README_ja.md">日本語</a> | <a href="./docs/README_ko.md">한국어</a> | <a href="./docs/README_ru.md">Русский</a> | <a href="./docs/README_es.md">Español</a> | <a href="./docs/README_fa.md">فارسی</a>
 </p>
 
 </div>

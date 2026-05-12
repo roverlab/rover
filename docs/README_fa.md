@@ -1,5 +1,5 @@
 <div dir="rtl" align="center">
-  <img src="./public/icon.png" alt="لوگوی Rover" width="100">
+  <img src="../public/icon.png" alt="لوگوی Rover" width="100">
 
   <h1>Rover</h1>
   <p><strong>کلاینت GUI چندپلتفرمی sing-box · تجربه پیکربندی واقعاً بصری</strong></p>
@@ -10,7 +10,7 @@
   <img src="https://img.shields.io/github/stars/roverlab/rover?style=for-the-badge" alt="ستاره‌ها">
   <img src="https://img.shields.io/badge/Platform-Win%20%7C%20Mac%20%7C%20Linux-blue?style=for-the-badge&logo=electron" alt="پلتفرم">
 
-  <a href="./README.md">English</a> | <a href="./README_zh-CN.md">简体中文</a> | <a href="./README_zh-TW.md">繁體中文</a> | <a href="./README_ja.md">日本語</a> | <a href="./README_ko.md">한국어</a> | <a href="./README_ru.md">Русский</a> | <a href="./README_es.md">Español</a>
+  <a href="../README.md">English</a> | <a href="./README_zh-CN.md">简体中文</a> | <a href="./README_zh-TW.md">繁體中文</a> | <a href="./README_ja.md">日本語</a> | <a href="./README_ko.md">한국어</a> | <a href="./README_ru.md">Русский</a> | <a href="./README_es.md">Español</a>
 </p>
 
 </div>
@@ -35,7 +35,7 @@
 </div>
 
 <div align="center">
-  <img src="./assets/screenshot11.png" alt="رابط اصلی Rover" width="800" style="border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+  <img src="../assets/screenshot11.png" alt="رابط اصلی Rover" width="800" style="border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
 </div>
 
 <div dir="rtl">

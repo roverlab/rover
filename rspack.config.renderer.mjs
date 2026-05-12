@@ -54,13 +54,13 @@ export default {
   },
   plugins: [
     new rspack.HtmlRspackPlugin({
-      template: './index.html',
+      template: './public/index.html',
       title: 'Rover',
       publicPath: '/',
       scriptLoading: 'module',
     }),
     new rspack.CopyRspackPlugin({
-      patterns: [{ from: 'public', to: '.', noErrorOnMissing: true }],
+      patterns: [{ from: 'public', to: '.', noErrorOnMissing: true, globOptions: { ignore: ['**/index.html'] } }],
     }),
     new rspack.DefinePlugin({
       'process.env.GEMINI_API_KEY': JSON.stringify(process.env.GEMINI_API_KEY),

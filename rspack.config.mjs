@@ -57,14 +57,14 @@ export default [
     },
     plugins: [
       new rspack.HtmlRspackPlugin({
-        template: './index.html',
+        template: './public/index.html',
         title: 'Rover',
         publicPath: './',
         scriptLoading: 'module',
       }),
       new rspack.CopyRspackPlugin({
         patterns: [
-          { from: 'public', to: '.', noErrorOnMissing: true },
+          { from: 'public', to: '.', noErrorOnMissing: true, globOptions: { ignore: ['**/index.html'] } },
         ],
       }),
       new rspack.DefinePlugin({
