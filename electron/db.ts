@@ -82,19 +82,6 @@ export interface Profile {
     customGroups?: CustomProxyGroup[];
 }
 
-/** @deprecated 使用 ProfilePolicyItem，保留用于兼容返回格式 */
-export interface ProfilePolicy {
-    profile_id: string;
-    policy_id: string;
-    preferred_outbound: string | null;
-}
-
-/** @deprecated 使用 ProfileDnsPolicyItem，保留用于兼容返回格式 */
-export interface ProfileDnsPolicy {
-    profile_id: string;
-    dns_policy_id: string;
-    preferred_server: string | null;
-}
 
 /** DNS 服务器表 */
 export interface DnsServer {
@@ -193,6 +180,9 @@ function loadDb(): DbData {
             return {
                 ...rest,
                 id: typeof p.id === 'number' ? String(p.id) : String(p.id ?? ''),
+                // 迁移：移除 preferred_outbound/preferred_server 为 null 的条目（null 无意义）
+                policies: (rest.policies ?? []).filter((pp) => pp.preferred_outbound != null),
+                dnsPolicies: (rest.dnsPolicies ?? []).filter((pp) => pp.preferred_server != null),
             };
         });
 
@@ -203,7 +193,11 @@ function loadDb(): DbData {
                 ...provider,
                 id: String(provider.id),
             })),
-            policies: data.policies ?? [],
+            policies: (data.policies ?? []).map((p) => {
+                // 迁移：移除不应存储在 policies 中的 preferred_outbound/preferredOutbound 字段
+                const { preferred_outbound, preferredOutbound, ...rest } = p as unknown as Record<string, unknown>;
+                return rest as unknown as Policy;
+            }),
             dnsServers: data.dnsServers ?? [],
             dnsPolicies: data.dnsPolicies ?? [],
         };
@@ -1101,19 +1095,17 @@ export function clearPolicies(): void {
 // ===== Profile Policies =====
 
 
-export function getProfilePolicy(profileId: string): ProfilePolicy | undefined {
+export function getProfilePolicy(profileId: string): ProfilePolicyItem | undefined {
     return withDb((data) => {
         const profile = data.profiles.find((p) => p.id === profileId);
-        const first = profile?.policies?.[0];
-        return first ? { profile_id: profileId, policy_id: first.policy_id, preferred_outbound: first.preferred_outbound } : undefined;
+        return profile?.policies?.[0];
     });
 }
 
-export function getProfilePolicyByPolicyId(profileId: string, policyId: string): ProfilePolicy | undefined {
+export function getProfilePolicyByPolicyId(profileId: string, policyId: string): ProfilePolicyItem | undefined {
     return withDb((data) => {
         const profile = data.profiles.find((p) => p.id === profileId);
-        const item = profile?.policies?.find((pp) => pp.policy_id === policyId);
-        return item ? { profile_id: profileId, policy_id: policyId, preferred_outbound: item.preferred_outbound } : undefined;
+        return profile?.policies?.find((pp) => pp.policy_id === policyId);
     });
 }
 
@@ -1123,10 +1115,17 @@ export function setProfilePolicy(profileId: string, policyId: string, preferredO
         if (!profile) return;
         const policies = profile.policies ?? [];
         const idx = policies.findIndex((pp) => pp.policy_id === policyId);
-        if (idx >= 0) {
-            policies[idx].preferred_outbound = preferredOutbound;
+        if (preferredOutbound) {
+            if (idx >= 0) {
+                policies[idx].preferred_outbound = preferredOutbound;
+            } else {
+                policies.push({ policy_id: policyId, preferred_outbound: preferredOutbound });
+            }
         } else {
-            policies.push({ policy_id: policyId, preferred_outbound: preferredOutbound });
+            // preferredOutbound 为 null 时移除该条目（null 无意义，等同于无偏好）
+            if (idx >= 0) {
+                policies.splice(idx, 1);
+            }
         }
         profile.policies = policies;
     });
@@ -1381,19 +1380,17 @@ export function getDnsServerRefs(id: string): DnsServerRef[] {
 }
 
 
-export function getProfileDnsPolicy(profileId: string): ProfileDnsPolicy | undefined {
+export function getProfileDnsPolicy(profileId: string): ProfileDnsPolicyItem | undefined {
     return withDb((data) => {
         const profile = data.profiles.find((p) => p.id === profileId);
-        const first = profile?.dnsPolicies?.[0];
-        return first ? { profile_id: profileId, dns_policy_id: first.dns_policy_id, preferred_server: first.preferred_server } : undefined;
+        return profile?.dnsPolicies?.[0];
     });
 }
 
-export function getProfileDnsPolicyByPolicyId(profileId: string, dnsPolicyId: string): ProfileDnsPolicy | undefined {
+export function getProfileDnsPolicyByPolicyId(profileId: string, dnsPolicyId: string): ProfileDnsPolicyItem | undefined {
     return withDb((data) => {
         const profile = data.profiles.find((p) => p.id === profileId);
-        const item = profile?.dnsPolicies?.find((pp) => pp.dns_policy_id === dnsPolicyId);
-        return item ? { profile_id: profileId, dns_policy_id: dnsPolicyId, preferred_server: item.preferred_server } : undefined;
+        return profile?.dnsPolicies?.find((pp) => pp.dns_policy_id === dnsPolicyId);
     });
 }
 
@@ -1403,10 +1400,17 @@ export function setProfileDnsPolicy(profileId: string, dnsPolicyId: string, pref
         if (!profile) return;
         const dnsPolicies = profile.dnsPolicies ?? [];
         const idx = dnsPolicies.findIndex((pp) => pp.dns_policy_id === dnsPolicyId);
-        if (idx >= 0) {
-            dnsPolicies[idx].preferred_server = preferredServer;
+        if (preferredServer) {
+            if (idx >= 0) {
+                dnsPolicies[idx].preferred_server = preferredServer;
+            } else {
+                dnsPolicies.push({ dns_policy_id: dnsPolicyId, preferred_server: preferredServer });
+            }
         } else {
-            dnsPolicies.push({ dns_policy_id: dnsPolicyId, preferred_server: preferredServer });
+            // preferredServer 为 null 时移除该条目（null 无意义，等同于无偏好）
+            if (idx >= 0) {
+                dnsPolicies.splice(idx, 1);
+            }
         }
         profile.dnsPolicies = dnsPolicies;
     });
