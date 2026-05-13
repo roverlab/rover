@@ -606,12 +606,12 @@
       "description": "當所有DNS策略規則均未匹配時，使用的預設DNS伺服器"
     },
     "resolveServer": {
-      "label": "路由resolve預設DNS伺服器",
-      "description": "用於解析路由規則中網域名稱的DNS伺服器"
+      "label": "直連出站",
+      "description": "用於直連出站時的域名解析"
     },
     "proxyServer": {
-      "label": "代理節點DNS伺服器",
-      "description": "用於解析代理節點位址的DNS伺服器"
+      "label": "代理節點",
+      "description": "用於代理節點的域名解析"
     },
     "settingsHint": "以上設定僅在儲存後生效，選擇DNS伺服器需先在「設定 → DNS」中新增"
   },

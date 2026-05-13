@@ -680,11 +680,11 @@
       "description": "모든 DNS 정책 규칙과 일치하지 않을 때 사용되는 기본 DNS 서버"
     },
     "resolveServer": {
-      "label": "라우팅 resolve 기본 DNS 서버",
-      "description": "라우팅 규칙의 도메인 이름 해석에 사용되는 DNS 서버"
+      "label": "직결 아웃바운드",
+      "description": "직결 아웃바운드 시 도메인 이름 해석에 사용되는 DNS 서버"
     },
     "proxyServer": {
-      "label": "프록시 노드 DNS 서버",
+      "label": "프록시 노드",
       "description": "프록시 노드 주소 해석에 사용되는 DNS 서버"
     },
     "settingsHint": "설정은 저장 후 적용됩니다. DNS 서버는「설정 → DNS」에서 먼저 추가해야 합니다"

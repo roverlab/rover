@@ -31,26 +31,10 @@
   ],
   "dnsPolicies": [
     {
-      "type": "default",
-      "name": "🎯 国内域名解析",
-      "server": "local",
-      "enabled": true,
-      "order": 0,
-      "ruleSet": [
-        "acl:Apple",
-        "acl:ChinaDomain",
-        "acl:UnBan",
-        "acl:SteamCN",
-        "acl:ChinaMedia",
-        "acl:Download"
-      ]
-    },
-    {
       "type": "raw",
-      "name": "🌏 其它域名IP伪装",
+      "name": "🎭 FakeIP",
       "server": "fakeip",
       "enabled": true,
-      "order": 1,
       "raw_data": {
         "server": "fakeip",
         "query_type": [
@@ -158,7 +142,7 @@
   "settings": {
     "policy-final-outbound": "selector_out",
     "dns-unmatched-server": "Rover",
-    "dns-resolve-server": "Rover",
+    "dns-resolve-server": "local",
     "dns-proxy-server": "local",
     "dns-server-enabled": "true",
     "dashboard-tun-mode": "true"

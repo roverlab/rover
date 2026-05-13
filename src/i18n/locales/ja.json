@@ -636,11 +636,11 @@
       "description": "すべてのDNSポリシールールに一致しない場合に使用されるデフォルトDNSサーバー"
     },
     "resolveServer": {
-      "label": "ルーティングresolveデフォルトDNSサーバー",
-      "description": "ルーティングルール内のドメイン名解決に使用するDNSサーバー"
+      "label": "ダイレクトアウトバウンド",
+      "description": "ダイレクトアウトバウンド時のドメイン名解決に使用するDNSサーバー"
     },
     "proxyServer": {
-      "label": "プロキシノードDNSサーバー",
+      "label": "プロキシノード",
       "description": "プロキシノードアドレスの解決に使用するDNSサーバー"
     },
     "settingsHint": "設定は保存後に有効になります。DNSサーバーは「設定 → DNS」で事前に追加する必要があります"

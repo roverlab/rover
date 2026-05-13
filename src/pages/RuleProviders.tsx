@@ -539,41 +539,79 @@ export function RuleProviders({ isActive = true }: RuleProvidersProps) {
             <ConfirmDialog />
 
             {/* 规则集设置模态框 */}
-            <Modal
-                open={showSettingsModal}
-                onClose={() => setShowSettingsModal(false)}
-                title={t('ruleProviders.settingsTitle')}
-                maxWidth="max-w-md"
-                contentClassName="p-6 space-y-4"
-                footer={
-                    <>
-                        <Button variant="ghost" onClick={() => setShowSettingsModal(false)}>{t('common.cancel')}</Button>
-                        <Button
-                            variant="primary"
-                            onClick={async () => {
-                                await handleUpdateInterval(ruleProviderUpdateInterval);
-                                setShowSettingsModal(false);
-                            }}
+            {createPortal(
+                <AnimatePresence>
+                    {showSettingsModal && (
+                    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="absolute inset-0 z-0 bg-black/40 backdrop-blur-sm"
+                            onClick={() => setShowSettingsModal(false)}
+                        />
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                            className="relative z-10 w-full max-w-md flex flex-col bg-[var(--app-panel)] border border-[var(--app-stroke)] rounded-[20px] shadow-[var(--shadow-elevated)] overflow-hidden"
+                            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+                            onClick={e => e.stopPropagation()}
                         >
-                            {t('common.save')}
-                        </Button>
-                    </>
-                }
-            >
-                <div className="space-y-3">
-                    <div className="text-[13px] font-medium text-[var(--app-text)]">{t('ruleProviders.updateIntervalLabel')}</div>
-                    <p className="text-[11px] text-[var(--app-text-tertiary)]">{t('ruleProviders.updateIntervalDesc')}</p>
-                    <Input
-                        ref={settingsIntervalInputRef}
-                        type="number"
-                        value={ruleProviderUpdateInterval}
-                        onChange={(e) => setRuleProviderUpdateInterval(Number(e.target.value) || 0)}
-                        min={0}
-                        placeholder="86400"
-                        className="w-full"
-                    />
-                </div>
-            </Modal>
+                            {/* Header */}
+                            <div className="flex shrink-0 items-center justify-between px-6 py-4 border-b border-[var(--app-divider)] bg-[var(--app-bg-secondary)]/50">
+                                <h2 className="text-[15px] font-semibold text-[var(--app-text)]">
+                                    {t('ruleProviders.settingsTitle')}
+                                </h2>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowSettingsModal(false)}
+                                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[var(--app-text-tertiary)] hover:bg-[var(--app-hover)] hover:text-[var(--app-text)] transition-colors -mr-2"
+                                    aria-label={t('common.close')}
+                                >
+                                    <X className="w-4 h-4" />
+                                </button>
+                            </div>
+
+                            {/* Content */}
+                            <div className="p-6 space-y-4">
+                                <div className="space-y-3">
+                                    <div className="text-[13px] font-medium text-[var(--app-text)]">{t('ruleProviders.updateIntervalLabel')}</div>
+                                    <p className="text-[11px] text-[var(--app-text-tertiary)]">{t('ruleProviders.updateIntervalDesc')}</p>
+                                    <Input
+                                        ref={settingsIntervalInputRef}
+                                        type="number"
+                                        value={ruleProviderUpdateInterval}
+                                        onChange={(e) => setRuleProviderUpdateInterval(Number(e.target.value) || 0)}
+                                        min={0}
+                                        placeholder="86400"
+                                        className="w-full"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Footer */}
+                            <div className="flex shrink-0 items-center justify-end gap-2 px-6 py-4 border-t border-[var(--app-divider)] bg-[var(--app-bg-secondary)]/30">
+                                <Button variant="secondary" size="sm" onClick={() => setShowSettingsModal(false)}>
+                                    {t('common.cancel')}
+                                </Button>
+                                <Button
+                                    variant="primary"
+                                    size="sm"
+                                    onClick={async () => {
+                                        await handleUpdateInterval(ruleProviderUpdateInterval);
+                                        setShowSettingsModal(false);
+                                    }}
+                                >
+                                    {t('common.save')}
+                                </Button>
+                            </div>
+                        </motion.div>
+                    </div>
+                    )}
+                </AnimatePresence>,
+                document.body
+            )}
 
             {/* 查看规则集内容模态框 */}
             {createPortal(

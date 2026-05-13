@@ -35,9 +35,6 @@ const { saveProfileFile } = subscription;
  */
 export async function handleAppQuit(): Promise<void> {
     // DNS 服务独立于内核运行，退出时不关闭，下次启动时 ensureRoverDns 会检查状态
-
-    await stopRoverDns();
-
     if (singbox.isTunModeEnabled()) {
         log.info('[AppQuit] TUN mode is enabled, skipping stopSingbox');
     } else {

@@ -656,12 +656,12 @@
       "hint": "选择一个DNS服务器作为未匹配规则的默认处理方式"
     },
     "resolveServer": {
-      "label": "路由resolve默认DNS服务器",
-      "description": "用于解析路由规则中域名的DNS服务器"
+      "label": "直连出站",
+      "description": "用于直连出站时的域名解析"
     },
     "proxyServer": {
-      "label": "代理节点DNS服务器",
-      "description": "用于解析代理节点地址的DNS服务器"
+      "label": "代理节点",
+      "description": "用于代理节点的域名解析"
     },
     "settingsHint": "以上设置仅在保存后生效，选择DNS服务器需先在「设置 → DNS」中添加"
   },

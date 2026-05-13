@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, HelpCircle } from 'lucide-react';
+import { X } from 'lucide-react';
 import { Select } from '../../components/ui/Field';
 import { Button } from '../../components/ui/Button';
 
@@ -10,19 +10,21 @@ interface DnsPolicySettingsModalProps {
     open: boolean;
     dnsServers: Array<{ id: string; name?: string }>;
     onClose: () => void;
+    onSaved?: () => void;
 }
 
 /**
  * DNS策略设置弹窗
  * 管理三个DNS服务器选择项：
  * 1. 规则未匹配默认DNS服务器
- * 2. 路由resolve默认DNS服务器
+ * 2. 直连出站DNS服务器
  * 3. 代理节点DNS服务器
  */
 export function DnsPolicySettingsModal({
     open,
     dnsServers,
     onClose,
+    onSaved,
 }: DnsPolicySettingsModalProps) {
     const { t } = useTranslation();
     const [unmatchedServer, setUnmatchedServer] = useState('');
@@ -54,6 +56,7 @@ export function DnsPolicySettingsModal({
             await window.ipcRenderer.db.setSetting('dns-proxy-server', proxyServer);
             // 异步重新生成配置，不阻塞UI
             window.ipcRenderer.core.generateConfig().catch(console.error);
+            onSaved?.();
             onClose();
         } catch (err) {
             console.error('Failed to save DNS policy settings:', err);
@@ -121,7 +124,7 @@ export function DnsPolicySettingsModal({
                             </Select>
                         </div>
 
-                        {/* 路由resolve默认DNS服务器 */}
+                        {/* 直连出站DNS服务器 */}
                         <div className="space-y-2">
                             <div>
                                 <div className="text-[14px] font-medium text-[var(--app-text)]">
@@ -165,13 +168,6 @@ export function DnsPolicySettingsModal({
                             </Select>
                         </div>
 
-                        {/* Help hint */}
-                        <div className="flex items-start gap-2 pt-1 px-1">
-                            <HelpCircle className="w-3.5 h-3.5 text-[var(--app-text-quaternary)] shrink-0 mt-0.5" />
-                            <p className="text-[11px] text-[var(--app-text-quaternary)] leading-relaxed">
-                                {t('dnsPolicies.settingsHint')}
-                            </p>
-                        </div>
                     </div>
 
                     {/* Footer */}

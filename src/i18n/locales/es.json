@@ -606,11 +606,11 @@
       "description": "Servidor DNS utilizado cuando ninguna regla de política DNS coincide"
     },
     "resolveServer": {
-      "label": "Servidor DNS de resolve de enrutamiento",
-      "description": "Servidor DNS para resolver nombres de dominio en reglas de enrutamiento"
+      "label": "Salida directa",
+      "description": "Servidor DNS para resolver nombres de dominio en conexiones de salida directa"
     },
     "proxyServer": {
-      "label": "Servidor DNS de nodos proxy",
+      "label": "Nodo proxy",
       "description": "Servidor DNS para resolver direcciones de nodos proxy"
     },
     "settingsHint": "La configuración surte efecto después de guardar. Los servidores DNS deben agregarse en「Configuración → DNS」primero"

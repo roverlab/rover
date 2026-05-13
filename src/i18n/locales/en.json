@@ -656,11 +656,11 @@
       "hint": "Select a DNS server as the default for unmatched rules"
     },
     "resolveServer": {
-      "label": "Route Resolve DNS Server",
-      "description": "DNS server for resolving domain names in routing rules"
+      "label": "Direct Outbound",
+      "description": "DNS server for domain resolution during direct outbound connections"
     },
     "proxyServer": {
-      "label": "Proxy Node DNS Server",
+      "label": "Proxy Node",
       "description": "DNS server for resolving proxy node addresses"
     },
     "settingsHint": "Settings take effect after saving. DNS servers must be added in Settings → DNS first"

@@ -7,6 +7,7 @@
  */
 
 import { ChildProcess } from 'node:child_process';
+import readline from 'node:readline';
 import { getSingboxBinaryPath as getSingboxBinaryPathFromPaths } from './paths';
 import { t } from './i18n-main';
 
@@ -178,53 +179,32 @@ function extractFatalDetail(line: string): string | null {
 
 /**
  * 从 sing-box 日志文件中读取最后一条 FATAL/ERROR 错误描述
- * 用于 Service 模式下启动失败时获取错误详情
+ * 只检查最后 2 行，避免读到之前启动残留的 FATAL/ERROR
  */
 async function readLastFatalFromLog(): Promise<string | null> {
     try {
         const logPath = getSingboxLogPath();
         if (!fs.existsSync(logPath)) return null;
 
-        const stat = fs.statSync(logPath);
-        if (stat.size === 0) return null;
+        const lines: string[] = [];
+        const fileStream = fs.createReadStream(logPath);
+        const rl = readline.createInterface({ input: fileStream, crlfDelay: Infinity });
 
-        // 从文件末尾倒读
-        const fd = fs.openSync(logPath, 'r');
-        const chunkSize = 4 * 1024;
-        const buffer = Buffer.alloc(chunkSize);
-        let pos = stat.size;
-        let carry = '';
-
-        while (pos > 0) {
-            const readSize = Math.min(chunkSize, pos);
-            pos -= readSize;
-            const bytesRead = fs.readSync(fd, buffer, 0, readSize, pos);
-            if (bytesRead === 0) break;
-
-            const chunk = buffer.toString('utf8', 0, bytesRead) + carry;
-            const parts = chunk.split(/\r?\n/);
-            carry = parts[0];
-
-            // 从新到旧遍历，找第一条 FATAL/ERROR
-            for (let i = parts.length - 1; i >= 1; i--) {
-                const detail = extractFatalDetail(parts[i]);
-                if (detail) {
-                    fs.closeSync(fd);
-                    return detail;
-                }
+        for await (const line of rl) {
+            lines.push(line);
+            if (lines.length > 2) {
+                lines.shift();
             }
         }
 
-        // 处理剩余的 carry
-        if (carry) {
-            const detail = extractFatalDetail(carry);
-            if (detail) {
-                fs.closeSync(fd);
-                return detail;
-            }
+        console.log(lines);
+
+        // 从后往前检查最后 2 行
+        for (let i = lines.length - 1; i >= 0; i--) {
+            const detail = extractFatalDetail(lines[i]);
+            if (detail) return detail;
         }
 
-        fs.closeSync(fd);
         return null;
     } catch {
         return null;

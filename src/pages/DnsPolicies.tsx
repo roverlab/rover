@@ -192,11 +192,6 @@ const [policies, setPolicies] = useState<DnsPolicy[]>([]);
         }
     };
 
-    const handleBatchDelete = (selectedIds: Set<string>) => {
-        if (selectedIds.size === 0) return;
-        setBatchDeleteIds(selectedIds);
-        setShowBatchDeleteConfirm(true);
-    };
 
     const confirmBatchDelete = async () => {
         if (batchDeleteIds.size === 0) return;
@@ -287,6 +282,9 @@ const [policies, setPolicies] = useState<DnsPolicy[]>([]);
                 open={showSettingsModal}
                 dnsServers={dnsServers}
                 onClose={() => setShowSettingsModal(false)}
+                onSaved={() => {
+                    loadPolicies();
+                }}
             />
 
             <DnsUnmatchedServerModal
