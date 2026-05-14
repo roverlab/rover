@@ -31,6 +31,16 @@
   ],
   "dnsPolicies": [
     {
+      "type": "default",
+      "name": "🎯 国内域名解析",
+      "server": "local",
+      "enabled": true,
+      "order": 0,
+      "ruleSet": [
+        "acl:ChinaDomain"
+      ]
+    },
+    {
       "type": "raw",
       "name": "🎭 FakeIP",
       "server": "fakeip",
