@@ -459,11 +459,6 @@ export function DnsServersModal({ open, onClose, onRegenerateConfig, onServersCh
 
     let serverId: string;
     if (editingId) {
-      const originalServer = dnsServers.find((s) => s.id === editingId);
-      if (originalServer) {
-        serverData.id = originalServer.id;
-        serverData.enabled = originalServer.enabled;
-      }
       await window.ipcRenderer.db.updateDnsServer(editingId, serverData);
       serverId = editingId;
     } else {

@@ -347,21 +347,9 @@ export function updateDnsServer(id: string, updates: Partial<DnsServer>): void {
         const idx = arr.findIndex((s) => s.id === id);
         if (idx < 0) return;
 
-        const oldServer = arr[idx];
-        const oldId = oldServer.id;
-        const newId = typeof updates.id === 'string' ? updates.id.trim() : undefined;
-
-        // id 变更时，检查是否冲突
-        if (newId && newId !== oldId) {
-            const conflict = arr.some((s, i) => i !== idx && s.id === newId);
-            if (conflict) {
-                throw new Error(t('main.errors.db.dnsServerIdExists', { id: newId }));
-            }
-        }
-
-        // 合并更新，保留原有数据，用新数据覆盖
-        const finalId = newId || oldId;
-        arr[idx] = { ...oldServer, ...updates, id: finalId } as unknown as DnsServer;
+        // 直接替换为完整的新数据，仅保留原 id、order 和 enabled，避免类型切换后残留旧字段
+        const old = arr[idx];
+        arr[idx] = { ...updates, id: old.id, order: old.order, enabled: old.enabled } as unknown as DnsServer;
     });
 }
 
