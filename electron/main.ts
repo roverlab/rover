@@ -530,6 +530,10 @@ function createWindow() {
             console.log('Window close prevented, hiding instead');
             event.preventDefault();
             win?.hide();
+            // macOS: 窗口隐藏时同步隐藏 Dock 图标
+            if (process.platform === 'darwin' && app.dock) {
+                app.dock.hide();
+            }
         }
         return false;
     });
@@ -584,11 +588,10 @@ app.on('window-all-closed', async () => {
         app.quit();
         win = null;
     } else {
-        // On macOS, keep the app running with dock icon visible
-        console.log('Window closed on macOS, keeping app running with dock icon');
-        // Show dock icon to indicate app is still running
+        // On macOS, keep the app running in tray (no dock icon)
+        console.log('Window closed on macOS, keeping app running in tray');
         if (app.dock) {
-            app.dock.show();
+            app.dock.hide();
         }
     }
 });
@@ -622,7 +625,7 @@ app.on('before-quit', async (event) => {
 
 app.on('activate', () => {
     console.log('App activated');
-    // Show dock icon when app is activated
+    // macOS: 激活时同步显示 Dock 图标
     if (app.dock) {
         app.dock.show();
     }
@@ -870,6 +873,10 @@ if (!gotTheLock) {
             }
             win.focus();
             win.show();
+            // macOS: 窗口显示时同步显示 Dock 图标
+            if (process.platform === 'darwin' && app.dock) {
+                app.dock.show();
+            }
         }
     });
 }
@@ -944,16 +951,6 @@ subscription.initProfileNodeCache();
     }
 
     createWindow();
-
-    // Ensure dock icon is visible on macOS after app is ready
-    if (process.platform === 'darwin' && app.dock) {
-        console.log('Ensuring dock icon is visible on macOS...');
-        try {
-            app.dock.show();
-        } catch (error) {
-            console.error('Failed to show dock icon:', error);
-        }
-    }
 
     // 初始化定时任务调度器
     log.info('Initializing scheduler...');

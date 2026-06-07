@@ -135,6 +135,10 @@ export function createTray(mainWindow: BrowserWindow) {
                 click: () => {
                     console.log('[Tray] show clicked');
                     mainWindow.show();
+                    // macOS: 窗口显示时同步显示 Dock 图标
+                    if (process.platform === 'darwin' && app.dock) {
+                        app.dock.show();
+                    }
                 }
             },
             { type: 'separator' },
@@ -188,6 +192,10 @@ export function createTray(mainWindow: BrowserWindow) {
 
     tray.on('double-click', () => {
         mainWindow.show();
+        // macOS: 窗口显示时同步显示 Dock 图标
+        if (process.platform === 'darwin' && app.dock) {
+            app.dock.show();
+        }
     });
     updateMenu();
 
