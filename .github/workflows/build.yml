@@ -32,7 +32,7 @@ jobs:
             arch: x64
 
     env:
-      SINGBOX_VERSION: 1.13.2
+      SINGBOX_VERSION: 1.13.13
       SHORT_SHA: ${GITHUB_SHA::7}
 
     steps:

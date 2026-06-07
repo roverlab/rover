@@ -2,20 +2,24 @@
   "dnsServers": [
     {
       "type": "rover",
-      "name": "聚合DNS",
+      "name": "国外服务",
       "upstreams": "https://cloudflare-dns.com/dns-query, https://dns.google/dns-query",
       "use_proxy": true,
       "bootstrap_addrs": "tls://223.5.5.5, tls://120.53.53.53",
       "fallback_addrs": "https://doh.pub/dns-query, https://dns.alidns.com/dns-query",
-      "id": "Rover",
+      "id": "rover_dns_proxy",
       "enabled": true
     },
-   {
-      "id": "local",
-      "name": "local",
-      "type": "local",
+    {
+      "type": "rover",
+      "name": "国内服务",
+      "upstreams": "tls://223.5.5.5, tls://120.53.53.53",
+      "use_proxy": false,
+      "bootstrap_addrs": "",
+      "fallback_addrs": "114.114.114.114",
+      "id": "rover_dns_direct",
       "enabled": true
-    },
+   },
     {
       "id": "fakeip",
       "name": "fakeip",
@@ -33,7 +37,7 @@
     {
       "type": "default",
       "name": "🎯 国内域名解析",
-      "server": "local",
+      "server": "rover_dns_direct",
       "enabled": true,
       "order": 0,
       "ruleSet": [
@@ -93,7 +97,6 @@
       "name": "🍎 苹果服务",
       "outbound": "direct_out",
       "enabled": true,
-      "order": 1,
       "ruleSet": [
         "acl:Apple"
       ]
@@ -103,7 +106,6 @@
       "name": "🎯 国内域名直连",
       "outbound": "direct_out",
       "enabled": true,
-      "order": 2,
       "ruleSet": [
         "acl:ChinaDomain",
         "acl:UnBan",
@@ -117,7 +119,6 @@
       "name": "🌏 国外穿墙",
       "outbound": "selector_out",
       "enabled": true,
-      "order": 3,
       "ruleSet": [
         "geosite:geolocation-!cn",
         "geosite:google",
@@ -130,7 +131,6 @@
       "type": "raw",
       "name": "🔍 未匹配域名DNS解析",
       "enabled": true,
-      "order": 4,
       "outbound": "",
       "raw_data": {
         "action": "resolve"
@@ -141,7 +141,6 @@
       "name": "🎯国内IP直连",
       "outbound": "direct_out",
       "enabled": true,
-      "order": 5,
       "ruleSet": [
         "acl:ChinaIp",
         "acl:ChinaCompanyIp",
@@ -151,9 +150,9 @@
   ],
   "settings": {
     "policy-final-outbound": "selector_out",
-    "dns-unmatched-server": "Rover",
-    "dns-resolve-server": "local",
-    "dns-proxy-server": "local",
+    "dns-unmatched-server": "rover_dns_proxy",
+    "dns-resolve-server": "rover_dns_direct",
+    "dns-proxy-server": "rover_dns_direct",
     "dns-server-enabled": "true",
     "dashboard-tun-mode": "true"
   }
