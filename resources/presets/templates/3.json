@@ -103,19 +103,6 @@
     },
     {
       "type": "default",
-      "name": "🎯 国内域名直连",
-      "outbound": "direct_out",
-      "enabled": true,
-      "ruleSet": [
-        "acl:ChinaDomain",
-        "acl:UnBan",
-        "acl:SteamCN",
-        "acl:ChinaMedia",
-        "acl:Download"
-      ]
-    },
-    {
-      "type": "default",
       "name": "🌏 国外穿墙",
       "outbound": "selector_out",
       "enabled": true,
@@ -125,6 +112,19 @@
         "geoip:google",
         "acl:ProxyGFWlist",
         "acl:ProxyMedia"
+      ]
+    },
+    {
+      "type": "default",
+      "name": "🎯 国内域名直连",
+      "outbound": "direct_out",
+      "enabled": true,
+      "ruleSet": [
+        "acl:ChinaDomain",
+        "acl:UnBan",
+        "acl:SteamCN",
+        "acl:ChinaMedia",
+        "acl:Download"
       ]
     },
     {
