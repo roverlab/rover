@@ -220,6 +220,10 @@ type upstream interface {
 	String() string
 }
 
+type idleConnectionCloser interface {
+	closeIdleConnections()
+}
+
 // ---------------------------------------------------------------
 // DoH upstream (https://)
 // ---------------------------------------------------------------
@@ -240,8 +244,9 @@ type UpstreamConfig struct {
 
 // dohUpstream is a single DoH upstream with its own HTTP client.
 type dohUpstream struct {
-	url    string
-	client *http.Client
+	url       string
+	client    *http.Client
+	transport *http.Transport
 }
 
 func newDoHUpstream(cfg UpstreamConfig) (*dohUpstream, error) {
@@ -288,6 +293,7 @@ func newDoHUpstream(cfg UpstreamConfig) (*dohUpstream, error) {
 		TLSClientConfig:    tlsConfig,
 		MaxIdleConns:       10,
 		IdleConnTimeout:    30 * time.Second,
+		DisableKeepAlives:  true,
 		DisableCompression: true,
 	}
 
@@ -297,13 +303,15 @@ func newDoHUpstream(cfg UpstreamConfig) (*dohUpstream, error) {
 	}
 
 	return &dohUpstream{
-		url:    cfg.URL,
-		client: client,
+		url:       cfg.URL,
+		client:    client,
+		transport: transport,
 	}, nil
 }
 
 func (u *dohUpstream) exchange(ctx context.Context, req *dns.Msg) (*dns.Msg, error) {
 	start := time.Now()
+	defer u.closeIdleConnections()
 
 	pack, err := req.Pack()
 	if err != nil {
@@ -350,6 +358,12 @@ func (u *dohUpstream) exchange(ctx context.Context, req *dns.Msg) (*dns.Msg, err
 }
 
 func (u *dohUpstream) String() string { return u.url }
+
+func (u *dohUpstream) closeIdleConnections() {
+	if u.transport != nil {
+		u.transport.CloseIdleConnections()
+	}
+}
 
 // ---------------------------------------------------------------
 // Plain upstream (UDP / TCP)
@@ -594,7 +608,9 @@ func dnsQuery(ctx context.Context, req *dns.Msg, addr string, timeout time.Durat
 			TLSClientConfig: &tls.Config{
 				ServerName: hostname,
 			},
+			DisableKeepAlives: true,
 		}
+		defer transport.CloseIdleConnections()
 		client := &http.Client{Transport: transport, Timeout: timeout}
 
 		httpReq, err := http.NewRequestWithContext(ctx, "POST", dohURL, bytes.NewReader(pack))
@@ -1074,6 +1090,15 @@ func (r *Resolver) Lookup(ctx context.Context, req *dns.Msg) (*dns.Msg, error) {
 	return nil, fmt.Errorf("all upstreams failed")
 }
 
+// CloseIdleConnections closes idle network connections held by upstreams created for this resolver.
+func (r *Resolver) CloseIdleConnections() {
+	for _, u := range r.upstreams {
+		if closer, ok := u.(idleConnectionCloser); ok {
+			closer.closeIdleConnections()
+		}
+	}
+}
+
 // lookupFallback queries fallback DNS servers (supports all protocol formats).
 func (r *Resolver) lookupFallback(ctx context.Context, req *dns.Msg) (*dns.Msg, error) {
 	for _, addr := range r.fallbackAddrs {
@@ -1487,6 +1512,7 @@ func (s *Server) serveDoH(w http.ResponseWriter, r *http.Request) {
 		w.Write(packed)
 		return
 	}
+	defer res.CloseIdleConnections()
 
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
@@ -1549,9 +1575,9 @@ func NewServerManager() *ServerManager {
 
 // StartRequest represents a DNS server start request.
 type StartRequest struct {
-	Address   string `json:"address"`
-	CertDir   string `json:"cert_dir"`
-	LogEnabled bool  `json:"enable_log"`
+	Address    string `json:"address"`
+	CertDir    string `json:"cert_dir"`
+	LogEnabled bool   `json:"enable_log"`
 }
 
 // Start starts the DNS server on the given address.

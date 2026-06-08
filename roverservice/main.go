@@ -29,7 +29,7 @@ import (
 
 const (
 // API version
-APIVersion = "1.1.0"
+APIVersion = "1.1.1"
 	// Default HTTP timeout
 	DefaultTimeout = 30 * time.Second
 	// Service name
