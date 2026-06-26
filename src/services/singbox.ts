@@ -373,16 +373,23 @@ export function convertProxyNodeToOutbound(node: ProxyNode): OutboundConfig | nu
         }
         case 'tuic': {
             const n = node as TuicProxy;
+            const tls: OutboundTls = {
+                enabled: true,
+                insecure: n['skip-cert-verify'],
+                server_name: n.sni
+            };
+            if (n.alpn?.length) tls.alpn = n.alpn;
             const out: TuicOutbound = {
                 type: singboxType as 'tuic',
                 tag: n.name,
                 server: n.server,
                 server_port,
                 uuid: n.uuid,
-                tls: { enabled: true, insecure: n['skip-cert-verify'] }
+                tls
             };
             if (n.password) out.password = n.password;
             if (n['congestion-controller']) out.congestion_control = n['congestion-controller'];
+            if (n['udp-relay-mode']) out.udp_relay_mode = n['udp-relay-mode'];
             if (n.tfo) out.tcp_fast_open = true;
             return out;
         }

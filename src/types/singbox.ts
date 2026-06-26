@@ -68,6 +68,7 @@ export interface OutboundTls {
     enabled: true;
     insecure?: boolean;
     server_name?: string;
+    alpn?: string[];
     reality?: { enabled: true; public_key: string; short_id: string };
     utls?: { enabled: true; fingerprint: string };
 }
@@ -165,6 +166,7 @@ export interface TuicOutbound {
     uuid: string;
     password?: string;
     congestion_control?: 'cubic' | 'new_reno' | 'bbr';
+    udp_relay_mode?: 'native' | 'quic';
     tls: OutboundTls;
     tcp_fast_open?: boolean;
 }
@@ -203,6 +205,7 @@ export interface OutboundConfig {
         enabled?: boolean;
         insecure?: boolean;
         server_name?: string;
+        alpn?: string[];
         reality?: {
             enabled?: boolean;
             public_key?: string;

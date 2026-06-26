@@ -160,6 +160,11 @@ export interface TuicProxy extends BaseProxy {
   password?: string;
   version?: number;
   'congestion-controller'?: 'cubic' | 'new_reno' | 'bbr';
+  sni?: string;
+  alpn?: string[];
+  'udp-relay-mode'?: 'native' | 'quic';
+  'disable-sni'?: boolean;
+  'reduce-rtt'?: boolean;
 }
 
 export interface TrojanProxy extends BaseProxy {
