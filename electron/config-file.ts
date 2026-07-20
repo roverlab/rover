@@ -32,6 +32,15 @@ import {
 import { policiesToSingboxConfig } from '../src/services/policy';
 import { dnsPoliciesToSingboxConfig } from '../src/services/dns-policy';
 import { t } from './i18n-main';
+import {
+    CHAIN_BACK_TAG,
+    CHAIN_FRONT_TAG,
+    CHAIN_PROXY_SETTING_KEY,
+    isChainHopActive,
+    parseChainProxySettings,
+    type ChainProxySettings,
+    type ChainSocksHop,
+} from '../src/types/chain-proxy';
 
 /** 判断是否为 IPv6 地址 */
 function isIPv6(ip: string): boolean {
@@ -587,9 +596,13 @@ export function appendExtraOutbounds(config: SingboxConfig, settings?: Record<st
     const proxyDomainResolver = settings?.['dns-proxy-server'] || 'dns_direct_out';
     
     let outbounds = (config.outbounds || [])
-    .filter(a=>!['selector_out','direct_out','block_out'].includes(a.tag));
+    .filter(a=>!['selector_out','direct_out','block_out', CHAIN_FRONT_TAG, CHAIN_BACK_TAG].includes(a.tag));
     outbounds.forEach(o=>{
         if(!['selector','urltest','block','direct'].includes(o.type)){
+            // 清掉上次链式注入的 detour，由 applyChainProxy 重新挂
+            if (o.detour === CHAIN_FRONT_TAG || o.detour === CHAIN_BACK_TAG) {
+                delete o.detour;
+            }
             o.domain_resolver = proxyDomainResolver;
         }
     })
@@ -638,6 +651,120 @@ export function appendExtraOutbounds(config: SingboxConfig, settings?: Record<st
             "tag": "block_out"
         }
     ];
+
+    // 链式代理（SOCKS5：前置挂节点 detour，后置包在节点之后）
+    applyChainProxy(config, settings);
+}
+
+/** 构造单跳 SOCKS5 出站 */
+function buildChainSocksOutbound(
+    tag: string,
+    hop: ChainSocksHop,
+    domainResolver: string,
+    detour?: string
+): OutboundConfig {
+    const outbound: OutboundConfig = {
+        type: 'socks',
+        tag,
+        server: hop.server.trim(),
+        server_port: hop.server_port,
+        version: '5',
+        domain_resolver: domainResolver,
+    };
+    const username = hop.username?.trim();
+    const password = hop.password ?? '';
+    if (username) outbound.username = username;
+    if (password) outbound.password = password;
+    const bindInterface = hop.bind_interface?.trim();
+    if (bindInterface) outbound.bind_interface = bindInterface;
+    if (detour) outbound.detour = detour;
+    return outbound;
+}
+
+/**
+ * 将「走代理」出口 selector_out 替换为后置 tag。
+ * 不改 chain_back 自身的 detour，避免环路。
+ */
+function rewriteSelectorOutToChainBack(config: SingboxConfig): void {
+    const from = 'selector_out';
+    const to = CHAIN_BACK_TAG;
+
+    if (config.route?.final === from) {
+        config.route.final = to;
+    }
+
+    for (const rule of config.route?.rules || []) {
+        const r = rule as RouteRule & { outbound?: string };
+        if (r.outbound === from) r.outbound = to;
+    }
+
+    for (const server of config.dns?.servers || []) {
+        if (server.detour === from) server.detour = to;
+    }
+}
+
+/**
+ * 应用链式代理：
+ * 本地 → [前置 SOCKS5] → 订阅节点 → [后置 SOCKS5] → 目标
+ *
+ * - 前置：真实节点 detour = chain_front_out
+ * - 后置：chain_back_out.detour = selector_out，并将 selector_out 业务出口改为 chain_back_out
+ */
+function applyChainProxy(config: SingboxConfig, settings?: Record<string, string>): void {
+    if (!settings) return;
+    const chain: ChainProxySettings = parseChainProxySettings(settings[CHAIN_PROXY_SETTING_KEY]);
+    const frontActive = isChainHopActive(chain.front);
+    const backActive = isChainHopActive(chain.back);
+    if (!frontActive && !backActive) return;
+
+    // 链本身用本地 DNS，避免依赖代理 DNS 造成鸡生蛋
+    const hopResolver = 'dns_direct_out';
+    const chainOutbounds: OutboundConfig[] = [];
+
+    if (frontActive) {
+        chainOutbounds.push(buildChainSocksOutbound(CHAIN_FRONT_TAG, chain.front, hopResolver));
+    }
+    if (backActive) {
+        // 后置经节点拨号：节点 → 后置 → 目标
+        chainOutbounds.push(
+            buildChainSocksOutbound(CHAIN_BACK_TAG, chain.back, hopResolver, 'selector_out')
+        );
+    }
+
+    const excludeTypes = new Set(['selector', 'urltest', 'direct', 'block', 'dns']);
+    const excludeTags = new Set([
+        CHAIN_FRONT_TAG,
+        CHAIN_BACK_TAG,
+        'selector_out',
+        'direct_out',
+        'block_out',
+    ]);
+
+    // 前置：挂在真实节点上
+    let frontApplied = 0;
+    if (frontActive) {
+        for (const outbound of config.outbounds || []) {
+            const type = (outbound.type || '').toLowerCase();
+            if (excludeTypes.has(type)) continue;
+            if (!outbound.tag || excludeTags.has(outbound.tag)) continue;
+            outbound.detour = CHAIN_FRONT_TAG;
+            frontApplied++;
+        }
+    }
+
+    config.outbounds = [...chainOutbounds, ...(config.outbounds || [])];
+
+    // 后置：业务上凡走 selector_out 的改为走后置（后置内部 detour 回 selector_out）
+    // 前置拨号不注入全局直连规则：outbound 拨号不经 route rules，且会污染同 IP/域名业务流量
+    // TUN 环路依赖 route.auto_detect_interface + 前置 domain_resolver / bind_interface
+    if (backActive) {
+        rewriteSelectorOutToChainBack(config);
+    }
+
+    console.log(
+        `[Config] Chain proxy applied: front=${frontActive}(nodes=${frontApplied}) back=${backActive} path=local` +
+            `${frontActive ? '->front' : ''}->node${backActive ? '->back' : ''}->dest`
+    );
 }
 
 

@@ -12,6 +12,7 @@ import { ViewConfigModal } from '../components/ui/ViewConfigModal';
 import { useOverrideRules } from '../contexts/OverrideRulesContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { changeLanguage, getCurrentLanguage, getAvailableLanguages } from '../i18n';
+import { ChainProxySection } from './Settings/ChainProxySection';
 
 interface SettingsProps {
   isActive?: boolean;
@@ -64,6 +65,9 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
   // TUN 排除地址配置（数组存储，每行一个元素）
   const [tunExcludeAddressText, setTunExcludeAddressText] = useState('');
   const [tunExcludeAddressSaved, setTunExcludeAddressSaved] = useState(false);
+
+  // 链式代理原始 JSON（交给子组件解析）
+  const [chainProxyRaw, setChainProxyRaw] = useState('');
 
   // 配置导出/导入
   const [configExporting, setConfigExporting] = useState(false);
@@ -156,6 +160,8 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
       } catch {
         setTunExcludeAddressText('');
       }
+
+      setChainProxyRaw(allSettings['chain-proxy'] || '');
     } catch (e) {
       console.error(e);
     } finally {
@@ -793,6 +799,8 @@ export function Settings({ isActive = true, initialTab, onTabConsumed }: Setting
                     </div>
                   </div>
                 </ListRow>
+
+                <ChainProxySection initialRaw={chainProxyRaw} />
 
               </div>
             </Card>

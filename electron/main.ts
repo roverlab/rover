@@ -402,6 +402,32 @@ ipcMain.handle('core:fetchIpDirect', async () => {
     }
 });
 
+// 网卡列表（链式代理前置出口可选）
+ipcMain.handle('core:getNetworkInterfaces', () => {
+    const os = require('node:os') as typeof import('node:os');
+    const ifaces = os.networkInterfaces();
+    const result: Array<{ name: string; address: string; family: 'IPv4' | 'IPv6' }> = [];
+    for (const [name, addrs] of Object.entries(ifaces)) {
+        if (!addrs) continue;
+        for (const addr of addrs) {
+            if (addr.internal) continue;
+            // Node 旧版 family 为 'IPv4'/'IPv6'，新版可能为 4/6
+            const fam = String(addr.family);
+            const family: 'IPv4' | 'IPv6' = fam === 'IPv6' || fam === '6' ? 'IPv6' : 'IPv4';
+            result.push({ name, address: addr.address, family });
+        }
+    }
+    // 按网卡名去重展示：优先 IPv4
+    const byName = new Map<string, { name: string; address: string; family: 'IPv4' | 'IPv6' }>();
+    for (const item of result) {
+        const prev = byName.get(item.name);
+        if (!prev || (prev.family === 'IPv6' && item.family === 'IPv4')) {
+            byName.set(item.name, item);
+        }
+    }
+    return Array.from(byName.values()).sort((a, b) => a.name.localeCompare(b.name));
+});
+
 // 更新托盘菜单
 ipcMain.handle('core:updateTrayMenu', () => {
     log.info('IPC core:updateTrayMenu');

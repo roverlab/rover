@@ -126,6 +126,8 @@ export interface ElectronAPI {
             fetchIpThroughProxy(): Promise<{ ip: string; country: string; countryCode: string } | null>;
             /** 直连检测出口 IP（内核未启动时） */
             fetchIpDirect(): Promise<{ ip: string; country: string; countryCode: string } | null>;
+            /** 本机网卡列表（链式代理前置出口可选） */
+            getNetworkInterfaces(): Promise<Array<{ name: string; address: string; family: 'IPv4' | 'IPv6' }>>;
         };
         config: {
             export(): Promise<{ ok: boolean; path: string | null }>;

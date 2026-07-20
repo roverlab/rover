@@ -105,6 +105,11 @@ export interface SocksOutbound {
     version?: '4' | '4a' | '5';
     username?: string;
     password?: string;
+    /** 链式拨号：经由另一出站 */
+    detour?: string;
+    /** 绑定出口网卡 */
+    bind_interface?: string;
+    domain_resolver?: any;
 }
 
 /** sing-box http 出站 */
@@ -225,6 +230,12 @@ export interface OutboundConfig {
     tcp_fast_open?: boolean;
     congestion_control?: string;
     domain_resolver?: any;
+    /** 链式拨号：经由另一出站 */
+    detour?: string;
+    /** 绑定出口网卡 */
+    bind_interface?: string;
+    username?: string;
+    version?: '4' | '4a' | '5';
 }
 
 export interface RouteConfig {

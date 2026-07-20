@@ -117,6 +117,7 @@ contextBridge.exposeInMainWorld('ipcRenderer', {
         getAvailableOutbounds: () => ipcRenderer.invoke('core:getAvailableOutbounds'),
         fetchIpThroughProxy: () => ipcRenderer.invoke('core:fetchIpThroughProxy'),
         fetchIpDirect: () => ipcRenderer.invoke('core:fetchIpDirect'),
+        getNetworkInterfaces: () => ipcRenderer.invoke('core:getNetworkInterfaces'),
     },
 
     // 配置导出/导入
