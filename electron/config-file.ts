@@ -1254,7 +1254,7 @@ function applyCustomProxyGroups(config: SingboxConfig, profileId: string): void 
                 outbounds: validOutbounds,
                 url: 'http://www.gstatic.com/generate_204',
                 interval: '5m',
-                tolerance: 50
+                tolerance: getUrlTestTolerance()
             });
         }
         addedCount++;

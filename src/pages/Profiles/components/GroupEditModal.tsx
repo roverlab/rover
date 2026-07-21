@@ -45,7 +45,7 @@ export function GroupEditModal({
 }: GroupEditModalProps) {
     const { t } = useTranslation();
     const [name, setName] = useState('');
-    const [type, setType] = useState<'selector' | 'urltest'>('selector');
+    const [type, setType] = useState<'selector' | 'urltest'>('urltest');
     const [outbounds, setOutbounds] = useState<string[]>([]);
     const [error, setError] = useState<string | null>(null);
 
@@ -63,7 +63,7 @@ export function GroupEditModal({
                 setOutbounds([...initialData.outbounds]);
             } else {
                 setName('');
-                setType('selector');
+                setType('urltest');
                 setOutbounds([]);
             }
             setError(null);
