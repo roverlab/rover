@@ -81,6 +81,8 @@ export interface ElectronAPI {
             deleteProfileCustomGroup(profileId: string, groupName: string): Promise<void>;
             updateProfileCustomGroupsOrder(profileId: string, orders: Array<{ name: string; order: number }>): Promise<void>;
             clearProfileCustomGroups(profileId: string): Promise<void>;
+            getProfileProxySelection(profileId: string): Promise<string | undefined>;
+            setProfileProxySelection(profileId: string, outboundTag: string): Promise<void>;
             getProfileNodes(profileId: string): Promise<ProxyNode[]>;
         };
         core: {

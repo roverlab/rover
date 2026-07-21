@@ -77,6 +77,8 @@ contextBridge.exposeInMainWorld('ipcRenderer', {
         deleteProfileCustomGroup: (profileId: string, groupName: string) => ipcRenderer.invoke('db:deleteProfileCustomGroup', profileId, groupName),
         updateProfileCustomGroupsOrder: (profileId: string, orders: any[]) => ipcRenderer.invoke('db:updateProfileCustomGroupsOrder', profileId, orders),
         clearProfileCustomGroups: (profileId: string) => ipcRenderer.invoke('db:clearProfileCustomGroups', profileId),
+        getProfileProxySelection: (profileId: string) => ipcRenderer.invoke('db:getProfileProxySelection', profileId),
+        setProfileProxySelection: (profileId: string, outboundTag: string) => ipcRenderer.invoke('db:setProfileProxySelection', profileId, outboundTag),
         getProfileNodes: (profileId: string) => ipcRenderer.invoke('db:getProfileNodes', profileId),
     },
 

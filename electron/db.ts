@@ -80,6 +80,8 @@ export interface Profile {
     dnsServerDetours?: ProfileDnsServerItem[];
     /** 自定义代理分组（用户自定义的分组，会替换订阅中的原始分组） */
     customGroups?: CustomProxyGroup[];
+    /** 用户最后点击的代理 outbound tag */
+    proxySelection?: string;
 }
 
 
@@ -174,12 +176,14 @@ function loadDb(): DbData {
     try {
         const raw = fs.readFileSync(dbPath, 'utf8');
         const data = JSON.parse(raw) as DbData;
-        const profiles = (data.profiles ?? []).map((p: Profile & { id?: number | string; nodes?: ProxyNode[] }) => {
-            // 迁移：移除 nodes 字段（不再存储在数据库中）
-            const { nodes: _nodes, ...rest } = p as Profile & { id?: number | string; nodes?: ProxyNode[] };
+        const profiles = (data.profiles ?? []).map((p: Profile & { id?: number | string; nodes?: ProxyNode[]; proxySelections?: Record<string, string> }) => {
+            // 迁移：移除 nodes 字段，并将旧的分组选择转换为单一 outbound tag
+            const { nodes: _nodes, proxySelections: legacySelections, ...rest } = p as Profile & { id?: number | string; nodes?: ProxyNode[]; proxySelections?: Record<string, string> };
+            const legacySelection = legacySelections ? Object.values(legacySelections)[0] : undefined;
             return {
                 ...rest,
                 id: typeof p.id === 'number' ? String(p.id) : String(p.id ?? ''),
+                proxySelection: rest.proxySelection ?? legacySelection,
                 // 迁移：移除 preferred_outbound/preferred_server 为 null 的条目（null 无意义）
                 policies: (rest.policies ?? []).filter((pp) => pp.preferred_outbound != null),
                 dnsPolicies: (rest.dnsPolicies ?? []).filter((pp) => pp.preferred_server != null),
@@ -573,6 +577,29 @@ export function getAllSettings(): Record<string, string> {
 export function getProfileById(id: string): Profile | undefined {
     const data = loadDb();
     return data.profiles.find((p) => p.id === id);
+}
+
+/** 获取 profile 内持久化的代理 outbound tag */
+export function getProfileProxySelection(profileId: string): string | undefined {
+    return getProfileById(profileId)?.proxySelection;
+}
+
+/** 持久化 profile 内最后点击的代理 outbound tag */
+export function setProfileProxySelection(profileId: string, outboundTag: string): void {
+    withDb((data) => {
+        const profile = data.profiles.find((p) => p.id === profileId);
+        if (!profile) return;
+        profile.proxySelection = outboundTag;
+    });
+}
+
+/** 移除 profile 内已失效的代理 outbound tag */
+export function clearProfileProxySelection(profileId: string): void {
+    withDb((data) => {
+        const profile = data.profiles.find((p) => p.id === profileId);
+        if (!profile) return;
+        delete profile.proxySelection;
+    });
 }
 
 export function getSelectedProfile(): Profile | undefined {

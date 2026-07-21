@@ -195,6 +195,7 @@ export interface OutboundConfig {
     server_port?: number;
     interrupt_exist_connections?: boolean;
     outbounds?: string[];
+    default?: string;
     url?: string;
     interval?: string;
     tolerance?: number;

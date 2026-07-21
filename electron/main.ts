@@ -272,6 +272,10 @@ ipcMain.handle('db:updateProfileCustomGroup', (_, profileId: string, groupName: 
 ipcMain.handle('db:deleteProfileCustomGroup', (_, profileId: string, groupName: string) => dbUtils.deleteProfileCustomGroup(profileId, groupName));
 ipcMain.handle('db:updateProfileCustomGroupsOrder', (_, profileId: string, orders: any[]) => dbUtils.updateProfileCustomGroupsOrder(profileId, orders));
 ipcMain.handle('db:clearProfileCustomGroups', (_, profileId: string) => dbUtils.clearProfileCustomGroups(profileId));
+ipcMain.handle('db:getProfileProxySelection', (_, profileId: string) => dbUtils.getProfileProxySelection(profileId));
+ipcMain.handle('db:setProfileProxySelection', (_, profileId: string, outboundTag: string) => {
+    dbUtils.setProfileProxySelection(profileId, outboundTag);
+});
 ipcMain.handle('db:getProfileNodes', (_, profileId: string) => {
     const cached = subscription.getCachedProfileNodes(profileId);
     if (cached) return cached;

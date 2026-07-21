@@ -1153,6 +1153,31 @@ function applyDashboardMode(config: SingboxConfig, settings: Record<string, stri
     config.route.rule_set = getRuleSets(config);
 }
 
+/** 从数据库读取 url-test 容差；该设置不在界面暴露，缺失时使用稳定的默认值。 */
+function getUrlTestTolerance(): number {
+    const raw = Number(dbUtils.getSetting('tolerance'));
+    return Number.isFinite(raw) && raw >= 0 ? raw : 100;
+}
+
+/** 恢复 profile 最后点击的 outbound tag；tag 失效时清理保存值。 */
+function applySavedProxySelection(config: SingboxConfig, profileId: string): void {
+    const selectedTag = dbUtils.getProfileProxySelection(profileId);
+    if (!selectedTag) return;
+
+    let restored = false;
+    for (const outbound of config.outbounds ?? []) {
+        if (outbound.type !== 'selector' || !outbound.outbounds?.length) continue;
+        if (!outbound.outbounds.includes(selectedTag)) continue;
+
+        restored = true;
+        outbound.default = selectedTag;
+    }
+
+    if (!restored) {
+        dbUtils.clearProfileProxySelection(profileId);
+    }
+}
+
 /**
  * 应用自定义代理分组
  * 如果 custom-proxy-groups 开启且 profile 有自定义分组，替换订阅中的原始 selector/urltest 分组
@@ -1191,8 +1216,8 @@ function applyCustomProxyGroups(config: SingboxConfig, profileId: string): void 
         tag: AUTO_SELECT_GROUP,
         outbounds: [...existingNodeTags],
         url: 'http://www.gstatic.com/generate_204',
-        interval: '300s',
-        tolerance: 50
+        interval: '5m',
+        tolerance: getUrlTestTolerance()
     };
     console.log(`[Config] Added default group: ${AUTO_SELECT_GROUP} (urltest) with ${allProxyNodes.length} nodes`);
     
@@ -1296,6 +1321,9 @@ export async function writeConfigFileOnly(
             applyCustomProxyGroups(mergedConfig, profileId);
         }
     }
+
+    // 对所有包含该 outbound tag 的 selector 写入 default
+    applySavedProxySelection(mergedConfig, profileId);
     
     // 应用仪表板模式设置（清空多余的规则）
     applyDashboardMode(mergedConfig, settings);

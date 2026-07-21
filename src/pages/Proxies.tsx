@@ -162,6 +162,7 @@ const { apiUrl, apiSecret } = useApi();
   const activeGroupNameRef = useRef<string>(''); // 用于存储当前活动组名
   const isTestRunningRef = useRef(false); // 防止测试重复触发
   const activeTabRef = useRef<string>(''); // 用于存储当前 activeTab，避免循环依赖
+  const profileIdRef = useRef<string>(''); // 当前配置对应的订阅 ID
   const MAX_CONCURRENT_TESTS = 10; // 最大并发测试数量
 
   // 异步获取 API 数据（延迟和当前选择状态）
@@ -227,6 +228,10 @@ const { apiUrl, apiSecret } = useApi();
       }
 
       const { config } = result;
+      profileIdRef.current = String(result.profile?.id ?? '');
+      const savedSelection = profileIdRef.current
+        ? await window.ipcRenderer.db.getProfileProxySelection(profileIdRef.current)
+        : undefined;
       const outbounds = config.outbounds || [];
 
       const newGroups: ProxyGroup[] = [];
@@ -257,8 +262,10 @@ const { apiUrl, apiSecret } = useApi();
               now: outbound.outbounds[0] || nodes[0]?.name,
               nodes
             });
-            // 先用配置文件中的顺序作为兜底，后续会用 API 的 now 覆盖
-            newSelected[outbound.tag] = outbound.outbounds[0] || nodes[0]?.name;
+            // 先用持久化的 outbound tag（仍在本组时）作为兜底，否则使用配置文件顺序
+            newSelected[outbound.tag] = savedSelection && nodes.some((node) => node.name === savedSelection)
+              ? savedSelection
+              : outbound.outbounds[0] || nodes[0]?.name;
           }
         }
         // urltest 类型的出站也作为代理组
@@ -357,6 +364,9 @@ const { apiUrl, apiSecret } = useApi();
 
     try {
       await selectProxy(apiUrl, apiSecret, groupName, nodeName);
+      if (profileIdRef.current) {
+        await window.ipcRenderer.db.setProfileProxySelection(profileIdRef.current, nodeName);
+      }
     } catch (err) {
       console.error('Failed to select proxy', err);
       // 切换失败，恢复之前的状态
@@ -566,58 +576,67 @@ const { apiUrl, apiSecret } = useApi();
   const activeGroupData = groups.find(g => g.name === activeTab);
   const isSelectableGroup = activeGroupData?.type === 'selector' || activeGroupData?.type === 'Selector';
 
+  // 节点比较器：按当前 sortBy 决定顺序（default 返回 0 保持原序）
+  const compareNodes = useCallback((a: Node, b: Node): number => {
+    if (settings.sortBy === 'delay') {
+      const delayA = nodeDelays[a.name];
+      const delayB = nodeDelays[b.name];
+      const effectiveA = (delayA != null && delayA > 0) ? delayA : Infinity;
+      const effectiveB = (delayB != null && delayB > 0) ? delayB : Infinity;
+      const diff = effectiveA - effectiveB;
+      if (diff !== 0) return diff;
+      return a.name.localeCompare(b.name);
+    }
+    if (settings.sortBy === 'name') {
+      return a.name.localeCompare(b.name);
+    }
+    return 0;
+  }, [settings.sortBy, nodeDelays]);
+
   // 统一计算当前显示的节点列表（普通模式和搜索模式共用）
   const displayedNodes = useMemo(() => {
     // 搜索模式
     if (isSearchMode) {
       if (searchQuery.trim()) {
         // 有搜索词：显示搜索结果
-        return displayedSearchNodes.map(({ group, node }) => ({
+        const items = displayedSearchNodes.map(({ group, node }) => ({
           node,
           group,
           key: `${group.name}-${node.name}`,
           isSelected: selectedNodes[group.name] === node.name,
           isSelectable: group.type === 'selector' || group.type === 'Selector',
         }));
-      } else {
-        // 无搜索词：显示当前选中组的所有节点
-        const group = groups.find(g => g.name === searchActiveGroup);
-        if (!group) return [];
-        return group.nodes.map(node => ({
-          node,
-          group,
-          key: node.name,
-          isSelected: selectedNodes[group.name] === node.name,
-          isSelectable: group.type === 'selector' || group.type === 'Selector',
-        }));
+        return settings.sortBy === 'default'
+          ? items
+          : [...items].sort((a, b) => compareNodes(a.node, b.node));
       }
+      // 无搜索词：显示当前选中组的所有节点
+      const group = groups.find(g => g.name === searchActiveGroup);
+      if (!group) return [];
+      const nodes = settings.sortBy === 'default'
+        ? group.nodes
+        : [...group.nodes].sort(compareNodes);
+      return nodes.map(node => ({
+        node,
+        group,
+        key: node.name,
+        isSelected: selectedNodes[group.name] === node.name,
+        isSelectable: group.type === 'selector' || group.type === 'Selector',
+      }));
     }
     // 普通模式
     if (!activeGroupData) return [];
-    // 应用排序
-    const nodes = [...activeGroupData.nodes];
-    let sortedNodes = nodes;
-    if (settings.sortBy === 'delay') {
-      sortedNodes = nodes.sort((a, b) => {
-        const delayA = nodeDelays[a.name];
-        const delayB = nodeDelays[b.name];
-        const effectiveA = (delayA != null && delayA > 0) ? delayA : Infinity;
-        const effectiveB = (delayB != null && delayB > 0) ? delayB : Infinity;
-        const diff = effectiveA - effectiveB;
-        if (diff !== 0) return diff;
-        return a.name.localeCompare(b.name);
-      });
-    } else if (settings.sortBy === 'name') {
-      sortedNodes = nodes.sort((a, b) => a.name.localeCompare(b.name));
-    }
-    return sortedNodes.map(node => ({
+    const nodes = settings.sortBy === 'default'
+      ? activeGroupData.nodes
+      : [...activeGroupData.nodes].sort(compareNodes);
+    return nodes.map(node => ({
       node,
       group: activeGroupData,
       key: node.name,
       isSelected: selectedNodes[activeGroupData.name] === node.name,
       isSelectable: isSelectableGroup,
     }));
-  }, [isSearchMode, searchQuery, displayedSearchNodes, groups, searchActiveGroup, activeGroupData, settings.sortBy, nodeDelays, selectedNodes, isSelectableGroup]);
+  }, [isSearchMode, searchQuery, displayedSearchNodes, groups, searchActiveGroup, activeGroupData, settings.sortBy, compareNodes, selectedNodes, isSelectableGroup]);
 
   // 更新 ref 以便在回调中使用
   useEffect(() => {
